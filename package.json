@@ -1,0 +1,13 @@
+{
+  "name": "la-box-de-yenalia",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "qrcode": "^1.5.4",
+    "resend": "^6.12.4",
+    "sql.js": "^1.14.1"
+  }
+}

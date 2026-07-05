@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pluri Party – Administration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@300..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05201a;--bg-2:#082b22;--green:#1f9162;--green-br:#3fc189;
+  --gold:#e7bb46;--gold-lt:#f7df9b;--gold-dp:#b88a28;--cream:#f6f1e6;
+  --cream-72:rgba(246,241,230,.74);--cream-52:rgba(246,241,230,.52);--cream-32:rgba(246,241,230,.32);
+  --glass:rgba(255,255,255,.05);--glass-2:rgba(255,255,255,.08);
+  --stroke:rgba(246,241,230,.12);--stroke-gd:rgba(231,187,70,.36);
+  --red:#e08a6a;--shadow:0 40px 90px -34px rgba(0,0,0,.78);
+  --display:"Fraunces",Georgia,serif;--body:"Hanken Grotesk",system-ui,sans-serif;
+}
+html[data-theme="indigo"]{--bg:#0a0e2a;--bg-2:#121845;--green:#5b6bd6;--green-br:#8a96f0;--gold:#f0c64f;--gold-lt:#ffe6a0;--gold-dp:#c2942f;--stroke-gd:rgba(240,198,79,.36)}
+html[data-theme="terre"]{--bg:#241510;--bg-2:#34201a;--green:#c2703a;--green-br:#e0925a;--gold:#e8b563;--gold-lt:#f7d8a0;--gold-dp:#b9842f;--stroke-gd:rgba(232,181,99,.4)}
+html[data-display="bricolage"]{--display:"Bricolage Grotesque",system-ui,sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--body);color:var(--cream);line-height:1.55;min-height:100vh;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(60% 50% at 80% 0%,color-mix(in oklab,var(--gold) 12%,transparent),transparent 60%),radial-gradient(60% 60% at 10% 100%,color-mix(in oklab,var(--green) 20%,transparent),transparent 60%),linear-gradient(180deg,var(--bg),var(--bg-2) 60%,var(--bg))}
+::selection{background:var(--gold);color:var(--bg)}
+button{font-family:var(--body);cursor:pointer}
+.gold{color:var(--gold)}
+
+/* ---------- Login ---------- */
+.login-screen{min-height:100vh;display:grid;place-items:center;padding:24px}
+.login-card{width:100%;max-width:400px;background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.03));border:1px solid var(--stroke);border-radius:26px;box-shadow:var(--shadow);backdrop-filter:blur(18px);padding:38px 32px;text-align:center}
+.login-card .mark{width:60px;height:60px;margin:0 auto 18px}
+.login-card h1{font-family:var(--display);font-weight:600;font-size:1.7rem;margin-bottom:6px}
+.login-card p{color:var(--cream-52);font-size:.92rem;margin-bottom:26px}
+.in{width:100%;font-family:var(--body);font-size:1rem;color:var(--cream);background:rgba(0,0,0,.26);border:1px solid var(--stroke);border-radius:14px;padding:14px 16px;min-height:52px;transition:.25s}
+.in::placeholder{color:var(--cream-32)}
+.in:focus{outline:none;border-color:var(--gold);background:rgba(0,0,0,.34);box-shadow:0 0 0 4px color-mix(in oklab,var(--gold) 14%,transparent)}
+.in.bad{border-color:var(--red);box-shadow:0 0 0 4px rgba(224,138,106,.16)}
+.login-err{color:var(--red);font-size:.84rem;margin-top:10px;display:none}
+.login-err.show{display:block}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;font-weight:700;font-size:.98rem;padding:13px 22px;border-radius:100px;border:none;min-height:50px;transition:transform .2s,box-shadow .2s,background .2s,border-color .2s;text-decoration:none}
+.btn-gold{background:linear-gradient(135deg,var(--gold-lt),var(--gold) 56%,var(--gold-dp));color:#2a1d05;box-shadow:0 14px 30px -14px color-mix(in oklab,var(--gold) 70%,transparent)}
+.btn-gold:hover{transform:translateY(-2px)}
+.btn-ghost{background:var(--glass);color:var(--cream);border:1px solid var(--stroke)}
+.btn-ghost:hover{border-color:var(--stroke-gd);background:var(--glass-2)}
+.btn-block{width:100%}
+.btn-sm{padding:9px 15px;min-height:40px;font-size:.86rem}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+
+/* ---------- App ---------- */
+.app{display:none;min-height:100vh}
+.app.show{display:block}
+.topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px clamp(16px,4vw,34px);background:color-mix(in oklab,var(--bg) 72%,transparent);backdrop-filter:blur(18px);border-bottom:1px solid var(--stroke)}
+.brand{display:flex;align-items:center;gap:12px}
+.brand .mark{width:40px;height:40px}
+.brand b{font-family:var(--display);font-weight:600;font-size:1.16rem}
+.brand span{font-size:.58rem;letter-spacing:.3em;text-transform:uppercase;color:var(--cream-52);display:block;margin-top:2px}
+.topbar .right{display:flex;align-items:center;gap:10px}
+.live-pill{display:inline-flex;align-items:center;gap:7px;font-size:.76rem;font-weight:600;color:var(--green-br);background:color-mix(in oklab,var(--green) 12%,transparent);border:1px solid color-mix(in oklab,var(--green) 30%,transparent);padding:7px 13px;border-radius:100px}
+.live-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--green-br);box-shadow:0 0 0 4px color-mix(in oklab,var(--green-br) 22%,transparent);animation:pulse 2.4s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 7px transparent}}
+
+.wrap{width:100%;max-width:1140px;margin-inline:auto;padding:clamp(20px,4vw,38px) clamp(16px,4vw,34px) 80px}
+
+/* tabs */
+.tabs{display:flex;gap:6px;background:rgba(0,0,0,.24);border:1px solid var(--stroke);border-radius:14px;padding:5px;margin-bottom:28px;overflow-x:auto}
+.tab{flex:1;white-space:nowrap;border:none;background:none;color:var(--cream-52);font-weight:700;font-size:.9rem;padding:11px 14px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.2s}
+.tab.sel{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#2a1d05}
+.tab svg{flex:none}
+
+.panel{display:none;animation:fade .3s both}
+.panel.show{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:28px}
+.stat{background:var(--glass);border:1px solid var(--stroke);border-radius:18px;padding:20px;position:relative;overflow:hidden}
+.stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent,var(--gold))}
+.stat .k{display:flex;align-items:center;gap:8px;font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--cream-52)}
+.stat .k svg{color:var(--accent,var(--gold))}
+.stat .v{font-family:var(--display);font-size:2.2rem;font-weight:600;line-height:1;margin-top:10px}
+
+/* section header */
+.sec-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.sec-head h2{font-family:var(--display);font-weight:600;font-size:1.4rem}
+.sec-head .tools{display:flex;gap:8px;align-items:center}
+.search{position:relative}
+.search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--cream-52)}
+.search input{background:rgba(0,0,0,.24);border:1px solid var(--stroke);border-radius:100px;color:var(--cream);padding:9px 16px 9px 38px;min-height:42px;font-size:.9rem;width:200px;max-width:46vw}
+.search input:focus{outline:none;border-color:var(--gold)}
+
+/* table */
+.table-card{background:var(--glass);border:1px solid var(--stroke);border-radius:18px;overflow:hidden}
+.tbl{width:100%;border-collapse:collapse;font-size:.9rem}
+.tbl th{text-align:left;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--cream-52);font-weight:700;padding:14px 16px;border-bottom:1px solid var(--stroke);white-space:nowrap}
+.tbl td{padding:14px 16px;border-bottom:1px solid var(--stroke);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:rgba(255,255,255,.02)}
+.who b{display:block;font-weight:700}
+.who span{display:block;font-size:.8rem;color:var(--cream-52)}
+.photo-thumb{width:44px;height:44px;border-radius:10px;object-fit:cover;background:var(--glass);border:1px solid var(--stroke);flex:none}
+.photo-thumb.ph{display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:.9rem;color:var(--cream-52)}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;padding:5px 11px;border-radius:100px;white-space:nowrap}
+.badge.pending{background:color-mix(in oklab,var(--gold) 14%,transparent);color:var(--gold-lt);border:1px solid var(--stroke-gd)}
+.badge.validated{background:color-mix(in oklab,var(--green) 16%,transparent);color:var(--green-br);border:1px solid color-mix(in oklab,var(--green) 34%,transparent)}
+.badge.used{background:rgba(255,255,255,.06);color:var(--cream-52);border:1px solid var(--stroke)}
+.code-chip{font-family:var(--display);font-weight:600;letter-spacing:.04em;color:var(--gold-lt)}
+.row-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.mini{border:1px solid var(--stroke);background:var(--glass);color:var(--cream-72);padding:7px 12px;border-radius:9px;font-size:.8rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;transition:.2s}
+.mini:hover{border-color:var(--stroke-gd);color:var(--cream)}
+.mini.go{border-color:color-mix(in oklab,var(--green) 40%,transparent);color:var(--green-br)}
+.mini.go:hover{background:color-mix(in oklab,var(--green) 14%,transparent)}
+.empty{text-align:center;padding:56px 20px;color:var(--cream-52)}
+.empty svg{color:var(--cream-32);margin-bottom:14px}
+.empty b{display:block;color:var(--cream);font-family:var(--display);font-size:1.2rem;margin-bottom:6px}
+
+/* mobile cards */
+.cards{display:none;flex-direction:column;gap:12px}
+.pcard{background:var(--glass);border:1px solid var(--stroke);border-radius:16px;padding:16px}
+.pcard .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:12px}
+.pcard .meta{font-size:.82rem;color:var(--cream-72);display:flex;flex-direction:column;gap:3px;margin-bottom:14px}
+.pcard .meta span b{color:var(--cream)}
+
+/* verify tab */
+.verify-box{max-width:520px;margin:0 auto;text-align:center}
+.verify-box .vi{width:70px;height:70px;border-radius:18px;margin:0 auto 18px;display:grid;place-items:center;background:color-mix(in oklab,var(--gold) 12%,transparent);border:1px solid var(--stroke-gd);color:var(--gold-lt)}
+.verify-box h2{font-family:var(--display);font-weight:600;font-size:1.6rem;margin-bottom:8px}
+.verify-box p{color:var(--cream-72);margin-bottom:22px}
+.code-row{display:flex;gap:10px;margin-bottom:6px}
+.code-row .in{font-family:var(--display);font-weight:600;font-size:1.2rem;letter-spacing:.14em;text-align:center;text-transform:uppercase}
+.vres{display:none;margin-top:24px;text-align:left;border-radius:16px;padding:20px;animation:fade .3s both}
+.vres.show{display:block}
+.vres.ok{background:color-mix(in oklab,var(--green) 14%,transparent);border:1px solid var(--green)}
+.vres.bad{background:color-mix(in oklab,var(--red) 14%,transparent);border:1px solid var(--red)}
+.vres .vh{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.vres .vh .ic{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;flex:none}
+.vres.ok .ic{background:var(--green);color:#fff}.vres.bad .ic{background:var(--red);color:#2a1205}
+.vres .vh b{font-family:var(--display);font-size:1.16rem}
+.vres .vh span{display:block;font-size:.84rem;color:var(--cream-72)}
+.vrow{display:flex;justify-content:space-between;gap:14px;padding:8px 0;font-size:.9rem}
+.vrow+.vrow{border-top:1px dashed var(--stroke)}
+.vrow .rk{color:var(--cream-72)}.vrow .rv{font-weight:700}
+
+/* settings */
+.settings{max-width:760px}
+.set-group{background:var(--glass);border:1px solid var(--stroke);border-radius:18px;padding:22px;margin-bottom:18px}
+.set-group h3{font-family:var(--display);font-weight:600;font-size:1.18rem;margin-bottom:4px;display:flex;align-items:center;gap:10px}
+.set-group h3 svg{color:var(--gold)}
+.set-group .gsub{color:var(--cream-52);font-size:.84rem;margin-bottom:18px}
+.grid2{display:grid;grid-template-columns:1fr;gap:16px}
+.f label{display:block;font-size:.78rem;font-weight:700;letter-spacing:.03em;margin-bottom:7px;color:var(--cream)}
+.f .desc{color:var(--cream-52);font-weight:400;font-size:.74rem;display:block;margin-top:-3px;margin-bottom:7px}
+.f .ipwrap{position:relative;display:flex;align-items:center}
+.f .ipwrap .reveal-btn{position:absolute;right:8px;background:none;border:none;color:var(--cream-52);padding:8px;border-radius:8px;display:flex}
+.f .ipwrap .reveal-btn:hover{color:var(--cream)}
+.save-bar{position:sticky;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:color-mix(in oklab,var(--bg) 80%,transparent);backdrop-filter:blur(14px);border:1px solid var(--stroke);border-radius:16px;padding:14px 18px;margin-top:8px}
+.save-bar .msg{font-size:.86rem;color:var(--green-br);display:flex;align-items:center;gap:8px;opacity:0;transition:opacity .3s}
+.save-bar .msg.show{opacity:1}
+
+/* éditeurs répétables (chefs / sponsors) */
+.rep-row{display:flex;gap:12px;align-items:center;background:rgba(0,0,0,.2);border:1px solid var(--stroke);border-radius:14px;padding:12px;margin-bottom:12px}
+.rep-row .in{min-height:46px;padding:11px 14px}
+.chief-photo{width:58px;height:58px;border-radius:50%;flex:none;position:relative;overflow:hidden;border:1px solid var(--stroke-gd);background:radial-gradient(circle at 35% 30%,color-mix(in oklab,var(--green) 40%,transparent),var(--bg-2));display:grid;place-items:center;cursor:pointer}
+.chief-photo img{width:100%;height:100%;object-fit:cover}
+.chief-photo .ph{font-family:var(--display);font-weight:600;color:var(--gold-lt);font-size:1.1rem}
+.chief-photo .cam{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.45);color:#fff;opacity:0;transition:.2s}
+.chief-photo:hover .cam{opacity:1}
+.rep-fields{flex:1;display:grid;grid-template-columns:1fr;gap:8px;min-width:0}
+.rep-del{flex:none;background:none;border:1px solid var(--stroke);color:var(--cream-52);width:40px;height:40px;border-radius:10px;display:grid;place-items:center;transition:.2s}
+.rep-del:hover{border-color:var(--red);color:var(--red)}
+.rep-add{border:1px dashed var(--stroke-gd);background:color-mix(in oklab,var(--gold) 5%,transparent);color:var(--gold-lt);border-radius:12px;padding:12px;width:100%;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.2s}
+.rep-add:hover{background:color-mix(in oklab,var(--gold) 12%,transparent)}
+.mark-in{width:64px!important;flex:none;text-align:center;font-weight:700}
+@media(min-width:560px){.rep-fields{grid-template-columns:1.4fr 1fr}}
+
+/* modal preuve */
+.modal{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.6);backdrop-filter:blur(6px)}
+.modal.show{display:flex;animation:fade .25s both}
+.modal-card{background:var(--bg-2);border:1px solid var(--stroke);border-radius:20px;max-width:480px;width:100%;overflow:hidden;box-shadow:var(--shadow)}
+.modal-card .mh{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--stroke)}
+.modal-card .mh b{font-family:var(--display);font-weight:600;font-size:1.1rem}
+.modal-card .mh button{background:none;border:none;color:var(--cream-52);display:flex;padding:5px;border-radius:8px}
+.modal-card .mh button:hover{color:var(--cream);background:rgba(255,255,255,.06)}
+.modal-card .mb{padding:18px;text-align:center}
+.modal-card .mb img{width:100%;border-radius:12px;background:#000}
+.modal-card .mb .none{padding:50px 20px;color:var(--cream-52)}
+
+@media(min-width:680px){.stats{grid-template-columns:repeat(4,1fr)}.grid2{grid-template-columns:1fr 1fr}}
+/* Tablette : table visible dès 640px avec colonnes adaptées */
+@media(min-width:640px){.table-card{display:block}.cards{display:none}}
+@media(max-width:639px){.table-card{display:none}.cards{display:flex}}
+/* Sur tablette, masquer colonnes moins utiles pour gagner de la place */
+@media(max-width:900px){
+  .tbl th:nth-child(2),.tbl td:nth-child(2){display:none} /* photo cachée sur petite tablette */
+}
+@media(min-width:900px){
+  .tbl th:nth-child(2),.tbl td:nth-child(2){display:table-cell}
+}
+/* Wrap de l'onglet settings sur tablette */
+@media(min-width:600px) and (max-width:900px){
+  .settings{max-width:100%}
+  .set-group{padding:18px}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* items checklist */
+.item-check-row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-radius:14px;border:1px solid var(--stroke);background:var(--glass);transition:.2s}
+.item-check-row.done{border-color:color-mix(in oklab,var(--green) 40%,transparent);background:color-mix(in oklab,var(--green) 8%,transparent)}
+.item-check-btn{flex:none;width:36px;height:36px;border-radius:10px;border:2px solid var(--stroke);background:none;cursor:pointer;display:grid;place-items:center;transition:.2s;color:var(--cream-32)}
+.item-check-btn:hover{border-color:var(--green-br);color:var(--green-br)}
+.item-check-row.done .item-check-btn{background:var(--green);border-color:var(--green);color:#fff}
+.item-check-name{flex:1;font-weight:600}
+.item-check-status{font-size:.76rem;font-weight:700;color:var(--cream-52)}
+.item-check-row.done .item-check-status{color:var(--green-br)}
+/* toast */
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(140%);z-index:90;background:var(--bg-2);border:1px solid var(--stroke-gd);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow);transition:transform .4s cubic-bezier(.2,.8,.2,1);max-width:calc(100vw - 32px)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast .ic{width:36px;height:36px;border-radius:10px;background:var(--green);color:#fff;display:grid;place-items:center;flex:none}
+.toast b{font-family:var(--display);font-weight:600}
+.toast span{display:block;font-size:.82rem;color:var(--cream-72)}
+</style>
+</head>
+<body>
+
+<!-- ====================== LOGIN ====================== -->
+<div class="login-screen" id="login">
+  <div class="login-card">
+    <svg class="mark" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg>
+    <h1>Administration</h1>
+    <p>Espace réservé à l'organisation – <span id="loginEventName">Pluri Party</span></p>
+    <input class="in" id="pw" type="password" placeholder="Mot de passe admin" autocomplete="current-password">
+    <div class="login-err" id="loginErr">Mot de passe incorrect.</div>
+    <button class="btn btn-gold btn-block" id="loginBtn" style="margin-top:16px">Se connecter</button>
+  </div>
+</div>
+
+<!-- ====================== APP ====================== -->
+<div class="app" id="app">
+  <div class="topbar">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="16" font-weight="700" fill="#f6f1e6">P</text></svg>
+      <div><b id="topbarEventName">Pluri Party</b><span>Administration</span></div>
+    </div>
+    <div class="right">
+      <span class="live-pill"><span class="dot"></span> En direct</span>
+      <a class="btn btn-ghost btn-sm" href="index.html" target="_blank" rel="noopener">Voir le site</a>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn">Déconnexion</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="tabs">
+      <button class="tab sel" data-tab="participants"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg> Participants</button>
+      <button class="tab" data-tab="verify"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg> Vérifier un code</button>
+      <button class="tab" data-tab="settings"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Réglages</button>
+    </div>
+
+    <!-- ============ PARTICIPANTS ============ -->
+    <div class="panel show" data-panel="participants">
+      <div class="stats">
+        <div class="stat" style="--accent:var(--gold)"><div class="k"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg> Inscrits</div><div class="v" id="st-total">–</div></div>
+        <div class="stat" style="--accent:var(--gold-lt)"><div class="k"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l2.5 2.5"/></svg> En attente</div><div class="v" id="st-pending">–</div></div>
+        <div class="stat" style="--accent:var(--green-br)"><div class="k"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg> Validés</div><div class="v" id="st-validated">–</div></div>
+        <div class="stat" style="--accent:var(--cream-52)"><div class="k"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Codes utilisés</div><div class="v" id="st-used">–</div></div>
+      </div>
+
+      <div class="sec-head">
+        <h2>Liste des participants</h2>
+        <div class="tools">
+          <div class="search"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="search" type="text" placeholder="Rechercher…"></div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <table class="tbl">
+          <thead><tr><th>Participant</th><th>Photo</th><th>Paiement</th><th>Statut</th><th>Code</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty" id="emptyDesk" style="display:none"><svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><b>Aucune inscription</b>Les inscriptions du site apparaîtront ici.</div>
+      </div>
+      <div class="cards" id="cards"></div>
+    </div>
+
+    <!-- ============ VÉRIFIER ============ -->
+    <div class="panel" data-panel="verify">
+      <div class="verify-box">
+        <div class="vi"><svg width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <h2>Vérifier un code le jour J</h2>
+        <p>Scanne ou saisis le code du participant. Tu pourras ensuite marquer ce qu'il a reçu.</p>
+        <div class="code-row"><input class="in" id="vcode" type="text" placeholder="XXXXXXXX" autocomplete="off" style="text-transform:uppercase"><button class="btn btn-gold" id="vbtn">Vérifier</button></div>
+        <div class="vres" id="vres"></div>
+        <!-- Checklist items (apparaît après vérification valide) -->
+        <div id="itemsChecklist" style="display:none;margin-top:20px;text-align:left">
+          <p style="font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-52);margin-bottom:12px">Remettre à ce participant</p>
+          <div id="itemsChecklistList" style="display:flex;flex-direction:column;gap:10px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ RÉGLAGES ============ -->
+    <div class="panel settings" data-panel="settings">
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg> Événement</h3>
+        <p class="gsub">Ces valeurs s'affichent directement sur la page publique.</p>
+        <div class="grid2">
+          <div class="f"><label>Nom de l'événement</label><input class="in" data-set="eventName"></div>
+          <div class="f"><label>Lieu</label><input class="in" data-set="lieu"></div>
+          <div class="f"><label>Date (texte affiché)</label><span class="desc">Ex. « 28 Déc. 2026 »</span><input class="in" data-set="dateLabel"></div>
+          <div class="f"><label>Date & heure (compte à rebours)</label><span class="desc">Format : 2026-12-28T09:00:00</span><input class="in" data-set="eventDate"></div>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 9.5V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2.5a2 2 0 0 0 0 5V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.5a2 2 0 0 0 0-5z"/></svg> Participation & paiement</h3>
+        <p class="gsub">Le montant modifié ici change <b class="gold">partout</b> sur le site.</p>
+        <div class="grid2">
+          <div class="f"><label>Montant</label><span class="desc">Ex. « 10000 »</span><input class="in" data-set="amount"></div>
+          <div class="f"><label>Nom du compte Mobile Money</label><input class="in" data-set="accountName" placeholder="PLURI PARTY"></div>
+          <div class="f"><label>Numéro Moov Money</label><input class="in" data-set="moovNumber"></div>
+          <div class="f"><label>Numéro MTN MoMo</label><input class="in" data-set="mtnNumber"></div>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.94.36 1.86.7 2.74a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.34-1.34a2 2 0 0 1 2.11-.45c.88.34 1.8.57 2.74.7A2 2 0 0 1 22 16.92z"/></svg> Contact</h3>
+        <div class="grid2">
+          <div class="f"><label>Lien WhatsApp</label><span class="desc">Ex. https://wa.me/229…</span><input class="in" data-set="waLink"></div>
+          <div class="f"><label>Email de contact</label><input class="in" data-set="email"></div>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg> Chefs de la fête</h3>
+        <p class="gsub">Nom, rôle et photo de chaque responsable. Affichés en ronds sur la page d'accueil.</p>
+        <div id="chiefsEditor"></div>
+        <button class="rep-add" id="addChief"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Ajouter un chef</button>
+      </div>
+
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Inclus dans la fête</h3>
+        <p class="gsub">Liste ce que chaque participant doit recevoir (bracelet, kit, t-shirt…). Gérable le jour J depuis l'onglet Vérifier.</p>
+        <div id="itemsEditor"></div>
+        <button class="rep-add" id="addItem"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Ajouter un élément</button>
+      </div>
+
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> Sponsors & partenaires</h3>
+        <p class="gsub">Initiale (ou emoji) + nom. Affichés dans la bande « Avec le soutien de ».</p>
+        <div id="sponsorsEditor"></div>
+        <button class="rep-add" id="addSponsor"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Ajouter un sponsor</button>
+      </div>
+
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M15 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3"/><circle cx="12" cy="11" r="2"/><path d="M12 13v3"/></svg> Clés & sécurité</h3>
+        <p class="gsub">Clés techniques stockées côté serveur uniquement. Ne jamais partager.</p>
+        <div class="grid2">
+          <div class="f"><label>Clé secrète paiement</label><span class="desc">Utilisée côté serveur pour créer les transactions</span>
+            <div class="ipwrap"><input class="in" data-set="paymentSecretKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          </div>
+          <div class="f"><label>Environnement paiement</label><span class="desc">sandbox (tests) ou live (production)</span>
+            <input class="in" data-set="paymentEnvironment" placeholder="sandbox">
+          </div>
+          <div class="f"><label>Secret webhook paiement</label><span class="desc">Pour vérifier la signature des webhooks</span>
+            <div class="ipwrap"><input class="in" data-set="fedapayWebhookSecret" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          </div>
+          <div class="f"><label>URL publique du site</label><span class="desc">Ex. https://pluriparty.bj (pour les webhooks)</span>
+            <input class="in" data-set="publicBaseUrl" placeholder="https://…">
+          </div>
+          <div class="f"><label>Clé API WaChap</label><span class="desc">Notifications WhatsApp à l'organisateur</span>
+            <div class="ipwrap"><input class="in" data-set="wachapKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          </div>
+          <div class="f"><label>Clé API Resend</label><span class="desc">Envoi des emails de confirmation</span>
+            <div class="ipwrap"><input class="in" data-set="resendKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          </div>
+          <div class="f"><label>Email expéditeur Resend</label><span class="desc">Ex. Pluri Party &lt;noreply@pluriparty.bj&gt;</span>
+            <input class="in" data-set="resendFrom" placeholder="Pluri Party &lt;noreply@…&gt;">
+          </div>
+          <div class="f"><label>Mot de passe admin</label><span class="desc">Pour accéder à cet espace</span>
+            <div class="ipwrap"><input class="in" data-set="adminPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="save-bar">
+        <span class="msg" id="saveMsg"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg> Réglages enregistrés – appliqués sur le site</span>
+        <div style="display:flex;gap:10px;margin-left:auto">
+          <button class="btn btn-gold btn-sm" id="saveBtn">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- modal preuve -->
+<div class="modal" id="proofModal">
+  <div class="modal-card">
+    <div class="mh"><b>Photo du participant</b><button id="proofClose"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="mb" id="proofBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><div class="ic"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></div><div><b id="toastT">Code généré</b><span id="toastS"></span></div></div>
+
+<script>
+/* ============================================================
+   PLURI PARTY – Administration (branché sur l'API)
+   ============================================================ */
+
+/* --- Auth helpers --- */
+const SESSION_KEY = 'admin_token';
+function getToken() { return sessionStorage.getItem(SESSION_KEY) || ''; }
+function authHeaders() {
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() };
+}
+async function apiFetch(url, opts = {}) {
+  const headers = Object.assign({}, authHeaders(), opts.headers || {});
+  const res = await fetch(url, Object.assign({}, opts, { headers }));
+  if (res.status === 401) { doLogout(); throw new Error('Session expirée.'); }
+  return res;
+}
+
+document.documentElement.dataset.theme = 'indigo';
+document.documentElement.dataset.display = 'bricolage';
+
+/* ---------- LOGIN ---------- */
+const loginScreen = document.getElementById('login'), app = document.getElementById('app');
+
+async function openApp() {
+  loginScreen.style.display = 'none';
+  app.classList.add('show');
+  await render();
+  await fillSettings();
+}
+
+document.getElementById('loginBtn').addEventListener('click', doLogin);
+document.getElementById('pw').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+async function doLogin() {
+  const pw = document.getElementById('pw');
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw.value })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Mot de passe incorrect.');
+    sessionStorage.setItem(SESSION_KEY, data.token);
+    openApp();
+  } catch(e) {
+    pw.classList.add('bad');
+    document.getElementById('loginErr').classList.add('show');
+    document.getElementById('loginErr').textContent = e.message;
+  }
+}
+
+function doLogout() { sessionStorage.removeItem(SESSION_KEY); location.reload(); }
+document.getElementById('logoutBtn').addEventListener('click', doLogout);
+
+/* ---------- TABS ---------- */
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('sel', x === t));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('show', p.dataset.panel === t.dataset.tab));
+}));
+
+/* ---------- PARTICIPANTS ---------- */
+let parts = [];
+const tbody = document.getElementById('tbody'), cards = document.getElementById('cards');
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmtDate(d) { return d || ''; }
+function statusBadge(p) {
+  if (p.status === 'validated' && p.codeUsed) return '<span class="badge used">Code utilisé</span>';
+  if (p.status === 'validated') return '<span class="badge validated">Validé</span>';
+  return '<span class="badge pending">En attente</span>';
+}
+
+async function render() {
+  try {
+    const res = await apiFetch('/api/admin/participants');
+    const data = await res.json();
+    parts = data.participants || [];
+  } catch(e) { return; }
+
+  const q = (document.getElementById('search').value || '').toLowerCase();
+  const list = parts.filter(p => !q || (p.nom + p.wa + p.email + (p.code || '')).toLowerCase().includes(q));
+
+  document.getElementById('st-total').textContent = parts.length;
+  document.getElementById('st-pending').textContent = parts.filter(p => p.status !== 'validated').length;
+  document.getElementById('st-validated').textContent = parts.filter(p => p.status === 'validated').length;
+  document.getElementById('st-used').textContent = parts.filter(p => p.codeUsed).length;
+
+  document.getElementById('emptyDesk').style.display = list.length ? 'none' : 'block';
+
+  function photoThumb(p) {
+    if (p.participant_photo_url) return `<img class="photo-thumb" src="${esc(p.participant_photo_url)}" alt="">`;
+    return `<div class="photo-thumb ph">${esc((p.nom||'?')[0].toUpperCase())}</div>`;
+  }
+  function validateBtn(p) {
+    if (p.status === 'validated') return '';
+    const isFedapay = !!(p.fedapay_transaction_id);
+    const label = isFedapay ? 'Validation manuelle (secours)' : 'Valider';
+    const cls = isFedapay ? 'mini' : 'mini go';
+    return `<button class="${cls}" data-validate="${esc(p.ref)}" title="${isFedapay ? 'Réservé si le paiement automatique a échoué' : ''}">${label}</button>`;
+  }
+
+  tbody.innerHTML = list.map(p => `<tr>
+    <td><div class="who"><b>${esc(p.nom)}</b><span>${esc(p.wa)} · ${esc(p.email)}</span><span style="color:var(--cream-32);font-size:.74rem">${fmtDate(p.date)}${p.fedapay_transaction_id?` · #${esc(p.fedapay_transaction_id)}`:''}</span></div></td>
+    <td>${photoThumb(p)}</td>
+    <td><div>${esc(p.operateur_paiement || p.method || '–')}</div><div style="font-size:.82rem;color:var(--cream-52)">${esc(p.amount)}</div></td>
+    <td>${statusBadge(p)}</td>
+    <td>${p.code ? `<span class="code-chip">${esc(p.code)}</span>` : '<span style="color:var(--cream-32)">—</span>'}</td>
+    <td><div class="row-actions">
+      <button class="mini" data-proof="${esc(p.ref)}">Voir photo</button>
+      ${validateBtn(p)}
+      ${p.status === 'validated' && !p.codeUsed ? `<button class="mini" data-use="${esc(p.ref)}">Marquer utilisé</button>` : ''}
+    </div></td>
+  </tr>`).join('');
+
+  cards.innerHTML = list.length ? list.map(p => `<div class="pcard">
+    <div class="top">
+      <div style="display:flex;align-items:center;gap:10px">${photoThumb(p)}<div class="who"><b>${esc(p.nom)}</b><span>${esc(p.wa)}</span></div></div>
+      ${statusBadge(p)}
+    </div>
+    <div class="meta">
+      <span>Email : <b>${esc(p.email)}</b></span>
+      <span>Paiement : <b>${esc(p.operateur_paiement || p.method || '–')} – ${esc(p.amount)}</b></span>
+      ${p.fedapay_transaction_id ? `<span>Réf. transaction : <b>#${esc(p.fedapay_transaction_id)}</b></span>` : ''}
+      <span>Code : <b>${p.code ? esc(p.code) : '—'}</b></span>
+      <span style="color:var(--cream-32)">${fmtDate(p.date)}</span>
+    </div>
+    <div class="row-actions" style="justify-content:flex-start">
+      <button class="mini" data-proof="${esc(p.ref)}">Voir photo</button>
+      ${validateBtn(p)}
+      ${p.status === 'validated' && !p.codeUsed ? `<button class="mini" data-use="${esc(p.ref)}">Marquer utilisé</button>` : ''}
+    </div>
+  </div>`).join('') : `<div class="empty"><b>Aucune inscription</b>Les inscriptions du site apparaîtront ici.</div>`;
+}
+
+document.getElementById('search').addEventListener('input', render);
+
+/* actions déléguées */
+document.addEventListener('click', async e => {
+  const v  = e.target.closest('[data-validate]');
+  const u  = e.target.closest('[data-use]');
+  const pr = e.target.closest('[data-proof]');
+
+  if (v) {
+    try {
+      const res = await apiFetch('/api/admin/validate-payment', {
+        method: 'POST', body: JSON.stringify({ id: v.dataset.validate })
+      });
+      const data = await res.json();
+      if (res.ok && data.participant) {
+        toast('Code généré', data.participant.nom + ' → ' + data.participant.code_unique);
+        await render();
+      }
+    } catch(e) {}
+  }
+  if (u) {
+    const p = parts.find(x => x.ref === u.dataset.use);
+    if (p && p.code) {
+      try {
+        await apiFetch('/api/admin/verify-code', {
+          method: 'POST', body: JSON.stringify({ code: p.code })
+        });
+        await render();
+      } catch(e) {}
+    }
+  }
+  if (pr) {
+    const p = parts.find(x => x.ref === pr.dataset.proof);
+    openProof(p);
+  }
+});
+
+/* preuve */
+const proofModal = document.getElementById('proofModal'), proofBody = document.getElementById('proofBody');
+function openProof(p) {
+  const src = p && (p.participant_photo_url || p.proof);
+  proofBody.innerHTML = src
+    ? `<img src="${src}" alt="Photo du participant">`
+    : `<div class="none">Aucune photo enregistrée pour ce participant.</div>`;
+  proofModal.classList.add('show');
+}
+document.getElementById('proofClose').addEventListener('click', () => proofModal.classList.remove('show'));
+proofModal.addEventListener('click', e => { if (e.target === proofModal) proofModal.classList.remove('show'); });
+
+/* ---------- ITEMS (inclus dans la fête) ---------- */
+let itemsArr = [];
+
+function renderItemsEditor() {
+  const c = document.getElementById('itemsEditor');
+  if (!c) return;
+  c.innerHTML = itemsArr.map((item, i) => `
+    <div class="rep-row">
+      <div class="rep-fields" style="grid-template-columns:1fr 1fr">
+        <input class="in" data-item-name="${i}" placeholder="Nom (ex. Bracelet)" value="${esc(item.name||'')}">
+        <input class="in" data-item-id="${i}" placeholder="ID (ex. bracelet)" value="${esc(item.id||'')}">
+      </div>
+      <button class="rep-del" data-item-del="${i}" title="Retirer"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+    </div>`).join('');
+}
+
+const addItemBtn = document.getElementById('addItem');
+if (addItemBtn) addItemBtn.addEventListener('click', () => {
+  const name = `Élément ${itemsArr.length + 1}`;
+  itemsArr.push({ id: `item_${Date.now()}`, name });
+  renderItemsEditor();
+});
+
+document.addEventListener('click', e => {
+  const del = e.target.closest('[data-item-del]');
+  if (del) { itemsArr.splice(+del.dataset.itemDel, 1); renderItemsEditor(); }
+});
+document.addEventListener('input', e => {
+  const n = e.target.closest('[data-item-name]');
+  const id = e.target.closest('[data-item-id]');
+  if (n) itemsArr[+n.dataset.itemName].name = n.value;
+  if (id) itemsArr[+id.dataset.itemId].id = id.value.toLowerCase().replace(/\s+/g, '_');
+});
+
+/* Checklist items dans le tab Vérifier */
+let currentVerifiedParticipant = null;
+
+function renderItemsChecklist(participantId, itemsReceived) {
+  const section = document.getElementById('itemsChecklist');
+  const list = document.getElementById('itemsChecklistList');
+  if (!section || !list) return;
+  if (!itemsArr.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.innerHTML = itemsArr.map(item => {
+    const done = itemsReceived && itemsReceived[item.id] === true;
+    return `<div class="item-check-row${done ? ' done' : ''}" id="icr-${esc(item.id)}">
+      <button class="item-check-btn" data-mark-item="${esc(item.id)}" data-participant="${esc(participantId)}" data-done="${done}" title="${done ? 'Marquer non reçu' : 'Marquer reçu'}">
+        ${done ? '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg>' : ''}
+      </button>
+      <span class="item-check-name">${esc(item.name)}</span>
+      <span class="item-check-status">${done ? 'Reçu ✓' : 'Non reçu'}</span>
+    </div>`;
+  }).join('');
+}
+
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('[data-mark-item]');
+  if (!btn) return;
+  const itemId = btn.dataset.markItem;
+  const participantId = btn.dataset.participant;
+  const currentlyDone = btn.dataset.done === 'true';
+  const newDone = !currentlyDone;
+  try {
+    const res = await apiFetch('/api/admin/mark-item', {
+      method: 'POST',
+      body: JSON.stringify({ participant_id: participantId, item_id: itemId, received: newDone })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      renderItemsChecklist(participantId, data.items_received);
+    }
+  } catch(e) {}
+});
+
+/* toast */
+let toastTimer;
+function toast(t, s) {
+  document.getElementById('toastT').textContent = t;
+  document.getElementById('toastS').textContent = s;
+  const el = document.getElementById('toast');
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+/* ---------- VÉRIFIER (admin, jour J) ---------- */
+document.getElementById('vbtn').addEventListener('click', adminVerify);
+document.getElementById('vcode').addEventListener('keydown', e => { if (e.key === 'Enter') adminVerify(); });
+
+async function adminVerify() {
+  const code = document.getElementById('vcode').value.trim().toUpperCase();
+  const res_el = document.getElementById('vres');
+  if (!code) return;
+  try {
+    const res = await apiFetch('/api/admin/verify-code', {
+      method: 'POST', body: JSON.stringify({ code })
+    });
+    const data = await res.json();
+    const p = data.participant;
+    if (res.ok && p) {
+      res_el.className = 'vres ok show';
+      res_el.innerHTML = `<div class="vh"><div class="ic"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></div><div><b>${data.status === 'already_used' ? 'Code déjà scanné' : 'Code valide ✓'}</b><span>${data.status === 'already_used' ? 'Ce participant a déjà été enregistré' : 'Entrée autorisée'}</span></div></div>
+        <div class="vrow"><span class="rk">Participant</span><span class="rv">${esc(p.nom)}</span></div>
+        <div class="vrow"><span class="rk">WhatsApp</span><span class="rv">${esc(p.whatsapp || p.telephone || '')}</span></div>
+        <div class="vrow"><span class="rk">Code</span><span class="rv code-chip">${esc(p.code_unique)}</span></div>`;
+      currentVerifiedParticipant = p;
+      let itemsRcv = {};
+      try { itemsRcv = typeof p.items_received === 'string' ? JSON.parse(p.items_received) : (p.items_received || {}); } catch {}
+      renderItemsChecklist(p.id, itemsRcv);
+      await render();
+    } else {
+      res_el.className = 'vres bad show';
+      res_el.innerHTML = `<div class="vh"><div class="ic"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></div><div><b>Code introuvable</b><span>Aucun paiement validé pour ce code</span></div></div><div class="vrow"><span class="rk" style="color:var(--cream-72)">Vérifiez la saisie, ou validez d'abord le paiement dans l'onglet Participants.</span></div>`;
+    }
+  } catch(e) {
+    res_el.className = 'vres bad show';
+    res_el.innerHTML = `<div class="vh"><div class="ic">⚠</div><div><b>Erreur réseau</b><span>Réessayez dans un instant</span></div></div>`;
+  }
+}
+
+/* ---------- RÉGLAGES ---------- */
+let chiefsArr = [], sponsorsArr = [];
+
+const SETTINGS_MAP = {
+  eventName:             'event_name',
+  amount:                'participation_fee',
+  lieu:                  'pickup_location',
+  dateLabel:             'event_date_label',
+  eventDate:             'event_date',
+  accountName:           'moov_nom',
+  moovNumber:            'moov_numero',
+  mtnNumber:             'mtn_numero',
+  waLink:                'wa_link',
+  email:                 'vendeur_email',
+  wachapKey:             'wachap_access_token',
+  resendKey:             'resend_api_key',
+  resendFrom:            'resend_from',
+  adminPassword:         'admin_password',
+  paymentSecretKey:      'payment_secret_key',
+  paymentEnvironment:    'payment_environment',
+  fedapayWebhookSecret:  'fedapay_webhook_secret',
+  publicBaseUrl:         'public_base_url',
+};
+
+async function fillSettings() {
+  try {
+    const res = await apiFetch('/api/admin/settings');
+    const raw = await res.json();
+    document.querySelectorAll('[data-set]').forEach(el => {
+      const dbKey = SETTINGS_MAP[el.dataset.set] || el.dataset.set;
+      el.value = raw[dbKey] || '';
+    });
+    const eventName = raw.event_name || 'Pluri Party';
+    const eln = document.getElementById('loginEventName');
+    if (eln) eln.textContent = eventName;
+    const tbn = document.getElementById('topbarEventName');
+    if (tbn) tbn.textContent = eventName;
+    try { chiefsArr = JSON.parse(raw.chiefs_json || '[]'); } catch { chiefsArr = []; }
+    try { sponsorsArr = JSON.parse(raw.sponsors_json || '[]'); } catch { sponsorsArr = []; }
+    try { itemsArr = JSON.parse(raw.event_items_json || '[]'); } catch { itemsArr = []; }
+    renderChiefEditor(); renderSponsorEditor(); renderItemsEditor();
+  } catch(e) {}
+}
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const payload = {};
+  document.querySelectorAll('[data-set]').forEach(el => {
+    payload[el.dataset.set] = el.value.trim();
+  });
+  payload.chiefs = JSON.stringify(
+    chiefsArr.filter(c => c.name || c.role || c.photo)
+             .map(c => ({ name: (c.name||'').trim(), role: (c.role||'').trim(), photo: c.photo || '' }))
+  );
+  payload.sponsors = JSON.stringify(
+    sponsorsArr.filter(s => s.name || s.mark)
+               .map(s => ({ name: (s.name||'').trim(), mark: ((s.mark||'')).trim() }))
+  );
+  payload.eventItems = JSON.stringify(
+    itemsArr.filter(it => it.name || it.id)
+            .map(it => ({ id: (it.id||'').trim(), name: (it.name||'').trim() }))
+  );
+  try {
+    await apiFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
+    const m = document.getElementById('saveMsg');
+    m.classList.add('show');
+    setTimeout(() => m.classList.remove('show'), 2600);
+    const eventName = payload.eventName || '';
+    if (eventName) {
+      const tbn = document.getElementById('topbarEventName');
+      if (tbn) tbn.textContent = eventName;
+    }
+  } catch(e) { alert('Erreur lors de la sauvegarde.'); }
+});
+
+/* éditeur chefs */
+function initialsA(n) { return String(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?'; }
+
+function renderChiefEditor() {
+  const c = document.getElementById('chiefsEditor');
+  c.innerHTML = chiefsArr.map((ch, i) => `
+    <div class="rep-row">
+      <div class="chief-photo" data-photo="${i}">
+        ${ch.photo ? `<img src="${ch.photo}" alt="">` : `<span class="ph">${esc(initialsA(ch.name))}</span>`}
+        <span class="cam"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+      </div>
+      <div class="rep-fields">
+        <input class="in" data-chief-name="${i}" placeholder="Nom complet" value="${esc(ch.name)}">
+        <input class="in" data-chief-role="${i}" placeholder="Rôle (ex. Président)" value="${esc(ch.role)}">
+      </div>
+      <button class="rep-del" data-chief-del="${i}" title="Retirer"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+    </div>`).join('');
+}
+
+document.getElementById('addChief').addEventListener('click', () => { chiefsArr.push({name:'',role:'',photo:''}); renderChiefEditor(); });
+document.getElementById('chiefsEditor').addEventListener('click', e => {
+  const del = e.target.closest('[data-chief-del]');
+  const ph  = e.target.closest('[data-photo]');
+  if (del) { chiefsArr.splice(+del.dataset.chiefDel, 1); renderChiefEditor(); }
+  if (ph)  { pickPhoto(+ph.dataset.photo); }
+});
+document.getElementById('chiefsEditor').addEventListener('input', e => {
+  const n = e.target.closest('[data-chief-name]');
+  const r = e.target.closest('[data-chief-role]');
+  if (n) chiefsArr[+n.dataset.chiefName].name = n.value;
+  if (r) chiefsArr[+r.dataset.chiefRole].role = r.value;
+});
+
+let photoInput;
+function pickPhoto(i) {
+  if (!photoInput) { photoInput = document.createElement('input'); photoInput.type = 'file'; photoInput.accept = 'image/*'; }
+  photoInput.onchange = ev => {
+    const f = ev.target.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = x => { chiefsArr[i].photo = x.target.result; renderChiefEditor(); };
+    rd.readAsDataURL(f); photoInput.value = '';
+  };
+  photoInput.click();
+}
+
+/* éditeur sponsors */
+function renderSponsorEditor() {
+  const c = document.getElementById('sponsorsEditor');
+  c.innerHTML = sponsorsArr.map((sp, i) => `
+    <div class="rep-row">
+      <input class="in mark-in" data-spon-mark="${i}" placeholder="A" maxlength="2" value="${esc(sp.mark||'')}">
+      <div class="rep-fields" style="grid-template-columns:1fr"><input class="in" data-spon-name="${i}" placeholder="Nom du sponsor" value="${esc(sp.name)}"></div>
+      <button class="rep-del" data-spon-del="${i}" title="Retirer"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+    </div>`).join('');
+}
+
+document.getElementById('addSponsor').addEventListener('click', () => { sponsorsArr.push({name:'',mark:''}); renderSponsorEditor(); });
+document.getElementById('sponsorsEditor').addEventListener('click', e => {
+  const del = e.target.closest('[data-spon-del]');
+  if (del) { sponsorsArr.splice(+del.dataset.sponDel, 1); renderSponsorEditor(); }
+});
+document.getElementById('sponsorsEditor').addEventListener('input', e => {
+  const m = e.target.closest('[data-spon-mark]');
+  const n = e.target.closest('[data-spon-name]');
+  if (m) sponsorsArr[+m.dataset.sponMark].mark = m.value;
+  if (n) sponsorsArr[+n.dataset.sponName].name = n.value;
+});
+
+document.querySelectorAll('[data-reveal]').forEach(b => b.addEventListener('click', () => {
+  const inp = b.parentElement.querySelector('input');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}));
+
+/* --- Auto-login si token en session --- */
+if (getToken()) openApp();
+</script>
+</body>
+</html>

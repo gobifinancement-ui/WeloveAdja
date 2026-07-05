@@ -1,0 +1,1600 @@
+require("dotenv").config();
+
+const crypto = require("crypto");
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const { URL } = require("url");
+const initSqlJs = require("sql.js");
+const { Resend } = require("resend");
+const QRCode = require("qrcode");
+
+const PORT = Number(process.env.PORT || 3000);
+const ROOT = __dirname;
+const DATA_DIR = path.join(ROOT, "data");
+const UPLOADS_DIR = path.join(ROOT, "uploads", "proofs");
+const PARTICIPANT_PHOTOS_DIR = path.join(ROOT, "uploads", "participants");
+const QRCODES_DIR = path.join(ROOT, "uploads", "qrcodes");
+const DB_PATH = path.join(DATA_DIR, "feja.sqlite");
+const MAX_BODY_BYTES = 5 * 1024 * 1024;
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const TIMEZONE = "Africa/Porto-Novo";
+
+const MIME_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+};
+
+const DEFAULT_SETTINGS = {
+  event_name: "Pluri Party",
+  event_year: "2026",
+  admin_password: "yenalia2025",
+  vendeur_email: "",
+  vendeur_whatsapp: "",
+  pickup_location: "",
+  participation_fee: "10000",
+  moov_nom: "",
+  moov_numero: "",
+  mtn_nom: "",
+  mtn_numero: "",
+  payment_public_key: "",
+  payment_secret_key: "",
+  payment_environment: "sandbox",
+  fedapay_webhook_secret: "",
+  public_base_url: "",
+  wachap_instance_id: "",
+  wachap_access_token: "",
+  resend_api_key: "",
+  resend_from: "",
+  event_date_label: "",
+  event_date: "",
+  wa_link: "",
+  chiefs_json: "[]",
+  sponsors_json: "[]",
+  event_items_json: "[]",
+};
+
+let db;
+const sessions = new Map();
+
+function sendJson(response, statusCode, payload) {
+  response.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  response.end(JSON.stringify(payload));
+}
+
+function resolveFilePath(urlPathname) {
+  const cleanPath = decodeURIComponent(urlPathname.split("?")[0]);
+  const relativePath = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
+  const filePath = path.join(ROOT, relativePath);
+  const normalized = path.normalize(filePath);
+
+  if (!normalized.startsWith(ROOT)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+async function serveStaticFile(request, response, pathname) {
+  const filePath = resolveFilePath(pathname);
+
+  if (!filePath) {
+    sendJson(response, 403, { error: "Acces interdit." });
+    return;
+  }
+
+  try {
+    const stat = await fs.promises.stat(filePath);
+    const targetPath = stat.isDirectory() ? path.join(filePath, "index.html") : filePath;
+    const extname = path.extname(targetPath).toLowerCase();
+    const contentType = MIME_TYPES[extname] || "application/octet-stream";
+    const fileContent = await fs.promises.readFile(targetPath);
+
+    response.writeHead(200, {
+      "Content-Type": contentType,
+      "Cache-Control": "no-store",
+    });
+    response.end(request.method === "HEAD" ? undefined : fileContent);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      sendJson(response, 404, { error: "Fichier introuvable." });
+      return;
+    }
+
+    console.error("Erreur serveur statique:", error);
+    sendJson(response, 500, { error: "Erreur serveur." });
+  }
+}
+
+function persistDatabase() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(DB_PATH, Buffer.from(db.export()));
+}
+
+function statementAll(sql, params = []) {
+  const statement = db.prepare(sql);
+  const rows = [];
+
+  try {
+    statement.bind(params);
+    while (statement.step()) {
+      rows.push(statement.getAsObject());
+    }
+  } finally {
+    statement.free();
+  }
+
+  return rows;
+}
+
+function statementGet(sql, params = []) {
+  return statementAll(sql, params)[0] || null;
+}
+
+function run(sql, params = []) {
+  const statement = db.prepare(sql);
+  try {
+    statement.run(params);
+  } finally {
+    statement.free();
+  }
+}
+
+function ensureParticipantColumns() {
+  const existingColumns = new Set(statementAll("PRAGMA table_info(participants)").map((column) => column.name));
+  const requiredColumns = [
+    ["participant_photo_url", "TEXT"],
+    ["items_received", "TEXT"],
+    ["fedapay_transaction_id", "TEXT"],
+    ["fedapay_customer_id", "TEXT"],
+    ["fedapay_reference", "TEXT"],
+    ["fedapay_status", "TEXT"],
+    ["qr_code_url", "TEXT"],
+  ];
+
+  requiredColumns.forEach(([name, definition]) => {
+    if (!existingColumns.has(name)) {
+      run(`ALTER TABLE participants ADD COLUMN ${name} ${definition}`);
+    }
+  });
+}
+
+function getSettings() {
+  const rows = statementAll("SELECT key, value FROM settings");
+  return rows.reduce((accumulator, row) => {
+    accumulator[row.key] = row.value;
+    return accumulator;
+  }, { ...DEFAULT_SETTINGS });
+}
+
+function saveSettings(settings) {
+  Object.entries(settings).forEach(([key, value]) => {
+    run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [
+      key,
+      value == null ? "" : String(value),
+    ]);
+  });
+  persistDatabase();
+}
+
+async function initDatabase() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  fs.mkdirSync(PARTICIPANT_PHOTOS_DIR, { recursive: true });
+  fs.mkdirSync(QRCODES_DIR, { recursive: true });
+
+  const SQL = await initSqlJs();
+  const existing = fs.existsSync(DB_PATH) ? fs.readFileSync(DB_PATH) : null;
+  db = existing ? new SQL.Database(existing) : new SQL.Database();
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS participants (
+      id TEXT PRIMARY KEY,
+      evenement TEXT NOT NULL DEFAULT 'Pluri Party',
+      nom TEXT NOT NULL,
+      telephone TEXT NOT NULL,
+      whatsapp TEXT,
+      email TEXT NOT NULL,
+      montant TEXT,
+      montant_valeur INTEGER,
+      paiement TEXT,
+      operateur_paiement_code TEXT,
+      operateur_paiement TEXT,
+      nom_paiement TEXT,
+      numero_paiement TEXT,
+      preuve_paiement TEXT,
+      preuve_url TEXT,
+      capture_b64 TEXT,
+      participant_photo_url TEXT,
+      statut_paiement TEXT NOT NULL DEFAULT 'En attente',
+      code_unique TEXT UNIQUE,
+      statut_code TEXT,
+      fedapay_transaction_id TEXT,
+      fedapay_customer_id TEXT,
+      fedapay_reference TEXT,
+      fedapay_status TEXT,
+      qr_code_url TEXT,
+      lieu_retrait TEXT,
+      date TEXT,
+      date_key TEXT,
+      timestamp INTEGER NOT NULL,
+      validation_at INTEGER,
+      retrait_effectue_at INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_participants_timestamp ON participants(timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_participants_code_unique ON participants(code_unique);
+    CREATE INDEX IF NOT EXISTS idx_participants_fedapay_transaction ON participants(fedapay_transaction_id);
+
+    CREATE TABLE IF NOT EXISTS webhook_events (
+      id TEXT PRIMARY KEY,
+      type TEXT,
+      object_id TEXT,
+      payload TEXT,
+      created_at INTEGER NOT NULL
+    );
+  `);
+
+  ensureParticipantColumns();
+
+  const settings = getSettings();
+  saveSettings(settings);
+}
+
+function parseJsonBody(request) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("Payload trop volumineux."));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    request.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf8");
+      if (!raw.trim()) {
+        resolve({});
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        reject(new Error("JSON invalide."));
+      }
+    });
+
+    request.on("error", reject);
+  });
+}
+
+function parseJsonBodyWithRaw(request) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("Payload trop volumineux."));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    request.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf8");
+      if (!raw.trim()) {
+        resolve({ body: {}, raw });
+        return;
+      }
+
+      try {
+        resolve({ body: JSON.parse(raw), raw });
+      } catch {
+        reject(new Error("JSON invalide."));
+      }
+    });
+
+    request.on("error", reject);
+  });
+}
+
+function createSession() {
+  const token = crypto.randomBytes(32).toString("hex");
+  sessions.set(token, Date.now() + SESSION_TTL_MS);
+  return token;
+}
+
+function requireAdmin(request) {
+  const header = request.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const expiresAt = sessions.get(token);
+
+  if (!token || !expiresAt || expiresAt < Date.now()) {
+    if (token) {
+      sessions.delete(token);
+    }
+    return false;
+  }
+
+  sessions.set(token, Date.now() + SESSION_TTL_MS);
+  return true;
+}
+
+function publicSettings(settings = getSettings()) {
+  let chiefs = [], sponsors = [], eventItems = [];
+  try { chiefs = JSON.parse(settings.chiefs_json || "[]"); } catch {}
+  try { sponsors = JSON.parse(settings.sponsors_json || "[]"); } catch {}
+  try { eventItems = JSON.parse(settings.event_items_json || "[]"); } catch {}
+  return {
+    eventName:   settings.event_name     || DEFAULT_SETTINGS.event_name,
+    amount:      Number(settings.participation_fee) || 10000,
+    currency:    "XOF",
+    accountName: settings.moov_nom || settings.mtn_nom || "",
+    lieu:        settings.pickup_location || "À confirmer",
+    dateLabel:   settings.event_date_label || "",
+    eventDate:   settings.event_date || "",
+    moovNumber:  settings.moov_numero || "",
+    mtnNumber:   settings.mtn_numero || "",
+    waLink:      settings.wa_link || "",
+    email:       settings.vendeur_email || "",
+    chiefs,
+    sponsors,
+    eventItems,
+  };
+}
+
+function getDatePartsBenin(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  return parts.reduce((accumulator, part) => {
+    if (part.type !== "literal") {
+      accumulator[part.type] = part.value;
+    }
+    return accumulator;
+  }, {});
+}
+
+function getDateKeyBenin() {
+  const parts = getDatePartsBenin();
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function dateFormatee() {
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: TIMEZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date());
+}
+
+function formatMontant(value) {
+  return `${Number(value || 0).toLocaleString("fr-FR")} FCFA`;
+}
+
+function normalizePhoneNumber(value) {
+  return String(value || "").replace(/[^\d]/g, "");
+}
+
+function getParticipationAmount(settings) {
+  const raw = Number(settings.participation_fee);
+  return Number.isFinite(raw) && raw > 0 ? raw : 10000;
+}
+
+function getOperatorMeta(settings, operator) {
+  if (operator === "mtn") {
+    return {
+      code: "mtn",
+      shortLabel: "MTN",
+      holder: settings.mtn_nom || "",
+      number: settings.mtn_numero || "",
+    };
+  }
+
+  return {
+    code: "moov",
+    shortLabel: "Moov",
+    holder: settings.moov_nom || "",
+    number: settings.moov_numero || "",
+  };
+}
+
+function generateParticipantId() {
+  const dateKey = getDateKeyBenin().replace(/-/g, "");
+
+  for (let index = 0; index < 12; index += 1) {
+    const random = Math.floor(Math.random() * 100000).toString().padStart(5, "0");
+    const id = `PLURI-${dateKey}-${random}`;
+    if (!statementGet("SELECT id FROM participants WHERE id = ?", [id])) {
+      return id;
+    }
+  }
+
+  throw new Error("Impossible de generer un identifiant participant.");
+}
+
+function generateUniqueCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    let code = "";
+    const bytes = crypto.randomBytes(6);
+    bytes.forEach((value) => {
+      code += alphabet[value % alphabet.length];
+    });
+
+    if (!statementGet("SELECT id FROM participants WHERE code_unique = ?", [code])) {
+      return code;
+    }
+  }
+
+  throw new Error("Impossible de generer un code unique.");
+}
+
+function saveImageUpload(dataUrl, targetDir, filenamePrefix, errorLabel) {
+  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/);
+  if (!match) {
+    throw new Error(`${errorLabel} invalide.`);
+  }
+
+  const extension = match[1].includes("png") ? "png" : match[1].includes("webp") ? "webp" : "jpg";
+  const bytes = Buffer.from(match[2], "base64");
+
+  if (!bytes.length || bytes.length > MAX_BODY_BYTES) {
+    throw new Error(`${errorLabel} trop volumineuse.`);
+  }
+
+  fs.mkdirSync(targetDir, { recursive: true });
+  const filename = `${filenamePrefix}.${extension}`;
+  const filePath = path.join(targetDir, filename);
+  fs.writeFileSync(filePath, bytes);
+  return `/uploads/${path.basename(targetDir)}/${filename}`;
+}
+
+function saveReceiptProof(dataUrl, participantId) {
+  return saveImageUpload(dataUrl, UPLOADS_DIR, participantId, "Preuve de paiement");
+}
+
+function saveParticipantPhoto(dataUrl, participantId) {
+  return saveImageUpload(dataUrl, PARTICIPANT_PHOTOS_DIR, participantId, "Photo du participant");
+}
+
+async function saveQrCode(code, participantId) {
+  fs.mkdirSync(QRCODES_DIR, { recursive: true });
+  const filename = `${participantId}.png`;
+  const filePath = path.join(QRCODES_DIR, filename);
+  const buffer = await QRCode.toBuffer(code, {
+    errorCorrectionLevel: "M",
+    margin: 2,
+    width: 360,
+    type: "png",
+  });
+  fs.writeFileSync(filePath, buffer);
+  return `/uploads/qrcodes/${filename}`;
+}
+
+function insertParticipant(participant) {
+  run(
+    `
+      INSERT INTO participants (
+        id, evenement, nom, telephone, whatsapp, email, montant, montant_valeur, paiement,
+        operateur_paiement_code, operateur_paiement, nom_paiement, numero_paiement,
+        preuve_paiement, preuve_url, capture_b64, participant_photo_url, statut_paiement, code_unique, statut_code,
+        fedapay_transaction_id, fedapay_customer_id, fedapay_reference, fedapay_status, qr_code_url,
+        lieu_retrait, date, date_key, timestamp, validation_at, retrait_effectue_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `,
+    [
+      participant.id,
+      participant.evenement,
+      participant.nom,
+      participant.telephone,
+      participant.whatsapp,
+      participant.email,
+      participant.montant,
+      participant.montant_valeur,
+      participant.paiement,
+      participant.operateur_paiement_code,
+      participant.operateur_paiement,
+      participant.nom_paiement,
+      participant.numero_paiement,
+      participant.preuve_paiement,
+      participant.preuve_url,
+      participant.capture_b64,
+      participant.participant_photo_url,
+      participant.statut_paiement,
+      participant.code_unique,
+      participant.statut_code,
+      participant.fedapay_transaction_id,
+      participant.fedapay_customer_id,
+      participant.fedapay_reference,
+      participant.fedapay_status,
+      participant.qr_code_url,
+      participant.lieu_retrait,
+      participant.date,
+      participant.date_key,
+      participant.timestamp,
+      participant.validation_at,
+      participant.retrait_effectue_at,
+    ],
+  );
+  persistDatabase();
+}
+
+function getParticipantById(id) {
+  return statementGet("SELECT * FROM participants WHERE id = ?", [id]);
+}
+
+function getParticipantByFedapayTransactionId(transactionId) {
+  return statementGet("SELECT * FROM participants WHERE fedapay_transaction_id = ?", [String(transactionId)]);
+}
+
+function getWebhookEventById(id) {
+  return statementGet("SELECT id FROM webhook_events WHERE id = ?", [String(id)]);
+}
+
+function insertWebhookEvent(event) {
+  run(
+    "INSERT INTO webhook_events (id, type, object_id, payload, created_at) VALUES (?, ?, ?, ?, ?)",
+    [event.id, event.type, event.object_id, event.payload, event.created_at],
+  );
+  persistDatabase();
+}
+
+function getParticipantByCode(code) {
+  return statementGet("SELECT * FROM participants WHERE code_unique = ?", [code]);
+}
+
+function getParticipants() {
+  return statementAll("SELECT * FROM participants ORDER BY timestamp DESC");
+}
+
+function getStats(participants = getParticipants()) {
+  return {
+    total: participants.length,
+    attente: participants.filter(
+      (participant) => participant.statut_paiement !== "Valide" && participant.statut_code !== "utilise",
+    ).length,
+    actifs: participants.filter((participant) => participant.statut_code === "actif").length,
+    utilises: participants.filter((participant) => participant.statut_code === "utilise").length,
+  };
+}
+
+function getPaymentApiBaseUrl(environment) {
+  return environment === "live" ? "https://api.fedapay.com/v1" : "https://sandbox-api.fedapay.com/v1";
+}
+
+function getPaymentCredentials(settings) {
+  const secretKey = process.env.FEDAPAY_SECRET_KEY || settings.payment_secret_key;
+  const environment = process.env.FEDAPAY_ENVIRONMENT || settings.payment_environment || "sandbox";
+
+  if (!secretKey) {
+    throw new Error("Cle secrete de paiement non configuree.");
+  }
+
+  return {
+    secretKey,
+    environment: environment === "live" ? "live" : "sandbox",
+  };
+}
+
+async function fedapayRequest(settings, method, routePath, body = null) {
+  const credentials = getPaymentCredentials(settings);
+  const response = await fetch(`${getPaymentApiBaseUrl(credentials.environment)}${routePath}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${credentials.secretKey}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    throw new Error(`FedaPay HTTP ${response.status}: ${text}`);
+  }
+
+  return data;
+}
+
+function splitFullName(fullName) {
+  const parts = String(fullName || "").trim().split(/\s+/).filter(Boolean);
+  return {
+    firstname: parts.slice(0, -1).join(" ") || parts[0] || "",
+    lastname: parts.slice(-1).join(" ") || parts[0] || "",
+  };
+}
+
+async function createPaymentCustomer(settings, participant) {
+  const names = splitFullName(participant.nom);
+  const payload = await fedapayRequest(settings, "POST", "/customers", {
+    firstname: names.firstname,
+    lastname: names.lastname,
+    email: participant.email,
+    phone_number: {
+      number: normalizePhoneNumber(participant.telephone),
+      country: "BJ",
+    },
+  });
+
+  return payload.customer || payload;
+}
+
+async function createPaymentTransaction(settings, participant, customer) {
+  const amount = getParticipationAmount(settings);
+  const callbackBase = process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
+  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
+  const body = {
+    description: `Participation ${eventName} ${settings.event_year || DEFAULT_SETTINGS.event_year}`,
+    amount,
+    currency: { iso: "XOF" },
+    customer: { id: customer.id },
+    merchant_reference: participant.id,
+    custom_metadata: {
+      participant_id: participant.id,
+      evenement: eventName,
+      nom: participant.nom,
+      telephone: participant.telephone,
+      email: participant.email,
+    },
+  };
+
+  if (callbackBase) {
+    body.callback_url = `${callbackBase.replace(/\/+$/, "")}/api/fedapay/webhook`;
+  }
+
+  const payload = await fedapayRequest(settings, "POST", "/transactions", body);
+  return payload.transaction || payload;
+}
+
+async function verifyPaymentTransaction(transactionId, amount, settings) {
+  if (!transactionId) {
+    throw new Error("Transaction de paiement manquante.");
+  }
+
+  const payload = await fedapayRequest(settings, "GET", `/transactions/${encodeURIComponent(transactionId)}`);
+  const transaction = payload.transaction || payload;
+  const status = String(transaction.status || "").toLowerCase();
+  const transactionAmount = Number(transaction.amount || 0);
+
+  if (status !== "approved") {
+    throw new Error("Paiement non confirme.");
+  }
+
+  if (transactionAmount !== Number(amount)) {
+    throw new Error("Montant du paiement incorrect.");
+  }
+
+  return transaction;
+}
+
+async function getPaymentTransaction(transactionId, settings) {
+  if (!transactionId) {
+    throw new Error("Transaction de paiement manquante.");
+  }
+
+  const payload = await fedapayRequest(settings, "GET", `/transactions/${encodeURIComponent(transactionId)}`);
+  return payload.transaction || payload;
+}
+
+function updateParticipantPaymentStatus(participantId, transaction) {
+  run(
+    `
+      UPDATE participants
+      SET preuve_paiement = COALESCE(?, preuve_paiement),
+          preuve_url = COALESCE(?, preuve_url),
+          fedapay_reference = COALESCE(?, fedapay_reference),
+          fedapay_status = COALESCE(?, fedapay_status)
+      WHERE id = ?
+    `,
+    [
+      transaction.receipt_url || null,
+      transaction.receipt_url || null,
+      transaction.reference || transaction.merchant_reference || null,
+      transaction.status || null,
+      participantId,
+    ],
+  );
+  persistDatabase();
+}
+
+async function createPaymentToken(settings, transactionId) {
+  const payload = await fedapayRequest(settings, "POST", `/transactions/${encodeURIComponent(transactionId)}/token`);
+  const tokenObject = payload.token || payload.data || payload;
+  const token = tokenObject.token || tokenObject.value || tokenObject.id;
+
+  if (!token) {
+    throw new Error("Token de paiement non genere.");
+  }
+
+  return token;
+}
+
+async function sendDirectMobileMoneyPayment(settings, participant, mode) {
+  const allowedModes = new Set(["moov", "mtn_open", "sbin"]);
+  if (!allowedModes.has(mode)) {
+    throw new Error("Methode de paiement non disponible.");
+  }
+
+  const token = await createPaymentToken(settings, participant.fedapay_transaction_id);
+  const payload = await fedapayRequest(settings, "POST", `/transactions/${encodeURIComponent(mode)}`, {
+    token,
+    phone_number: {
+      number: normalizePhoneNumber(participant.telephone),
+      country: "BJ",
+    },
+  });
+  const intent = Array.isArray(payload) ? payload[0] : payload.transaction || payload.data || payload;
+
+  updateParticipantPaymentStatus(participant.id, {
+    status: intent.status || "pending",
+    reference: intent.reference || participant.fedapay_reference,
+    receipt_url: intent.receipt_url || null,
+  });
+
+  return intent;
+}
+
+function getPublicBaseUrl(settings) {
+  return process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
+}
+
+function buildPendingParticipant(body, settings) {
+  const amount = getParticipationAmount(settings);
+  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
+  const id = generateParticipantId();
+  const nom = String(body.nom || "").trim();
+  const telephone = String(body.telephone || "").trim();
+  const email = String(body.email || "").trim();
+  const participantPhotoUrl = saveParticipantPhoto(body.participant_photo_base64, id);
+
+  return {
+    id,
+    evenement: eventName,
+    nom,
+    telephone,
+    whatsapp: telephone,
+    email,
+    montant: formatMontant(amount),
+    montant_valeur: amount,
+    paiement: "paiement_securise",
+    operateur_paiement_code: null,
+    operateur_paiement: "Paiement securise",
+    nom_paiement: null,
+    numero_paiement: null,
+    preuve_paiement: null,
+    preuve_url: null,
+    capture_b64: null,
+    participant_photo_url: participantPhotoUrl,
+    statut_paiement: "En attente",
+    code_unique: null,
+    statut_code: null,
+    fedapay_transaction_id: null,
+    fedapay_customer_id: null,
+    fedapay_reference: null,
+    fedapay_status: "pending",
+    qr_code_url: null,
+    lieu_retrait: settings.pickup_location || DEFAULT_SETTINGS.pickup_location,
+    date: dateFormatee(),
+    date_key: getDateKeyBenin(),
+    timestamp: Date.now(),
+    validation_at: null,
+    retrait_effectue_at: null,
+  };
+}
+
+function getFedapayWebhookSecret(settings) {
+  return process.env.FEDAPAY_WEBHOOK_SECRET || settings.fedapay_webhook_secret || "";
+}
+
+function timingSafeStringEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""));
+  const rightBuffer = Buffer.from(String(right || ""));
+
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function verifyFedapayWebhookSignature(request, rawBody, settings) {
+  const secret = getFedapayWebhookSecret(settings);
+  if (!secret) {
+    return true;
+  }
+
+  const signature =
+    request.headers["x-fedapay-signature"] ||
+    request.headers["fedapay-signature"] ||
+    request.headers["x-signature"] ||
+    "";
+  const digest = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+
+  return timingSafeStringEqual(signature, digest) || timingSafeStringEqual(signature, `sha256=${digest}`);
+}
+
+function extractFedapayTransaction(payload) {
+  const candidates = [
+    payload?.transaction,
+    payload?.entity,
+    payload?.object,
+    payload?.data?.transaction,
+    payload?.data?.object,
+    payload?.data,
+  ];
+
+  return candidates.find((candidate) => candidate && typeof candidate === "object" && candidate.id) || null;
+}
+
+async function sendWaChapMessage(payload, settings) {
+  const accountId = settings.wachap_instance_id;
+  const accessToken = settings.wachap_access_token;
+
+  if (!accountId || !accessToken) {
+    return false;
+  }
+
+  const response = await fetch("https://api.wachap.com/v1/whatsapp/messages/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ data: { accountId, ...payload } }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`WaChap HTTP ${response.status}: ${text}`);
+  }
+
+  return true;
+}
+
+async function notifyOrganizer(participant, settings) {
+  const organizerWhatsapp = normalizePhoneNumber(settings.vendeur_whatsapp);
+  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
+  if (!organizerWhatsapp) {
+    return false;
+  }
+
+  await sendWaChapMessage(
+    {
+      to: `+${organizerWhatsapp}`,
+      type: "text",
+      content:
+        `Nouvelle participation ${eventName}\n\n` +
+        `ID: ${participant.id}\n` +
+        `Nom: ${participant.nom}\n` +
+        `WhatsApp: ${participant.telephone}\n` +
+        `Email: ${participant.email}\n` +
+        `Paiement: ${participant.operateur_paiement || "Mobile Money"}\n` +
+        `Montant: ${participant.montant}\n` +
+        `Retrait: ${participant.lieu_retrait}`,
+    },
+    settings,
+  );
+
+  if (participant.preuve_url) {
+    await sendWaChapMessage(
+      {
+        to: `+${organizerWhatsapp}`,
+        type: "image",
+        imageUrl: participant.preuve_url,
+        caption: `Preuve de paiement ${eventName}`,
+      },
+      settings,
+    );
+  }
+
+  return true;
+}
+
+function buildValidationEmailHtml(participant, publicBaseUrl = "") {
+  const eventName = participant.evenement || DEFAULT_SETTINGS.event_name;
+  const qrImage = participant.qr_code_url && publicBaseUrl ? `<p><img src="${publicBaseUrl}${participant.qr_code_url}" alt="QR code ${eventName}" style="width:180px;height:180px"></p>` : "";
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+      <h1>Votre paiement ${eventName} est valide</h1>
+      <p>Bonjour ${participant.nom || ""},</p>
+      <p>Votre paiement est confirme. Voici votre code ${eventName} :</p>
+      <p style="font-size:34px;font-weight:700;letter-spacing:6px">${participant.code_unique}</p>
+      ${qrImage}
+      <p>Lieu de retrait : <strong>${participant.lieu_retrait || "APPLAHOUE AZOVE"}</strong></p>
+      <p>Presentez ce code ou le QR code joint le jour de l'evenement.</p>
+    </div>
+  `;
+}
+
+async function sendValidationEmail(participant, settings) {
+  const apiKey = process.env.RESEND_API_KEY || settings.resend_api_key;
+  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
+  const from = process.env.RESEND_FROM || settings.resend_from || `${eventName} <onboarding@resend.dev>`;
+
+  if (!apiKey || !participant.email) {
+    return false;
+  }
+
+  const resend = new Resend(apiKey);
+  const baseUrl = process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
+  const qrPath = participant.qr_code_url ? path.join(ROOT, participant.qr_code_url.replace(/^\/+/, "")) : "";
+  const attachments = [];
+
+  if (qrPath && fs.existsSync(qrPath)) {
+    attachments.push({
+      filename: `code-${eventName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${participant.code_unique}.png`,
+      content: fs.readFileSync(qrPath).toString("base64"),
+    });
+  }
+
+  await resend.emails.send(
+    {
+      from,
+      to: participant.email,
+      subject: `Votre code ${eventName} : ${participant.code_unique}`,
+      html: buildValidationEmailHtml(participant, baseUrl),
+      text:
+        `Bonjour ${participant.nom || ""},\n\n` +
+        `Votre paiement ${eventName} est confirme.\n` +
+        `Code : ${participant.code_unique}\n` +
+        `Lieu de retrait : ${participant.lieu_retrait || "APPLAHOUE AZOVE"}\n`,
+      attachments,
+    },
+    {
+      headers: {
+        "Idempotency-Key": `feja-validation-${participant.id}`,
+      },
+    },
+  );
+
+  return true;
+}
+
+async function finalizePaidParticipant(participant, transaction, settings) {
+  if (!participant) {
+    throw new Error("Participant introuvable.");
+  }
+
+  if (participant.statut_paiement === "Valide" && participant.code_unique) {
+    return { participant, emailSent: false, alreadyFinalized: true };
+  }
+
+  const amount = getParticipationAmount(settings);
+  const status = String(transaction.status || "").toLowerCase();
+  const transactionAmount = Number(transaction.amount || 0);
+
+  if (status !== "approved") {
+    throw new Error("Paiement non confirme.");
+  }
+
+  if (transactionAmount !== Number(amount)) {
+    throw new Error("Montant du paiement incorrect.");
+  }
+
+  const existingTransaction = getParticipantByFedapayTransactionId(transaction.id);
+  if (existingTransaction && existingTransaction.id !== participant.id) {
+    throw new Error("Cette transaction est deja liee a une inscription.");
+  }
+
+  const codeUnique = generateUniqueCode();
+  const qrCodeUrl = await saveQrCode(codeUnique, participant.id);
+  const validationAt = Date.now();
+
+  run(
+    `
+      UPDATE participants
+      SET statut_paiement = ?, code_unique = ?, statut_code = ?, preuve_paiement = ?, preuve_url = ?,
+          fedapay_reference = ?, fedapay_status = ?, qr_code_url = ?, validation_at = ?
+      WHERE id = ?
+    `,
+    [
+      "Valide",
+      codeUnique,
+      "actif",
+      transaction.receipt_url || participant.preuve_paiement || null,
+      transaction.receipt_url || participant.preuve_url || null,
+      transaction.reference || transaction.merchant_reference || participant.fedapay_reference || null,
+      transaction.status || "approved",
+      qrCodeUrl,
+      validationAt,
+      participant.id,
+    ],
+  );
+  persistDatabase();
+
+  const updatedParticipant = getParticipantById(participant.id);
+  const emailSent = await sendValidationEmail(updatedParticipant, settings).catch((error) => {
+    console.error("Email Resend non envoye:", error.message);
+    return false;
+  });
+
+  return { participant: updatedParticipant, emailSent, alreadyFinalized: false };
+}
+
+function normalizeParticipant(p) {
+  return {
+    ref:      p.id,
+    nom:      p.nom,
+    wa:       p.whatsapp || p.telephone || "",
+    email:    p.email || "",
+    method:   p.operateur_paiement_code || "",
+    amount:   p.montant || "",
+    status:   p.statut_paiement === "Valide" ? "validated" : "pending",
+    code:     p.code_unique || "",
+    codeUsed: p.statut_code === "utilise",
+    proof:    p.preuve_url || "",
+    date:     p.date || "",
+    ...p,
+  };
+}
+
+async function handleApi(request, response, url) {
+  try {
+    if (url.pathname === "/api/public-config" && request.method === "GET") {
+      sendJson(response, 200, publicSettings());
+      return;
+    }
+
+    if (url.pathname === "/api/public-stats" && request.method === "GET") {
+      sendJson(response, 200, { participants: getStats().total });
+      return;
+    }
+
+    if (url.pathname === "/api/public/verify-code" && request.method === "POST") {
+      const body = await parseJsonBody(request);
+      const code = String(body.code || "").trim().toUpperCase();
+
+      if (!code) {
+        sendJson(response, 400, { error: "Code obligatoire." });
+        return;
+      }
+
+      const participant = getParticipantByCode(code);
+      if (!participant || participant.statut_paiement !== "Valide") {
+        sendJson(response, 404, { status: "not_found", error: "Code introuvable ou paiement non confirme." });
+        return;
+      }
+
+      let itemsReceived = {};
+      try { itemsReceived = JSON.parse(participant.items_received || "{}"); } catch {}
+      const settings2 = getSettings();
+      let eventItems2 = [];
+      try { eventItems2 = JSON.parse(settings2.event_items_json || "[]"); } catch {}
+      sendJson(response, 200, {
+        status: participant.statut_code === "utilise" ? "already_used" : "valid",
+        participant: {
+          nom: participant.nom,
+          code_unique: participant.code_unique,
+          statut_code: participant.statut_code,
+          statut_paiement: participant.statut_paiement,
+          montant: participant.montant,
+          lieu_retrait: participant.lieu_retrait,
+          date: participant.date,
+          items_received: itemsReceived,
+        },
+        event_items: eventItems2,
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/public/register" && request.method === "POST" && false) { // désactivé – inscription via paiement automatique uniquement
+      const body = await parseJsonBody(request);
+      const nom   = String(body.nom   || "").trim();
+      const wa    = String(body.wa    || "").trim();
+      const email = String(body.email || "").trim();
+      const method = String(body.method || "").trim();
+      const proof  = String(body.proof  || "").trim();
+
+      if (nom.length < 2 || !wa || !email || !proof) {
+        sendJson(response, 400, { error: "Nom (≥2 car.), WhatsApp, email et preuve de paiement sont obligatoires." });
+        return;
+      }
+
+      const settings = getSettings();
+      const id = generateParticipantId();
+      const proofUrl = saveReceiptProof(proof, id);
+      const opMeta = getOperatorMeta(settings, method === "mtn" ? "mtn" : "moov");
+      const amount = getParticipationAmount(settings);
+
+      const participant = {
+        id,
+        evenement:              settings.event_name || DEFAULT_SETTINGS.event_name,
+        nom,
+        telephone:              wa,
+        whatsapp:               wa,
+        email,
+        montant:                formatMontant(amount),
+        montant_valeur:         amount,
+        paiement:               "manuel",
+        operateur_paiement_code: opMeta.code,
+        operateur_paiement:     opMeta.shortLabel + " Money",
+        nom_paiement:           opMeta.holder,
+        numero_paiement:        opMeta.number,
+        preuve_paiement:        null,
+        preuve_url:             proofUrl,
+        capture_b64:            null,
+        participant_photo_url:  null,
+        statut_paiement:        "En attente",
+        code_unique:            null,
+        statut_code:            null,
+        fedapay_transaction_id: null,
+        fedapay_customer_id:    null,
+        fedapay_reference:      null,
+        fedapay_status:         null,
+        qr_code_url:            null,
+        lieu_retrait:           settings.pickup_location || DEFAULT_SETTINGS.pickup_location,
+        date:                   dateFormatee(),
+        date_key:               getDateKeyBenin(),
+        timestamp:              Date.now(),
+        validation_at:          null,
+        retrait_effectue_at:    null,
+      };
+
+      insertParticipant(participant);
+
+      const base = process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
+      const participantForNotif = { ...participant, preuve_url: base ? base + proofUrl : null };
+      notifyOrganizer(participantForNotif, settings).catch((err) => {
+        console.warn("Notification WaChap non envoyée (register):", err.message);
+      });
+
+      sendJson(response, 201, { ref: id, nom: participant.nom });
+      return;
+    }
+
+    if (url.pathname === "/api/payments/create" && request.method === "POST") {
+      const body = await parseJsonBody(request);
+      const settings = getSettings();
+      const nom = String(body.nom || "").trim();
+      const telephone = String(body.telephone || "").trim();
+      const email = String(body.email || "").trim();
+
+      if (!nom || !telephone || !email || !body.participant_photo_base64) {
+        sendJson(response, 400, { error: "Nom, telephone, email et photo du participant sont obligatoires." });
+        return;
+      }
+
+      getPaymentCredentials(settings);
+      const participant = buildPendingParticipant(body, settings);
+      const customer = await createPaymentCustomer(settings, participant);
+      const transaction = await createPaymentTransaction(settings, participant, customer);
+      const transactionId = String(transaction.id || "");
+
+      if (!transactionId) {
+        throw new Error("Transaction de paiement non creee.");
+      }
+
+      if (getParticipantByFedapayTransactionId(transactionId)) {
+        throw new Error("Cette transaction est deja liee a une inscription.");
+      }
+
+      participant.fedapay_transaction_id = transactionId;
+      participant.fedapay_customer_id = customer.id ? String(customer.id) : null;
+      participant.fedapay_reference = transaction.reference || transaction.merchant_reference || participant.id;
+      participant.fedapay_status = transaction.status || "pending";
+
+      insertParticipant(participant);
+
+      sendJson(response, 201, {
+        participant: {
+          id: participant.id,
+          nom: participant.nom,
+          telephone: participant.telephone,
+          email: participant.email,
+          montant: participant.montant,
+          statut_paiement: participant.statut_paiement,
+        },
+        transaction: {
+          id: transactionId,
+          reference: participant.fedapay_reference,
+          status: participant.fedapay_status,
+        },
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/payments/send" && request.method === "POST") {
+      const body = await parseJsonBody(request);
+      const settings = getSettings();
+      const participantId = String(body.participant_id || "").trim();
+      const fedapayTransactionId = String(body.fedapay_transaction_id || body.transaction_id || "").trim();
+      const mode = String(body.mode || "").trim();
+
+      if (!participantId || !fedapayTransactionId || !mode) {
+        sendJson(response, 400, { error: "Participant, transaction et methode de paiement obligatoires." });
+        return;
+      }
+
+      const participant = getParticipantById(participantId);
+      if (!participant) {
+        sendJson(response, 404, { error: "Participant introuvable." });
+        return;
+      }
+
+      if (String(participant.fedapay_transaction_id || "") !== fedapayTransactionId) {
+        sendJson(response, 400, { error: "Transaction non associee a ce participant." });
+        return;
+      }
+
+      const intent = await sendDirectMobileMoneyPayment(settings, participant, mode);
+      sendJson(response, 200, {
+        status: intent.status || "pending",
+        reference: intent.reference || participant.fedapay_reference,
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/payments/status" && request.method === "POST") {
+      const body = await parseJsonBody(request);
+      const settings = getSettings();
+      const participantId = String(body.participant_id || "").trim();
+      const fedapayTransactionId = String(body.fedapay_transaction_id || body.transaction_id || "").trim();
+
+      if (!participantId || !fedapayTransactionId) {
+        sendJson(response, 400, { error: "Participant et transaction de paiement obligatoires." });
+        return;
+      }
+
+      const participant = getParticipantById(participantId);
+      if (!participant) {
+        sendJson(response, 404, { error: "Participant introuvable." });
+        return;
+      }
+
+      if (String(participant.fedapay_transaction_id || "") !== fedapayTransactionId) {
+        sendJson(response, 400, { error: "Transaction non associee a ce participant." });
+        return;
+      }
+
+      const transaction = await getPaymentTransaction(fedapayTransactionId, settings);
+      updateParticipantPaymentStatus(participant.id, transaction);
+
+      if (String(transaction.status || "").toLowerCase() === "approved") {
+        const result = await finalizePaidParticipant(participant, transaction, settings);
+        if (!result.alreadyFinalized) {
+          notifyOrganizer(result.participant, settings).catch((error) => {
+            console.warn("Notification WaChap non envoyee:", error.message);
+          });
+        }
+
+        sendJson(response, 200, {
+          status: "approved",
+          participant: result.participant,
+          email_sent: result.emailSent,
+          already_finalized: result.alreadyFinalized,
+        });
+        return;
+      }
+
+      sendJson(response, 200, {
+        status: transaction.status || "pending",
+        reference: transaction.reference || participant.fedapay_reference,
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/participants" && request.method === "POST") {
+      const body = await parseJsonBody(request);
+      const settings = getSettings();
+      const participantId = String(body.participant_id || body.id || "").trim();
+      const fedapayTransactionId = String(body.fedapay_transaction_id || body.transaction_id || "").trim();
+
+      if (!participantId || !fedapayTransactionId) {
+        sendJson(response, 400, { error: "Participant et transaction de paiement obligatoires." });
+        return;
+      }
+
+      const participant = getParticipantById(participantId);
+      if (!participant) {
+        sendJson(response, 404, { error: "Participant introuvable." });
+        return;
+      }
+
+      if (String(participant.fedapay_transaction_id || "") !== fedapayTransactionId) {
+        sendJson(response, 400, { error: "Transaction non associee a ce participant." });
+        return;
+      }
+
+      const amount = getParticipationAmount(settings);
+      const paymentTransaction = await verifyPaymentTransaction(fedapayTransactionId, amount, settings);
+      const result = await finalizePaidParticipant(participant, paymentTransaction, settings);
+
+      if (!result.alreadyFinalized) {
+        notifyOrganizer(result.participant, settings).catch((error) => {
+          console.warn("Notification WaChap non envoyee:", error.message);
+        });
+      }
+
+      sendJson(response, 200, {
+        participant: result.participant,
+        email_sent: result.emailSent,
+        already_finalized: result.alreadyFinalized,
+      });
+
+      return;
+    }
+
+    if (url.pathname === "/api/fedapay/webhook" && request.method === "POST") {
+      const settings = getSettings();
+      const { body, raw } = await parseJsonBodyWithRaw(request);
+
+      if (!verifyFedapayWebhookSignature(request, raw, settings)) {
+        sendJson(response, 401, { error: "Signature webhook invalide." });
+        return;
+      }
+
+      const transaction = extractFedapayTransaction(body);
+      const eventType = String(body.name || body.type || body.event || "");
+      const eventId = String(body.id || body.event_id || `${eventType || "fedapay"}-${transaction?.id || Date.now()}`);
+
+      if (getWebhookEventById(eventId)) {
+        sendJson(response, 200, { received: true, duplicate: true });
+        return;
+      }
+
+      const isApprovedEvent =
+        transaction &&
+        (String(transaction.status || "").toLowerCase() === "approved" || eventType.toLowerCase().includes("approved"));
+
+      if (isApprovedEvent) {
+        const participant = getParticipantByFedapayTransactionId(transaction.id);
+        if (participant) {
+          const verifiedTransaction = await verifyPaymentTransaction(
+            transaction.id,
+            getParticipationAmount(settings),
+            settings,
+          );
+          const result = await finalizePaidParticipant(participant, verifiedTransaction, settings);
+          if (!result.alreadyFinalized) {
+            notifyOrganizer(result.participant, settings).catch((error) => {
+              console.warn("Notification WaChap non envoyee:", error.message);
+            });
+          }
+        }
+      }
+
+      insertWebhookEvent({
+        id: eventId,
+        type: eventType,
+        object_id: transaction?.id ? String(transaction.id) : "",
+        payload: JSON.stringify(body),
+        created_at: Date.now(),
+      });
+
+      sendJson(response, 200, { received: true });
+      return;
+    }
+
+    if (url.pathname === "/api/admin/login" && request.method === "POST") {
+      const body = await parseJsonBody(request);
+      const settings = getSettings();
+      if (String(body.password || "") !== String(settings.admin_password || DEFAULT_SETTINGS.admin_password)) {
+        sendJson(response, 401, { error: "Mot de passe incorrect." });
+        return;
+      }
+
+      sendJson(response, 200, { token: createSession() });
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/admin/")) {
+      if (!requireAdmin(request)) {
+        sendJson(response, 401, { error: "Session admin invalide." });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/participants" && request.method === "GET") {
+        const participants = getParticipants();
+        const normalized = participants.map(normalizeParticipant);
+        sendJson(response, 200, { participants: normalized, stats: getStats(participants) });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/settings" && request.method === "GET") {
+        sendJson(response, 200, getSettings());
+        return;
+      }
+
+      if (url.pathname === "/api/admin/settings" && request.method === "PUT") {
+        const body = await parseJsonBody(request);
+        const SETTINGS_KEY_MAP = {
+          eventName:     "event_name",
+          amount:        "participation_fee",
+          lieu:          "pickup_location",
+          dateLabel:     "event_date_label",
+          eventDate:     "event_date",
+          moovNumber:    "moov_numero",
+          mtnNumber:     "mtn_numero",
+          waLink:        "wa_link",
+          email:         "vendeur_email",
+          wachapKey:     "wachap_access_token",
+          resendKey:     "resend_api_key",
+          adminPassword: "admin_password",
+          chiefs:        "chiefs_json",
+          sponsors:      "sponsors_json",
+          eventItems:    "event_items_json",
+        };
+        const toSave = {};
+        Object.entries(body).forEach(([k, v]) => { toSave[SETTINGS_KEY_MAP[k] || k] = v; });
+        saveSettings(toSave);
+        sendJson(response, 200, getSettings());
+        return;
+      }
+
+      if (url.pathname === "/api/admin/validate-payment" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const participant = getParticipantById(body.id);
+        const settings = getSettings();
+
+        if (!participant) {
+          sendJson(response, 404, { error: "Participant introuvable." });
+          return;
+        }
+
+        if (participant.statut_paiement === "Valide") {
+          sendJson(response, 200, { participant, email_sent: false });
+          return;
+        }
+
+        const codeUnique = generateUniqueCode();
+        const qrCodeUrl = await saveQrCode(codeUnique, participant.id);
+        const validationAt = Date.now();
+        run(
+          `
+            UPDATE participants
+            SET statut_paiement = ?, code_unique = ?, statut_code = ?, qr_code_url = ?, lieu_retrait = ?, validation_at = ?
+            WHERE id = ?
+          `,
+          ["Valide", codeUnique, "actif", qrCodeUrl, participant.lieu_retrait || settings.pickup_location, validationAt, participant.id],
+        );
+        persistDatabase();
+
+        const updatedParticipant = getParticipantById(participant.id);
+        const emailSent = await sendValidationEmail(updatedParticipant, settings).catch((error) => {
+          console.error("Email Resend non envoye:", error.message);
+          return false;
+        });
+
+        sendJson(response, 200, { participant: updatedParticipant, email_sent: emailSent });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/mark-item" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const participantId = String(body.participant_id || "").trim();
+        const itemId = String(body.item_id || "").trim();
+        const received = body.received !== false; // true par défaut
+        if (!participantId || !itemId) {
+          sendJson(response, 400, { error: "participant_id et item_id obligatoires." });
+          return;
+        }
+        const p = getParticipantById(participantId);
+        if (!p) { sendJson(response, 404, { error: "Participant introuvable." }); return; }
+        let items = {};
+        try { items = JSON.parse(p.items_received || "{}"); } catch {}
+        items[itemId] = received;
+        run("UPDATE participants SET items_received = ? WHERE id = ?", [JSON.stringify(items), participantId]);
+        persistDatabase();
+        sendJson(response, 200, { participant_id: participantId, item_id: itemId, received, items_received: items });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/verify-code" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const code = String(body.code || "").trim().toUpperCase();
+        const participant = getParticipantByCode(code);
+
+        if (!participant) {
+          sendJson(response, 404, { status: "not_found", error: "Code incorrect." });
+          return;
+        }
+
+        if (participant.statut_code === "utilise") {
+          sendJson(response, 200, { status: "already_used", participant });
+          return;
+        }
+
+        run("UPDATE participants SET statut_code = ?, retrait_effectue_at = ? WHERE id = ?", [
+          "utilise",
+          Date.now(),
+          participant.id,
+        ]);
+        persistDatabase();
+        sendJson(response, 200, { status: "valid", participant: getParticipantById(participant.id) });
+        return;
+      }
+    }
+
+    sendJson(response, 404, { error: "Route API introuvable." });
+  } catch (error) {
+    console.error("Erreur API:", error);
+    const message =
+      !url.pathname.startsWith("/api/admin/") && String(error.message || "").includes("FedaPay")
+        ? "Paiement indisponible pour le moment."
+        : error.message || "Erreur serveur.";
+    sendJson(response, error.message.includes("Payload") ? 413 : 500, {
+      error: message,
+    });
+  }
+}
+
+const server = http.createServer(async (request, response) => {
+  const url = new URL(request.url, `http://${request.headers.host}`);
+
+  if (url.pathname.startsWith("/api/")) {
+    await handleApi(request, response, url);
+    return;
+  }
+
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    sendJson(response, 405, { error: "Methode non autorisee." });
+    return;
+  }
+
+  await serveStaticFile(request, response, url.pathname);
+});
+
+function listen(port) {
+  server.once("error", (error) => {
+    if (error.code === "EADDRINUSE" && !process.env.PORT && port === 3000) {
+      console.warn("Le port 3000 est occupe, bascule sur 3001.");
+      listen(3001);
+      return;
+    }
+
+    console.error("Impossible de demarrer le serveur:", error);
+    process.exit(1);
+  });
+
+  server.listen(port, () => {
+    console.log(`La Box de Yenalia disponible sur http://localhost:${port}`);
+  });
+}
+
+initDatabase()
+  .then(() => listen(PORT))
+  .catch((error) => {
+    console.error("Impossible de demarrer la base SQL:", error);
+    process.exit(1);
+  });

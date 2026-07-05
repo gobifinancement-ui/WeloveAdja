@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Vérification – Pluri Party 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@300..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0e2a;--bg-2:#121845;
+  --green:#5b6bd6;--green-br:#8a96f0;
+  --gold:#f0c64f;--gold-lt:#ffe6a0;--gold-dp:#c2942f;
+  --cream:#f6f1e6;
+  --cream-72:rgba(246,241,230,.74);--cream-52:rgba(246,241,230,.52);--cream-32:rgba(246,241,230,.32);
+  --glass:rgba(255,255,255,.06);
+  --stroke:rgba(246,241,230,.12);--stroke-gd:rgba(240,198,79,.36);
+  --red:#e08a6a;
+  --shadow:0 40px 90px -34px rgba(0,0,0,.78);
+  --display:"Bricolage Grotesque",system-ui,sans-serif;
+  --body:"Hanken Grotesk",system-ui,sans-serif;
+  --ease:cubic-bezier(.32,.72,0,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;overflow-x:hidden}
+body{font-family:var(--body);background:var(--bg);color:var(--cream);min-height:100vh;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(60% 50% at 80% 0%,color-mix(in oklab,var(--gold) 12%,transparent),transparent 60%),radial-gradient(60% 60% at 10% 100%,color-mix(in oklab,var(--green) 18%,transparent),transparent 60%),linear-gradient(180deg,var(--bg),var(--bg-2) 60%,var(--bg))}
+::selection{background:var(--gold);color:var(--bg)}
+
+.page{min-height:100vh;display:grid;place-items:center;padding:24px}
+.card{width:100%;max-width:480px;background:linear-gradient(160deg,rgba(255,255,255,.08),rgba(255,255,255,.03));border:1px solid var(--stroke);border-radius:28px;box-shadow:var(--shadow);backdrop-filter:blur(18px);overflow:hidden}
+
+/* Header */
+.card-header{padding:22px 26px;border-bottom:1px solid var(--stroke);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--cream)}
+.brand .mark{width:38px;height:38px;flex:none}
+.brand b{font-family:var(--display);font-weight:700;font-size:1.1rem}
+.back-btn{display:inline-flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;color:var(--cream-52);text-decoration:none;border:1px solid var(--stroke);padding:8px 14px;border-radius:100px;transition:.2s}
+.back-btn:hover{color:var(--cream);border-color:var(--stroke-gd)}
+
+/* Search */
+.search-zone{padding:22px 26px;border-bottom:1px solid var(--stroke)}
+.search-zone label{display:block;font-size:.76rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--cream-52);margin-bottom:10px}
+.code-row{display:flex;gap:10px}
+.code-input{flex:1;font-family:var(--display);font-weight:700;font-size:1.2rem;letter-spacing:.18em;text-align:center;text-transform:uppercase;color:var(--cream);background:rgba(0,0,0,.28);border:1px solid var(--stroke);border-radius:14px;padding:14px;min-height:54px;transition:.25s}
+.code-input::placeholder{color:var(--cream-32);letter-spacing:.1em}
+.code-input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 4px color-mix(in oklab,var(--gold) 14%,transparent)}
+.check-btn{background:linear-gradient(135deg,var(--gold-lt),var(--gold) 56%,var(--gold-dp));color:#2a1d05;font-family:var(--body);font-weight:700;font-size:.95rem;border:none;border-radius:14px;padding:14px 20px;cursor:pointer;transition:.2s;white-space:nowrap}
+.check-btn:hover{opacity:.9}
+.check-btn:disabled{opacity:.5;cursor:not-allowed}
+.scan-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;background:transparent;color:var(--gold-lt);font-family:var(--body);font-weight:700;font-size:.9rem;border:1px solid var(--gold-dp);border-radius:14px;padding:12px 16px;cursor:pointer;transition:.2s}
+.scan-btn:hover{background:color-mix(in oklab,var(--gold) 12%,transparent)}
+.scanner{display:none;position:relative;margin-top:14px;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:1/1}
+.scanner.show{display:block}
+.scanner video{width:100%;height:100%;object-fit:cover;display:block}
+.scan-frame{position:absolute;inset:18%;border:2px solid var(--gold);border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.35);pointer-events:none}
+.scan-close{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:10px;padding:7px 12px;font-size:.82rem;font-weight:700;cursor:pointer}
+.scan-hint{position:absolute;left:0;right:0;bottom:10px;text-align:center;color:var(--cream-52,#cfc7b5);font-size:.8rem;text-shadow:0 1px 3px #000}
+
+/* Result zones */
+.result{display:none;padding:24px 26px;animation:fadeUp .4s both}
+.result.show{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+/* Status banner */
+.status-banner{display:flex;align-items:center;gap:14px;padding:18px 20px;border-radius:18px;margin-bottom:20px}
+.status-banner.valid{background:color-mix(in oklab,var(--green) 14%,transparent);border:1px solid var(--green-br)}
+.status-banner.used{background:rgba(255,255,255,.05);border:1px solid var(--stroke)}
+.status-banner.invalid{background:color-mix(in oklab,var(--red) 14%,transparent);border:1px solid var(--red)}
+.status-icon{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;flex:none;font-size:1.4rem}
+.status-banner.valid .status-icon{background:var(--green);color:#fff}
+.status-banner.used .status-icon{background:rgba(255,255,255,.08);color:var(--cream-52)}
+.status-banner.invalid .status-icon{background:var(--red);color:#fff}
+.status-text b{font-family:var(--display);font-weight:700;font-size:1.1rem;display:block}
+.status-text span{font-size:.84rem;color:var(--cream-72);display:block;margin-top:2px}
+
+/* Participant info */
+.info-block{background:rgba(0,0,0,.22);border:1px solid var(--stroke);border-radius:16px;padding:18px;margin-bottom:16px}
+.info-row{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:8px 0;font-size:.9rem}
+.info-row+.info-row{border-top:1px dashed var(--stroke)}
+.info-label{color:var(--cream-52);flex:none;min-width:100px}
+.info-value{font-weight:700;text-align:right}
+.code-display{font-family:var(--display);font-weight:800;letter-spacing:.2em;color:var(--gold-lt);font-size:1.3rem}
+
+/* Items checklist */
+.items-title{font-size:.72rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-52);margin-bottom:12px}
+.item-list{display:flex;flex-direction:column;gap:10px}
+.item-row{display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.03)}
+.item-row.received{border-color:color-mix(in oklab,var(--green) 40%,transparent);background:color-mix(in oklab,var(--green) 8%,transparent)}
+.item-row.pending{border-color:var(--stroke)}
+.item-check{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:none;font-size:1rem}
+.item-row.received .item-check{background:var(--green);color:#fff}
+.item-row.pending .item-check{background:rgba(255,255,255,.06);color:var(--cream-32)}
+.item-name{font-weight:600;flex:1}
+.item-badge{font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:100px}
+.item-row.received .item-badge{background:color-mix(in oklab,var(--green) 18%,transparent);color:var(--green-br)}
+.item-row.pending .item-badge{background:rgba(255,255,255,.05);color:var(--cream-52)}
+
+/* Loading */
+.loading{padding:40px 26px;text-align:center;color:var(--cream-52)}
+.loading svg{animation:spin 1s linear infinite;margin:0 auto 14px;display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Error */
+.error-msg{display:none;color:#f0a98c;font-size:.84rem;margin-top:10px;text-align:center}
+.error-msg.show{display:block}
+
+footer.mini{border-top:1px solid var(--stroke);padding:16px 26px;text-align:center;font-size:.76rem;color:var(--cream-32)}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="card">
+
+    <!-- En-tête -->
+    <div class="card-header">
+      <a href="index.html" class="brand">
+        <svg class="mark" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg>
+        <b id="eventNameLabel">Pluri Party</b>
+      </a>
+      <a href="index.html" class="back-btn"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg> Retour</a>
+    </div>
+
+    <!-- Zone de saisie -->
+    <div class="search-zone">
+      <label>Ton code d'accès</label>
+      <div class="code-row">
+        <input class="code-input" id="codeInput" type="text" placeholder="XXXXXX" maxlength="12" autocomplete="off" spellcheck="false">
+        <button class="check-btn" id="checkBtn">Vérifier</button>
+      </div>
+      <button class="scan-btn" id="scanBtn" type="button">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg>
+        Scanner avec la caméra
+      </button>
+      <div class="error-msg" id="errorMsg"></div>
+
+      <!-- Scanner caméra -->
+      <div class="scanner" id="scanner">
+        <video id="scanVideo" playsinline muted></video>
+        <div class="scan-frame"></div>
+        <button class="scan-close" id="scanClose" type="button">Fermer</button>
+        <div class="scan-hint" id="scanHint">Place le QR code dans le cadre…</div>
+      </div>
+    </div>
+
+    <!-- Chargement -->
+    <div class="loading" id="loading" style="display:none">
+      <svg width="36" height="36" fill="none" stroke="var(--gold)" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      Vérification en cours…
+    </div>
+
+    <!-- Résultat -->
+    <div class="result" id="result">
+
+      <!-- Bannière statut -->
+      <div class="status-banner" id="statusBanner">
+        <div class="status-icon" id="statusIcon"></div>
+        <div class="status-text"><b id="statusTitle"></b><span id="statusSub"></span></div>
+      </div>
+
+      <!-- Infos participant -->
+      <div class="info-block" id="infoBlock">
+        <div class="info-row"><span class="info-label">Nom</span><span class="info-value" id="pNom">–</span></div>
+        <div class="info-row"><span class="info-label">Code</span><span class="info-value code-display" id="pCode">–</span></div>
+        <div class="info-row"><span class="info-label">Lieu de retrait</span><span class="info-value" id="pLieu">–</span></div>
+      </div>
+
+      <!-- Items inclus dans la fête -->
+      <div id="itemsSection" style="display:none">
+        <p class="items-title">Ce qui est inclus dans ta participation</p>
+        <div class="item-list" id="itemList"></div>
+      </div>
+
+    </div>
+
+    <footer class="mini" id="footerLabel">Pluri Party 2026 · Paiement sécurisé</footer>
+  </div>
+</div>
+
+<script>
+/* =====================================================
+   PLURI PARTY – Mini-dashboard vérification de code
+   ===================================================== */
+
+let eventItems = [];
+
+async function loadPublicConfig() {
+  try {
+    const res = await fetch('/api/public-config');
+    if (!res.ok) return;
+    const cfg = await res.json();
+    const name = cfg.eventName || 'Pluri Party';
+    document.getElementById('eventNameLabel').textContent = name;
+    document.getElementById('footerLabel').textContent = `${name} 2026 · Paiement sécurisé`;
+    document.title = `Vérification – ${name} 2026`;
+    eventItems = Array.isArray(cfg.eventItems) ? cfg.eventItems : [];
+  } catch(e) {}
+}
+
+function escHtml(s) { return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function verifyCode(code) {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('result').classList.remove('show');
+  document.getElementById('errorMsg').classList.remove('show');
+  document.getElementById('checkBtn').disabled = true;
+
+  try {
+    const res = await fetch('/api/public/verify-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code.trim().toUpperCase() })
+    });
+    const data = await res.json();
+    document.getElementById('loading').style.display = 'none';
+
+    if (res.ok && (data.status === 'valid' || data.status === 'already_used')) {
+      showSuccess(data);
+    } else {
+      showNotFound();
+    }
+  } catch(e) {
+    document.getElementById('loading').style.display = 'none';
+    const em = document.getElementById('errorMsg');
+    em.textContent = 'Erreur réseau. Vérifie ta connexion et réessaie.';
+    em.classList.add('show');
+  }
+  document.getElementById('checkBtn').disabled = false;
+}
+
+function showSuccess(data) {
+  const p = data.participant;
+  const isUsed = data.status === 'already_used';
+  const banner = document.getElementById('statusBanner');
+  const icon = document.getElementById('statusIcon');
+
+  if (isUsed) {
+    banner.className = 'status-banner used';
+    icon.innerHTML = '✓';
+    document.getElementById('statusTitle').textContent = 'Code déjà scanné';
+    document.getElementById('statusSub').textContent = 'Tu as déjà été enregistré(e) à l\'entrée.';
+  } else {
+    banner.className = 'status-banner valid';
+    icon.innerHTML = '<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg>';
+    document.getElementById('statusTitle').textContent = 'Code valide ✓';
+    document.getElementById('statusSub').textContent = 'Accès autorisé – présente ce code à l\'entrée.';
+  }
+
+  document.getElementById('pNom').textContent = p.nom || '–';
+  document.getElementById('pCode').textContent = p.code_unique || '–';
+  document.getElementById('pLieu').textContent = p.lieu_retrait || 'À confirmer';
+
+  // Items
+  const items = Array.isArray(data.event_items) && data.event_items.length ? data.event_items : eventItems;
+  const received = p.items_received || {};
+  const itemList = document.getElementById('itemList');
+  const itemsSection = document.getElementById('itemsSection');
+
+  if (items.length) {
+    itemsSection.style.display = 'block';
+    itemList.innerHTML = items.map(item => {
+      const isReceived = received[item.id] === true;
+      return `<div class="item-row ${isReceived ? 'received' : 'pending'}">
+        <div class="item-check">${isReceived ? '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg>' : '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>'}</div>
+        <span class="item-name">${escHtml(item.name)}</span>
+        <span class="item-badge">${isReceived ? 'Reçu ✓' : 'Non reçu'}</span>
+      </div>`;
+    }).join('');
+  } else {
+    itemsSection.style.display = 'none';
+  }
+
+  document.getElementById('result').classList.add('show');
+}
+
+function showNotFound() {
+  const banner = document.getElementById('statusBanner');
+  banner.className = 'status-banner invalid';
+  document.getElementById('statusIcon').innerHTML = '<svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  document.getElementById('statusTitle').textContent = 'Code introuvable';
+  document.getElementById('statusSub').textContent = 'Vérifie le code reçu par email ou contacte l\'organisation.';
+  document.getElementById('pNom').textContent = '–';
+  document.getElementById('pCode').textContent = '–';
+  document.getElementById('pLieu').textContent = '–';
+  document.getElementById('itemsSection').style.display = 'none';
+  document.getElementById('result').classList.add('show');
+}
+
+// Lecture du code depuis l'URL (?code=XXXXXX)
+function getCodeFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('code') || '';
+}
+
+document.getElementById('checkBtn').addEventListener('click', () => {
+  const code = document.getElementById('codeInput').value.trim();
+  if (!code) return;
+  verifyCode(code);
+});
+document.getElementById('codeInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('checkBtn').click();
+});
+
+/* ===================== Scanner caméra ===================== */
+let scanStream = null, scanRAF = null, scanDetector = null, jsqrReady = null;
+
+function loadJsQR() {
+  if (window.jsQR) return Promise.resolve(true);
+  if (jsqrReady) return jsqrReady;
+  jsqrReady = new Promise(resolve => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+  return jsqrReady;
+}
+
+function onScanResult(raw) {
+  if (!raw) return;
+  // Le QR peut contenir le code brut ou une URL ...?code=XXXX
+  let code = String(raw).trim();
+  const m = code.match(/[?&]code=([^&]+)/i);
+  if (m) code = decodeURIComponent(m[1]);
+  if (!code) return;
+  stopScan();
+  document.getElementById('codeInput').value = code;
+  verifyCode(code);
+}
+
+async function startScan() {
+  const scanner = document.getElementById('scanner');
+  const video = document.getElementById('scanVideo');
+  const hint = document.getElementById('scanHint');
+  const errorMsg = document.getElementById('errorMsg');
+  errorMsg.classList.remove('show');
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    errorMsg.textContent = "La caméra n'est pas disponible sur ce navigateur. Utilise l'appareil photo du téléphone puis saisis le code.";
+    errorMsg.classList.add('show');
+    return;
+  }
+
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } }, audio: false
+    });
+  } catch (e) {
+    errorMsg.textContent = "Accès caméra refusé. Autorise la caméra ou saisis le code à la main.";
+    errorMsg.classList.add('show');
+    return;
+  }
+
+  scanner.classList.add('show');
+  video.srcObject = scanStream;
+  await video.play().catch(() => {});
+
+  // Détecteur natif (Chrome/Edge/Android) sinon repli jsQR
+  if ('BarcodeDetector' in window) {
+    try { scanDetector = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { scanDetector = null; }
+  }
+  if (!scanDetector) {
+    hint.textContent = 'Chargement du lecteur…';
+    const ok = await loadJsQR();
+    hint.textContent = ok ? 'Place le QR code dans le cadre…'
+      : "Lecteur indisponible hors-ligne. Saisis le code à la main.";
+    if (!ok) return;
+  } else {
+    hint.textContent = 'Place le QR code dans le cadre…';
+  }
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  async function tick() {
+    if (!scanStream) return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      try {
+        if (scanDetector) {
+          const codes = await scanDetector.detect(video);
+          if (codes && codes.length) { onScanResult(codes[0].rawValue); return; }
+        } else if (window.jsQR) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const result = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+          if (result && result.data) { onScanResult(result.data); return; }
+        }
+      } catch (e) {}
+    }
+    scanRAF = requestAnimationFrame(tick);
+  }
+  scanRAF = requestAnimationFrame(tick);
+}
+
+function stopScan() {
+  if (scanRAF) { cancelAnimationFrame(scanRAF); scanRAF = null; }
+  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  const video = document.getElementById('scanVideo');
+  if (video) video.srcObject = null;
+  document.getElementById('scanner').classList.remove('show');
+}
+
+document.getElementById('scanBtn').addEventListener('click', () => {
+  if (scanStream) stopScan(); else startScan();
+});
+document.getElementById('scanClose').addEventListener('click', stopScan);
+
+loadPublicConfig().then(() => {
+  const urlCode = getCodeFromUrl();
+  if (urlCode) {
+    document.getElementById('codeInput').value = urlCode;
+    verifyCode(urlCode);
+  }
+});
+</script>
+</body>
+</html>
