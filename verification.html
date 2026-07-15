@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Vérification – Pluri Party 2026</title>
+<title>Vérification – WeloveAdja 2026</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@300..800&display=swap" rel="stylesheet">
@@ -108,6 +108,7 @@ body{font-family:var(--body);background:var(--bg);color:var(--cream);min-height:
 
 footer.mini{border-top:1px solid var(--stroke);padding:16px 26px;text-align:center;font-size:.76rem;color:var(--cream-32)}
 </style>
+<link rel="icon" href="/api/branding/default-icon.svg">
 <link rel="stylesheet" href="/api/theme.css">
 <script src="/js/branding.js" defer></script>
 </head>
@@ -119,7 +120,7 @@ footer.mini{border-top:1px solid var(--stroke);padding:16px 26px;text-align:cent
     <div class="card-header">
       <a href="index.html" class="brand">
         <img class="mark" data-brand-logo alt="" style="display:none;object-fit:contain"><svg class="mark" data-brand-mark viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg>
-        <b id="eventNameLabel">Pluri Party</b>
+        <b id="eventNameLabel">WeloveAdja</b>
       </a>
       <a href="index.html" class="back-btn"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg> Retour</a>
     </div>
@@ -176,13 +177,13 @@ footer.mini{border-top:1px solid var(--stroke);padding:16px 26px;text-align:cent
 
     </div>
 
-    <footer class="mini" id="footerLabel">Pluri Party 2026 · Paiement sécurisé</footer>
+    <footer class="mini" id="footerLabel">WeloveAdja 2026 · Paiement sécurisé</footer>
   </div>
 </div>
 
 <script>
 /* =====================================================
-   PLURI PARTY – Mini-dashboard vérification de code
+   WELOVEADJA – Mini-dashboard vérification de code
    ===================================================== */
 
 let eventItems = [];
@@ -192,7 +193,7 @@ async function loadPublicConfig() {
     const res = await fetch('/api/public-config');
     if (!res.ok) return;
     const cfg = await res.json();
-    const name = cfg.eventName || 'Pluri Party';
+    const name = cfg.eventName || 'WeloveAdja';
     document.getElementById('eventNameLabel').textContent = name;
     document.getElementById('footerLabel').textContent = `${name} 2026 · Paiement sécurisé`;
     document.title = `Vérification – ${name} 2026`;

@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title La Box de Yenalia - Serveur local
+title WeloveAdja - Serveur local
 echo Demarrage du serveur local sur http://localhost:3000
 echo.
 

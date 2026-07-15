@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pluri Party – Administration</title>
+<title>WeloveAdja – Administration</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@300..800&display=swap" rel="stylesheet">
@@ -271,10 +271,11 @@ button{font-family:var(--body);cursor:pointer}
 .toast b{font-family:var(--display);font-weight:600}
 .toast span{display:block;font-size:.82rem;color:var(--cream-72)}
 </style>
+<link rel="icon" href="/api/branding/default-icon.svg">
 <link rel="stylesheet" href="/api/theme.css">
 <script src="/js/qr-scanner.js" defer></script>
 <link rel="manifest" href="/api/manifest/admin.webmanifest">
-<link rel="apple-touch-icon" href="/logo.png">
+<link rel="apple-touch-icon" href="/api/branding/default-icon.svg">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <script src="/js/branding.js" defer></script>
@@ -286,7 +287,7 @@ button{font-family:var(--body);cursor:pointer}
   <div class="login-card">
     <img class="mark" data-brand-logo alt="" style="display:none;object-fit:contain"><svg class="mark" data-brand-mark viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg>
     <h1>Administration</h1>
-    <p>Espace réservé à l'organisation – <span id="loginEventName">Pluri Party</span></p>
+    <p>Espace réservé à l'organisation – <span id="loginEventName">WeloveAdja</span></p>
     <input class="in" id="pw" type="password" placeholder="Mot de passe admin" autocomplete="current-password">
     <div class="login-err" id="loginErr">Mot de passe incorrect.</div>
     <button class="btn btn-gold btn-block" id="loginBtn" style="margin-top:16px">Se connecter</button>
@@ -298,7 +299,7 @@ button{font-family:var(--body);cursor:pointer}
   <div class="topbar">
     <div class="brand">
       <img class="mark" data-brand-logo alt="" style="display:none;object-fit:contain"><svg class="mark" data-brand-mark viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="16" font-weight="700" fill="#f6f1e6">P</text></svg>
-      <div><b id="topbarEventName">Pluri Party</b><span>Administration</span></div>
+      <div><b id="topbarEventName">WeloveAdja</b><span>Administration</span></div>
     </div>
     <div class="right">
       <span class="live-pill"><span class="dot"></span> En direct</span>
@@ -423,7 +424,7 @@ button{font-family:var(--body);cursor:pointer}
         <p class="gsub">Le montant modifié ici change <b class="gold">partout</b> sur le site.</p>
         <div class="grid2">
           <div class="f"><label>Montant</label><span class="desc">Ex. « 10000 »</span><input class="in" data-set="amount"></div>
-          <div class="f"><label>Nom du compte Mobile Money</label><input class="in" data-set="accountName" placeholder="PLURI PARTY"></div>
+          <div class="f"><label>Nom du compte Mobile Money</label><input class="in" data-set="accountName" placeholder="WELOVEADJA"></div>
           <div class="f"><label>Numéro Moov Money</label><input class="in" data-set="moovNumber"></div>
           <div class="f"><label>Numéro MTN MoMo</label><input class="in" data-set="mtnNumber"></div>
         </div>
@@ -471,7 +472,7 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Secret webhook paiement</label><span class="desc">Pour vérifier la signature des webhooks</span>
             <div class="ipwrap"><input class="in" data-set="fedapayWebhookSecret" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
-          <div class="f"><label>URL publique du site</label><span class="desc">Ex. https://pluriparty.bj (pour les webhooks)</span>
+          <div class="f"><label>URL publique du site</label><span class="desc">Ex. https://weloveadja.bj (pour les webhooks)</span>
             <input class="in" data-set="publicBaseUrl" placeholder="https://…">
           </div>
           <div class="f"><label>Clé API WaChap</label><span class="desc">Notifications WhatsApp à l'organisateur</span>
@@ -480,8 +481,8 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Clé API Resend</label><span class="desc">Envoi des emails de confirmation</span>
             <div class="ipwrap"><input class="in" data-set="resendKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
-          <div class="f"><label>Email expéditeur Resend</label><span class="desc">Ex. Pluri Party &lt;noreply@pluriparty.bj&gt;</span>
-            <input class="in" data-set="resendFrom" placeholder="Pluri Party &lt;noreply@…&gt;">
+          <div class="f"><label>Email expéditeur Resend</label><span class="desc">Ex. WeloveAdja &lt;noreply@weloveadja.bj&gt;</span>
+            <input class="in" data-set="resendFrom" placeholder="WeloveAdja &lt;noreply@…&gt;">
           </div>
           <div class="f"><label>Mot de passe admin</label><span class="desc">Pour accéder à cet espace</span>
             <div class="ipwrap"><input class="in" data-set="adminPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
@@ -511,7 +512,7 @@ button{font-family:var(--body);cursor:pointer}
 
 <script>
 /* ============================================================
-   PLURI PARTY – Administration (branché sur l'API)
+   WELOVEADJA – Administration (branché sur l'API)
    ============================================================ */
 
 /* --- Auth helpers --- */
@@ -846,7 +847,7 @@ async function fillSettings() {
       const dbKey = SETTINGS_MAP[el.dataset.set] || el.dataset.set;
       el.value = raw[dbKey] || '';
     });
-    const eventName = raw.event_name || 'Pluri Party';
+    const eventName = raw.event_name || 'WeloveAdja';
     const eln = document.getElementById('loginEventName');
     if (eln) eln.textContent = eventName;
     const tbn = document.getElementById('topbarEventName');

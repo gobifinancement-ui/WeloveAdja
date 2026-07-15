@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Scan — Contrôle d'entrée</title>
 <link rel="manifest" href="/api/manifest/scan.webmanifest">
-<link rel="apple-touch-icon" href="/logo.png">
+<link rel="apple-touch-icon" href="/api/branding/default-icon.svg">
 <style>
 :root{
   --bg:#05201a;--bg-2:#082b22;--green:#1f9162;--green-br:#3fc189;
@@ -122,12 +122,13 @@ button{font-family:inherit}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .mono{font-family:ui-monospace,monospace}
 </style>
+<link rel="icon" href="/api/branding/default-icon.svg">
 <link rel="stylesheet" href="/api/theme.css">
 </head>
 <body>
 
 <div class="top">
-  <img class="logo" id="brandLogo" src="/logo.png" alt="" onerror="this.style.visibility='hidden'">
+  <img class="logo" id="brandLogo" src="/api/branding/default-icon.svg" alt="" onerror="this.style.visibility='hidden'">
   <div class="id">
     <b id="evName">Contrôle d'entrée</b>
     <span id="devLabel">Poste non nommé</span>

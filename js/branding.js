@@ -11,8 +11,9 @@
  */
 
 (function () {
+  const DEFAULT_ICON = "/api/branding/default-icon.svg";
+
   function applyFavicon(url) {
-    if (!url) return;
     document.querySelectorAll('link[rel~="icon"]').forEach((link) => link.remove());
     const link = document.createElement("link");
     link.rel = "icon";
@@ -44,7 +45,9 @@
       document.title = document.title.replace(/^[^—|]+/, `${config.eventName} `).trim();
     }
 
-    if (logo) applyFavicon(logo);
+    // Toujours une icone : sans logo, le monogramme genere prend le relais.
+    // Sinon le navigateur reclame /favicon.ico et se prend un 404 sur chaque page.
+    applyFavicon(logo || DEFAULT_ICON);
 
     if (config.theme && config.theme.colors) {
       const meta = document.querySelector('meta[name="theme-color"]');

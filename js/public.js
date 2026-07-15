@@ -1,7 +1,7 @@
 import { formatMontant, showToast } from "./utils.js";
 
 const DEFAULT_CONFIG = {
-  event_name: "Pluri Party",
+  event_name: "WeloveAdja",
   event_year: "2026",
   pickup_location: "APPLAHOUE AZOVE",
   participation_fee: "10000",
@@ -359,7 +359,7 @@ function showConfirmation(participant) {
   const wa = document.getElementById("wa").value.trim();
 
   document.getElementById("c-name").textContent = nom.split(" ")[0] || "";
-  document.getElementById("c-ref").textContent = participant.code_unique || participant.id || "PLURI";
+  document.getElementById("c-ref").textContent = participant.code_unique || participant.id || "—";
   document.getElementById("c-r-name").textContent = nom;
   document.getElementById("c-r-wa").textContent = wa;
   document.getElementById("c-r-code").textContent = participant.code_unique || "-";

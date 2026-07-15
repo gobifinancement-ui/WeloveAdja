@@ -1,5 +1,5 @@
 {
-  "name": "la-box-de-yenalia",
+  "name": "weloveadja",
   "private": true,
   "scripts": {
     "start": "node server.js"

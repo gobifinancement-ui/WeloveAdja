@@ -16,9 +16,13 @@ const UPLOADS_DIR = path.join(ROOT, "uploads", "proofs");
 const PARTICIPANT_PHOTOS_DIR = path.join(ROOT, "uploads", "participants");
 const QRCODES_DIR = path.join(ROOT, "uploads", "qrcodes");
 const BRANDING_DIR = path.join(ROOT, "uploads", "branding");
-const DB_PATH = path.join(DATA_DIR, "feja.sqlite");
+const DB_PATH = path.join(DATA_DIR, "weloveadja.sqlite");
+const LEGACY_DB_PATH = path.join(DATA_DIR, "feja.sqlite");
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+// 7 jours : un poste de scan reste hors-ligne toute la journee de l'evenement
+// sans emettre la moindre requete. Avec 12 h, son jeton expirait avant la
+// synchro du soir et l'agent devait ressaisir le mot de passe a la fermeture.
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TIMEZONE = "Africa/Porto-Novo";
 
 const MIME_TYPES = {
@@ -36,9 +40,11 @@ const MIME_TYPES = {
 };
 
 const DEFAULT_SETTINGS = {
-  event_name: "Pluri Party",
+  event_name: "WeloveAdja",
   event_year: "2026",
-  admin_password: "yenalia2025",
+  // Defaut de premiere installation uniquement : des qu'un mot de passe est
+  // enregistre depuis l'admin, c'est lui qui fait foi. A changer sans tarder.
+  admin_password: "admin",
   vendeur_email: "",
   vendeur_whatsapp: "",
   pickup_location: "",
@@ -114,8 +120,35 @@ const THEME_PRESETS = {
 
 const DEFAULT_THEME_PRESET = "indigo";
 
+// Traduction des champs de l'admin vers les cles reellement lues par le
+// serveur. DOIT couvrir tous les [data-set] de admin.html : une cle absente
+// ici est ignoree (et signalee), jamais ecrite telle quelle.
+// Une valeur tableau alimente plusieurs reglages a la fois.
+const SETTINGS_KEY_MAP = {
+  eventName:            "event_name",
+  amount:               "participation_fee",
+  lieu:                 "pickup_location",
+  dateLabel:            "event_date_label",
+  eventDate:            "event_date",
+  accountName:          ["moov_nom", "mtn_nom"], // un seul champ dans l'admin, deux operateurs
+  moovNumber:           "moov_numero",
+  mtnNumber:            "mtn_numero",
+  waLink:               "wa_link",
+  email:                "vendeur_email",
+  wachapKey:            "wachap_access_token",
+  resendKey:            "resend_api_key",
+  resendFrom:           "resend_from",
+  adminPassword:        "admin_password",
+  paymentSecretKey:     "payment_secret_key",
+  paymentEnvironment:   "payment_environment",
+  fedapayWebhookSecret: "fedapay_webhook_secret",
+  publicBaseUrl:        "public_base_url",
+  chiefs:               "chiefs_json",
+  sponsors:             "sponsors_json",
+  eventItems:           "event_items_json",
+};
+
 let db;
-const sessions = new Map();
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -248,11 +281,24 @@ async function initDatabase() {
   fs.mkdirSync(QRCODES_DIR, { recursive: true });
   fs.mkdirSync(BRANDING_DIR, { recursive: true });
 
+  // Reprise de l'ancien fichier de base (feja.sqlite) : on le renomme au lieu
+  // de repartir de zero, sinon reglages et participants seraient perdus. Ne
+  // s'execute que si la nouvelle base n'existe pas encore.
+  if (!fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
+    fs.renameSync(LEGACY_DB_PATH, DB_PATH);
+    console.log("Base migree : data/feja.sqlite -> data/weloveadja.sqlite");
+  }
+
   const SQL = await initSqlJs();
   const existing = fs.existsSync(DB_PATH) ? fs.readFileSync(DB_PATH) : null;
   db = existing ? new SQL.Database(existing) : new SQL.Database();
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL DEFAULT ''
@@ -260,7 +306,7 @@ async function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS participants (
       id TEXT PRIMARY KEY,
-      evenement TEXT NOT NULL DEFAULT 'Pluri Party',
+      evenement TEXT NOT NULL DEFAULT 'WeloveAdja',
       nom TEXT NOT NULL,
       telephone TEXT NOT NULL,
       whatsapp TEXT,
@@ -379,24 +425,76 @@ function parseJsonBodyWithRaw(request) {
 
 function createSession() {
   const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, Date.now() + SESSION_TTL_MS);
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  run("INSERT INTO sessions (token, expires_at) VALUES (?, ?)", [token, expiresAt]);
+  persistDatabase();
   return token;
 }
 
 function requireAdmin(request) {
   const header = request.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const expiresAt = sessions.get(token);
 
-  if (!token || !expiresAt || expiresAt < Date.now()) {
-    if (token) {
-      sessions.delete(token);
+  if (!token) return false;
+
+  const row = statementGet("SELECT expires_at FROM sessions WHERE token = ?", [token]);
+
+  if (!row || Number(row.expires_at) < Date.now()) {
+    if (row) {
+      run("DELETE FROM sessions WHERE token = ?", [token]);
+      persistDatabase();
     }
     return false;
   }
 
-  sessions.set(token, Date.now() + SESSION_TTL_MS);
+  // Expiration glissante. On n'ecrit sur le disque que si l'echeance a
+  // sensiblement bouge : sinon chaque requete de l'admin (rafraichissement
+  // toutes les quelques secondes) reecrirait toute la base.
+  const nextExpiry = Date.now() + SESSION_TTL_MS;
+  if (nextExpiry - Number(row.expires_at) > 60 * 60 * 1000) {
+    run("UPDATE sessions SET expires_at = ? WHERE token = ?", [nextExpiry, token]);
+    persistDatabase();
+  }
+
   return true;
+}
+
+// Nettoyage des reglages ecrits sous leur nom camelCase par l'ancien bug de
+// mapping (le serveur ne les a jamais lus). Si une valeur y a ete saisie alors
+// que la cle reellement utilisee est restee vide, on la recupere : c'est ce que
+// l'organisateur avait voulu enregistrer.
+function migrateStraySettingKeys() {
+  const settings = getSettings();
+  const recovered = [];
+  const removed = [];
+
+  Object.entries(SETTINGS_KEY_MAP).forEach(([camelKey, target]) => {
+    const strayValue = settings[camelKey];
+    if (strayValue === undefined) return;
+
+    const targets = Array.isArray(target) ? target : [target];
+    targets.forEach((name) => {
+      if (strayValue && !settings[name]) {
+        run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [name, strayValue]);
+        recovered.push(`${camelKey} -> ${name}`);
+      }
+    });
+
+    run("DELETE FROM settings WHERE key = ?", [camelKey]);
+    removed.push(camelKey);
+  });
+
+  if (recovered.length) console.log("Reglages recuperes:", recovered.join(", "));
+  if (removed.length) {
+    console.log("Cles de reglages obsoletes supprimees:", removed.join(", "));
+    persistDatabase();
+  }
+}
+
+// Les sessions expirees ne servent qu'a faire grossir la base.
+function purgeExpiredSessions() {
+  run("DELETE FROM sessions WHERE expires_at < ?", [Date.now()]);
+  persistDatabase();
 }
 
 function hexToRgb(hex) {
@@ -465,6 +563,28 @@ body{background:
   background-attachment:fixed;
 }
 `;
+}
+
+// Icone de repli quand aucun logo n'a ete televerse : un monogramme genere aux
+// couleurs du theme. Evite d'embarquer une image de marque en dur et garde
+// l'app installable des le premier jour.
+function buildDefaultIcon(settings = getSettings()) {
+  const { colors } = resolveTheme(settings);
+  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
+  const initial = (eventName.trim()[0] || "?").toUpperCase();
+  const safeInitial = initial.replace(/[&<>"']/g, "");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="${colors.bg2}"/><stop offset="1" stop-color="${colors.bg}"/>
+  </linearGradient></defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <circle cx="256" cy="256" r="188" fill="none" stroke="${colors.gold}" stroke-width="12"/>
+  <circle cx="256" cy="256" r="132" fill="${colors.green}"/>
+  <text x="256" y="256" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia, 'Times New Roman', serif" font-size="150" font-weight="700"
+        fill="${colors.cream}">${safeInitial}</text>
+</svg>`;
 }
 
 function publicSettings(settings = getSettings()) {
@@ -563,7 +683,7 @@ function generateParticipantId() {
 
   for (let index = 0; index < 12; index += 1) {
     const random = Math.floor(Math.random() * 100000).toString().padStart(5, "0");
-    const id = `PLURI-${dateKey}-${random}`;
+    const id = `WLA-${dateKey}-${random}`;
     if (!statementGet("SELECT id FROM participants WHERE id = ?", [id])) {
       return id;
     }
@@ -1141,7 +1261,7 @@ async function sendValidationEmail(participant, settings) {
     },
     {
       headers: {
-        "Idempotency-Key": `feja-validation-${participant.id}`,
+        "Idempotency-Key": `validation-${participant.id}`,
       },
     },
   );
@@ -1234,13 +1354,24 @@ async function handleApi(request, response, url) {
       return;
     }
 
+    // Icone par defaut (monogramme aux couleurs du theme), servie tant qu'aucun
+    // logo n'a ete televerse depuis l'admin.
+    if (url.pathname === "/api/branding/default-icon.svg" && request.method === "GET") {
+      response.writeHead(200, {
+        "Content-Type": "image/svg+xml; charset=utf-8",
+        "Cache-Control": "no-cache",
+      });
+      response.end(buildDefaultIcon());
+      return;
+    }
+
     // Manifests PWA generes a la volee : l'icone de l'app installee suit le
     // logo choisi dans l'admin, et le nom suit celui de l'evenement.
     if (url.pathname.startsWith("/api/manifest/") && request.method === "GET") {
       const settings = getSettings();
       const theme = resolveTheme(settings);
       const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
-      const icon = settings.logo_url || "/logo.png";
+      const icon = settings.logo_url || "/api/branding/default-icon.svg";
       const isScan = url.pathname === "/api/manifest/scan.webmanifest";
 
       // Le logo est fourni par l'organisateur : on ignore ses dimensions et son
@@ -1632,25 +1763,33 @@ async function handleApi(request, response, url) {
 
       if (url.pathname === "/api/admin/settings" && request.method === "PUT") {
         const body = await parseJsonBody(request);
-        const SETTINGS_KEY_MAP = {
-          eventName:     "event_name",
-          amount:        "participation_fee",
-          lieu:          "pickup_location",
-          dateLabel:     "event_date_label",
-          eventDate:     "event_date",
-          moovNumber:    "moov_numero",
-          mtnNumber:     "mtn_numero",
-          waLink:        "wa_link",
-          email:         "vendeur_email",
-          wachapKey:     "wachap_access_token",
-          resendKey:     "resend_api_key",
-          adminPassword: "admin_password",
-          chiefs:        "chiefs_json",
-          sponsors:      "sponsors_json",
-          eventItems:    "event_items_json",
-        };
         const toSave = {};
-        Object.entries(body).forEach(([k, v]) => { toSave[SETTINGS_KEY_MAP[k] || k] = v; });
+        const ignored = [];
+
+        Object.entries(body).forEach(([key, value]) => {
+          const target = SETTINGS_KEY_MAP[key];
+
+          // Liste blanche stricte. L'ancien code retombait sur la cle brute
+          // quand elle etait absente du map : les champs non traduits (cle
+          // FedaPay, environnement, URL publique...) etaient alors ecrits dans
+          // une cle camelCase que le serveur ne lit jamais. L'admin affichait
+          // "enregistre" sans aucun effet.
+          if (!target) {
+            ignored.push(key);
+            return;
+          }
+
+          if (Array.isArray(target)) {
+            target.forEach((name) => { toSave[name] = value; });
+          } else {
+            toSave[target] = value;
+          }
+        });
+
+        if (ignored.length) {
+          console.warn("Reglages ignores (cles inconnues):", ignored.join(", "));
+        }
+
         saveSettings(toSave);
         sendJson(response, 200, getSettings());
         return;
@@ -1928,12 +2067,18 @@ function listen(port) {
   });
 
   server.listen(port, () => {
-    console.log(`La Box de Yenalia disponible sur http://localhost:${port}`);
+    const settings = getSettings();
+    console.log(`${settings.event_name || DEFAULT_SETTINGS.event_name} disponible sur http://localhost:${port}`);
   });
 }
 
 initDatabase()
-  .then(() => listen(PORT))
+  .then(() => {
+    migrateStraySettingKeys();
+    purgeExpiredSessions();
+    setInterval(purgeExpiredSessions, 6 * 60 * 60 * 1000).unref();
+    listen(PORT);
+  })
   .catch((error) => {
     console.error("Impossible de demarrer la base SQL:", error);
     process.exit(1);
