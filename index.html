@@ -23,8 +23,10 @@
   --body:"Hanken Grotesk",system-ui,sans-serif;
   --ease:cubic-bezier(.32,.72,0,1);
 }
-html[data-theme="indigo"]{--bg:#0a0e2a;--bg-2:#121845;--green:#5b6bd6;--green-br:#8a96f0;--gold:#f0c64f;--gold-lt:#ffe6a0;--gold-dp:#c2942f;--stroke-gd:rgba(240,198,79,.36)}
-html[data-theme="terre"]{--bg:#241510;--bg-2:#34201a;--green:#c2703a;--green-br:#e0925a;--gold:#e8b563;--gold-lt:#f7d8a0;--gold-dp:#b9842f;--stroke-gd:rgba(232,181,99,.4)}
+/* Les couleurs sont désormais pilotées depuis l'admin et servies par
+   /api/theme.css. Les anciennes règles html[data-theme="…"] ont été retirées :
+   plus spécifiques que :root, elles empêchaient le thème choisi de s'appliquer.
+   Les palettes Indigo et Terre sont conservées comme thèmes dans l'admin. */
 html[data-display="playfair"]{--display:"Playfair Display",Georgia,serif}
 html[data-display="bricolage"]{--display:"Bricolage Grotesque",system-ui,sans-serif}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -177,6 +179,9 @@ body.sheet-open #home{transform:scale(.96);opacity:.5;filter:blur(2px)}
 .amount-box .lbl{font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-lt)}
 .amount-box .amt{font-family:var(--display);font-size:2rem;font-weight:600;line-height:1}
 .amount-box .amt small{font-size:1rem;color:var(--cream-52);font-weight:600;font-family:var(--body)}
+.pay-brands{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.pay-brands .pb{display:flex;align-items:center;gap:7px;font-size:.78rem;font-weight:700;color:var(--cream-72);background:var(--glass);border:1px solid var(--stroke);border-radius:10px;padding:7px 11px}
+.pay-brands .pb img{width:22px;height:15px;object-fit:contain}
 .method-tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px}
 .method{cursor:pointer;border:1px solid var(--stroke);border-radius:14px;padding:10px 12px;background:var(--glass);transition:.25s;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:0;text-align:center}
 .method:hover{border-color:var(--stroke-gd)}
@@ -366,6 +371,9 @@ body.sheet-open #home{transform:scale(.96);opacity:.5;filter:blur(2px)}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto}.reveal{opacity:1;transform:none}.hero .anim{opacity:1!important;transform:none!important}.sheet.enter,.sheet.leave{animation:none!important}body.sheet-open #home{transform:none;opacity:1;filter:none}}
 </style>
+<!-- Thème piloté depuis l'admin. Placé après les styles inline pour les surcharger. -->
+<link rel="stylesheet" href="/api/theme.css">
+<script src="/js/branding.js" defer></script>
 </head>
 <body>
 <div class="bg-mesh mesh"></div>
@@ -375,7 +383,7 @@ body.sheet-open #home{transform:scale(.96);opacity:.5;filter:blur(2px)}
 <header id="hdr">
   <div class="wrap nav">
     <a href="#top" class="brand" aria-label="Pluri Party – Accueil">
-      <svg class="mark" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><g stroke="var(--gold)" stroke-width="2.5" stroke-linecap="round"><line x1="50" y1="6" x2="50" y2="18"/><line x1="50" y1="82" x2="50" y2="94"/><line x1="6" y1="50" x2="18" y2="50"/><line x1="82" y1="50" x2="94" y2="50"/><line x1="19" y1="19" x2="28" y2="28"/><line x1="72" y1="72" x2="81" y2="81"/><line x1="81" y1="19" x2="72" y2="28"/><line x1="28" y1="72" x2="19" y2="81"/></g><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg>
+      <img class="mark" data-brand-logo alt="" style="display:none;object-fit:contain"><svg class="mark" data-brand-mark viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><g stroke="var(--gold)" stroke-width="2.5" stroke-linecap="round"><line x1="50" y1="6" x2="50" y2="18"/><line x1="50" y1="82" x2="50" y2="94"/><line x1="6" y1="50" x2="18" y2="50"/><line x1="82" y1="50" x2="94" y2="50"/><line x1="19" y1="19" x2="28" y2="28"/><line x1="72" y1="72" x2="81" y2="81"/><line x1="81" y1="19" x2="72" y2="28"/><line x1="28" y1="72" x2="19" y2="81"/></g><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg>
       <span class="txt"><b data-cfg="eventName">Pluri Party</b><span>Aplahoué · 2026</span></span>
     </a>
     <div class="nav-cta">
@@ -448,7 +456,7 @@ body.sheet-open #home{transform:scale(.96);opacity:.5;filter:blur(2px)}
   <div class="wrap">
     <div class="foot-grid">
       <div class="foot-brand">
-        <a href="#top" class="brand"><svg class="mark" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg><span class="txt"><b data-cfg="eventName">Pluri Party</b><span>2026</span></span></a>
+        <a href="#top" class="brand"><img class="mark" data-brand-logo alt="" style="display:none;object-fit:contain"><svg class="mark" data-brand-mark viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg><span class="txt"><b data-cfg="eventName">Pluri Party</b><span>2026</span></span></a>
         <p>La Fête de la Jeunesse d'Aplahoué – un rendez-vous annuel pour célébrer, échanger et grandir ensemble.</p>
       </div>
       <div class="foot-col">
@@ -540,22 +548,32 @@ body.sheet-open #home{transform:scale(.96);opacity:.5;filter:blur(2px)}
         <!-- ÉTAPE 3 – LANCEMENT DU PAIEMENT -->
         <div class="pane" data-pane="3">
           <div class="amount-box"><span class="lbl">Montant à payer</span><span class="amt" data-amount>5 000 <small>XOF</small></span></div>
-          <div class="method-tabs" role="tablist">
-            <button class="method sel" data-method="moov" role="tab">
-              <span class="logo moov"><img src="/moov.png" alt="Moov Money" onerror="this.style.display='none';this.parentElement.textContent='MOOV'"></span>
-              <span class="mt"><b>Moov Money</b><span>Moov</span></span>
-            </button>
-            <button class="method" data-method="mtn_open" role="tab">
-              <span class="logo mtn"><img src="/MTN.svg" alt="MTN MoMo" onerror="this.style.display='none';this.parentElement.textContent='MTN'"></span>
-              <span class="mt"><b>MTN MoMo</b><span>MTN</span></span>
-            </button>
-            <button class="method" data-method="sbin" role="tab">
-              <span class="logo sbin"><img src="/celtiiscash.png" alt="Celtiis" onerror="this.style.display='none';this.parentElement.textContent='CELT'"></span>
-              <span class="mt"><b>Celtiis</b><span>Celtiis</span></span>
-            </button>
+
+          <div class="f" style="margin-bottom:16px">
+            <label for="pays">Pays de ton numéro</label>
+            <span class="desc">Sert à rattacher ton numéro. Tu pourras payer par carte bancaire depuis n'importe quel pays.</span>
+            <select class="in" id="pays">
+              <option value="BJ">Bénin (+229)</option>
+              <option value="TG">Togo (+228)</option>
+              <option value="CI">Côte d'Ivoire (+225)</option>
+              <option value="SN">Sénégal (+221)</option>
+              <option value="NE">Niger (+227)</option>
+              <option value="BF">Burkina Faso (+226)</option>
+              <option value="ML">Mali (+223)</option>
+              <option value="GN">Guinée (+224)</option>
+            </select>
           </div>
-          <p class="note" style="margin-bottom:20px"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.94.36 1.86.7 2.74a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.34-1.34a2 2 0 0 1 2.11-.45c.88.34 1.8.57 2.74.7A2 2 0 0 1 22 16.92z"/></svg> Clique sur <b>Lancer le paiement</b>. Tu recevras une notification ou un USSD sur ton téléphone pour confirmer la transaction.</p>
-          <div class="reg-actions"><button class="btn btn-back" data-back="3">← Retour</button><button class="btn btn-gold" id="launchBtn">Lancer le paiement →</button></div>
+
+          <div class="pay-brands">
+            <span class="pb"><img src="/moov.png" alt="" onerror="this.remove()"> Moov</span>
+            <span class="pb"><img src="/MTN.svg" alt="" onerror="this.remove()"> MTN</span>
+            <span class="pb"><img src="/celtiiscash.png" alt="" onerror="this.remove()"> Celtiis</span>
+            <span class="pb"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> Carte bancaire</span>
+          </div>
+
+          <p class="note" style="margin-bottom:20px"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Tu vas être redirigé vers la <b>page de paiement sécurisée</b>. Choisis-y ton moyen de paiement (Mobile Money ou carte), puis tu reviendras automatiquement ici avec ton code d'accès.</p>
+
+          <div class="reg-actions"><button class="btn btn-back" data-back="3">← Retour</button><button class="btn btn-gold" id="launchBtn">Payer en toute sécurité →</button></div>
         </div>
       </div>
 
@@ -616,7 +634,7 @@ body.sheet-open #home{transform:scale(.96);opacity:.5;filter:blur(2px)}
 <div id="tweaks">
   <div class="tk-head"><b>Tweaks</b><button id="tkClose" aria-label="Fermer"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
   <div class="tk-body">
-    <div class="tk-sec"><label>Thème de couleur</label><div class="tk-swatches" id="tkTheme"><button class="tk-sw" data-theme="emeraude"><span class="dots"><i style="background:#1f9162"></i><i style="background:#e7bb46"></i><i style="background:#f6f1e6"></i></span><span>Émeraude</span></button><button class="tk-sw" data-theme="indigo"><span class="dots"><i style="background:#5b6bd6"></i><i style="background:#f0c64f"></i><i style="background:#f6f1e6"></i></span><span>Indigo</span></button><button class="tk-sw" data-theme="terre"><span class="dots"><i style="background:#c2703a"></i><i style="background:#e8b563"></i><i style="background:#f6f1e6"></i></span><span>Terre</span></button></div></div>
+    <div class="tk-sec"><label>Thème de couleur</label><p style="font-size:.74rem;color:var(--cream-52);line-height:1.5;margin:0">Les couleurs se règlent désormais depuis <b>Admin → Réglages → Apparence</b>, et s'appliquent à tout le site.</p></div>
     <div class="tk-sec"><label>Police des titres</label><div class="tk-segs" id="tkFont"><button class="tk-seg" data-display="fraunces">Fraunces</button><button class="tk-seg" data-display="playfair">Playfair</button><button class="tk-seg" data-display="bricolage">Bricolage</button></div></div>
   </div>
 </div>
@@ -661,7 +679,6 @@ function applyConfig() {
     el.textContent = `Participer – ${Number(CFG.amount).toLocaleString('fr-FR')} ${CFG.currency}`;
   });
   renderChiefs(); renderSponsors();
-  applyMethod(state.method);
 }
 
 function escHtml(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -678,9 +695,8 @@ function renderSponsors(){
 }
 
 function applyTweaks(){
-  document.documentElement.dataset.theme=TWEAKS.theme;
+  // `theme` n'est plus appliqué ici : les couleurs viennent de /api/theme.css.
   document.documentElement.dataset.display=TWEAKS.display;
-  document.querySelectorAll('#tkTheme .tk-sw').forEach(b=>b.classList.toggle('sel',b.dataset.theme===TWEAKS.theme));
   document.querySelectorAll('#tkFont .tk-seg').forEach(b=>b.classList.toggle('sel',b.dataset.display===TWEAKS.display));
 }
 applyTweaks();
@@ -778,7 +794,6 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&activeSheet)closeSheet();});
    STEPPER
    ============================================================ */
 let step=1;
-const state={method:'moov'};
 const panes=document.querySelectorAll('.pane');
 const nodes=document.querySelectorAll('.p-node');
 const bar1=document.getElementById('bar1'),bar2=document.getElementById('bar2');
@@ -815,12 +830,6 @@ document.querySelectorAll('[data-next]').forEach(b=>b.addEventListener('click',(
   step=from+1;paint();
 }));
 document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>{step=+b.dataset.back-1;paint();}));
-
-function applyMethod(m){
-  state.method=m;
-  document.querySelectorAll('.method').forEach(x=>x.classList.toggle('sel',x.dataset.method===m));
-}
-document.querySelectorAll('.method').forEach(m=>m.addEventListener('click',()=>applyMethod(m.dataset.method)));
 
 /* ============================================================
    PHOTO DU PARTICIPANT – compression canvas
@@ -897,45 +906,61 @@ async function launchPayment(){
   const nom=document.getElementById('nom').value.trim();
   const telephone=document.getElementById('tel').value.trim();
   const email=document.getElementById('email').value.trim();
-  const mode=state.method; // 'moov' ou 'mtn_open' selon le bouton sélectionné
+  const pays=document.getElementById('pays').value;
   const launchBtn=document.getElementById('launchBtn');
-  launchBtn.disabled=true;launchBtn.textContent='Lancement…';
+  launchBtn.disabled=true;launchBtn.textContent='Redirection…';
 
   try{
-    // 1. Créer la transaction
+    // Le serveur crée la transaction et renvoie l'URL de la page de paiement
+    // hébergée. C'est elle qui propose Mobile Money ET carte bancaire, donc
+    // qui ouvre l'inscription à tous les pays.
     const createRes=await fetch('/api/payments/create',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({nom,telephone,email,participant_photo_base64:photoDataURL})
+      body:JSON.stringify({nom,telephone,email,pays,participant_photo_base64:photoDataURL})
     });
     const createData=await createRes.json();
     if(!createRes.ok)throw new Error(createData.error||'Création impossible.');
+    if(!createData.checkout_url)throw new Error("La page de paiement n'a pas pu être ouverte. Réessaie.");
 
-    const participantId=createData.participant.id;
-    const transactionId=String(createData.transaction.id);
+    // Repère de secours : si le retour automatique échoue (onglet fermé,
+    // réseau coupé), la page d'accueil pourra reprendre la vérification.
+    try{
+      localStorage.setItem('adja_pending_payment',JSON.stringify({
+        participantId:createData.participant.id,
+        transactionId:String(createData.transaction.id),
+        at:Date.now()
+      }));
+    }catch(e){}
 
-    // 2. Envoyer la demande Mobile Money
-    const sendRes=await fetch('/api/payments/send',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({participant_id:participantId,transaction_id:transactionId,mode})
-    });
-    const sendData=await sendRes.json();
-    if(!sendRes.ok)throw new Error(sendData.error||'Lancement du paiement impossible.');
-
-    // 3. Afficher l'écran d'attente et démarrer le polling
-    pollState={participantId,transactionId};
-    pollAttempts=0;
-    showWaitingScreen();
-    pollPaymentStatus();
-    pollTimer=setInterval(()=>{
-      pollAttempts++;
-      if(pollAttempts>=MAX_POLL){stopPolling();setStatus('Délai dépassé. Appuie sur Vérifier manuellement.');return;}
-      pollPaymentStatus();
-    },6000);
-
+    window.location.href=createData.checkout_url;
   }catch(e){
-    launchBtn.disabled=false;launchBtn.textContent='Lancer le paiement →';
+    launchBtn.disabled=false;launchBtn.textContent='Payer en toute sécurité →';
     alert(e.message);
   }
+}
+
+// Reprise : si l'utilisateur revient sur l'accueil sans passer par la page de
+// retour (fermeture d'onglet), on rattrape le paiement en attente.
+async function resumePendingPayment(){
+  let pending=null;
+  try{pending=JSON.parse(localStorage.getItem('adja_pending_payment')||'null');}catch(e){}
+  if(!pending||!pending.participantId)return;
+
+  // Au-delà de 2 h le repère n'a plus de sens.
+  if(Date.now()-(pending.at||0)>2*60*60*1000){localStorage.removeItem('adja_pending_payment');return;}
+
+  try{
+    const res=await fetch('/api/payments/status',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({participant_id:pending.participantId})
+    });
+    const data=await res.json();
+    if(data.status==='approved'&&data.participant){
+      localStorage.removeItem('adja_pending_payment');
+      openSheet('sheet-participer');
+      showConfirm(data.participant);
+    }
+  }catch(e){/* silencieux : simple tentative de rattrapage */}
 }
 
 function setStatus(msg){const el=document.getElementById('pollStatus');if(el)el.textContent=msg;}
@@ -1032,13 +1057,13 @@ function resetForm(){
   const tel=document.getElementById('tel');if(tel)tel.value='';
   photoDataURL='';photoFileInput.value='';
   photoPreview.classList.remove('show');photoDrop.style.display='';
-  applyMethod('moov');
+  const paysSel=document.getElementById('pays');if(paysSel)paysSel.value='BJ';
   document.getElementById('confirm').classList.remove('show');
   document.getElementById('waitingScreen').style.display='none';
   document.querySelector('#sheet-participer .reg-body').style.display='';
   document.getElementById('progress').style.display='';
   document.getElementById('reg-header').style.display='';
-  const lb=document.getElementById('launchBtn');if(lb){lb.disabled=false;lb.textContent='Lancer le paiement →';}
+  const lb=document.getElementById('launchBtn');if(lb){lb.disabled=false;lb.textContent='Payer en toute sécurité →';}
   pollState={participantId:null,transactionId:null};
   step=1;paint();
 }
@@ -1063,12 +1088,11 @@ function setTweak(edits){Object.assign(TWEAKS,edits);applyTweaks();try{window.pa
 addEventListener('message',e=>{const t=e.data&&e.data.type;if(t==='__activate_edit_mode')tkPanel.classList.add('show');if(t==='__deactivate_edit_mode')tkPanel.classList.remove('show');});
 window.parent.postMessage({type:'__edit_mode_available'},'*');
 document.getElementById('tkClose').addEventListener('click',()=>{tkPanel.classList.remove('show');try{window.parent.postMessage({type:'__edit_mode_dismissed'},'*');}catch(e){}});
-document.querySelectorAll('#tkTheme .tk-sw').forEach(b=>b.addEventListener('click',()=>setTweak({theme:b.dataset.theme})));
 document.querySelectorAll('#tkFont .tk-seg').forEach(b=>b.addEventListener('click',()=>setTweak({display:b.dataset.display})));
 
 /* Init */
-applyMethod('moov');
 loadConfig();
+resumePendingPayment();
 </script>
 </body>
 </html>

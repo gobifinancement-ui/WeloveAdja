@@ -15,6 +15,7 @@ const DATA_DIR = path.join(ROOT, "data");
 const UPLOADS_DIR = path.join(ROOT, "uploads", "proofs");
 const PARTICIPANT_PHOTOS_DIR = path.join(ROOT, "uploads", "participants");
 const QRCODES_DIR = path.join(ROOT, "uploads", "qrcodes");
+const BRANDING_DIR = path.join(ROOT, "uploads", "branding");
 const DB_PATH = path.join(DATA_DIR, "feja.sqlite");
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -61,7 +62,57 @@ const DEFAULT_SETTINGS = {
   chiefs_json: "[]",
   sponsors_json: "[]",
   event_items_json: "[]",
+  logo_url: "",
+  theme_preset: "indigo",
+  theme_custom_json: "{}",
 };
+
+// Palettes proposees dans l'admin. Chaque preset ne definit que les couleurs
+// "sources" : les variantes derivees (transparences, degrades) sont calculees
+// dans buildThemeCss pour rester coherentes quel que soit le choix.
+const THEME_PRESETS = {
+  // Palette historique du site (ex-`html[data-theme="indigo"]`) : c'est le
+  // rendu actuel, donc le defaut, pour que rien ne change sans decision.
+  indigo: {
+    label: "Indigo & Or",
+    colors: { bg: "#0a0e2a", bg2: "#121845", green: "#5b6bd6", greenBr: "#8a96f0", gold: "#f0c64f", goldLt: "#ffe6a0", goldDp: "#c2942f", cream: "#f6f1e6", red: "#e08a6a" },
+  },
+  emeraude: {
+    label: "Émeraude & Or",
+    colors: { bg: "#05201a", bg2: "#082b22", green: "#1f9162", greenBr: "#3fc189", gold: "#e7bb46", goldLt: "#f7df9b", goldDp: "#b88a28", cream: "#f6f1e6", red: "#e08a6a" },
+  },
+  // Ex-`html[data-theme="terre"]`, conservee pour ne perdre aucune option.
+  terre: {
+    label: "Terre & Ambre",
+    colors: { bg: "#241510", bg2: "#34201a", green: "#c2703a", greenBr: "#e0925a", gold: "#e8b563", goldLt: "#f7d8a0", goldDp: "#b9842f", cream: "#f6f1e6", red: "#e08a6a" },
+  },
+  bordeaux: {
+    label: "Bordeaux & Or",
+    colors: { bg: "#20060c", bg2: "#2e0a13", green: "#9b2242", greenBr: "#c94f6d", gold: "#e7bb46", goldLt: "#f7df9b", goldDp: "#b88a28", cream: "#f7ece9", red: "#e08a6a" },
+  },
+  nuit: {
+    label: "Bleu nuit & Argent",
+    colors: { bg: "#060f21", bg2: "#0b1832", green: "#2c5cc5", greenBr: "#5b8cf0", gold: "#c9d6e8", goldLt: "#eef4ff", goldDp: "#8fa3bf", cream: "#eef2f8", red: "#e8836a" },
+  },
+  violet: {
+    label: "Violet & Rose",
+    colors: { bg: "#150726", bg2: "#210d38", green: "#7b3fd4", greenBr: "#a874f5", gold: "#f08fc0", goldLt: "#ffc2de", goldDp: "#c05e91", cream: "#f4ecfa", red: "#ef7d8d" },
+  },
+  onyx: {
+    label: "Noir & Or",
+    colors: { bg: "#0b0b0c", bg2: "#161617", green: "#4a4a4d", greenBr: "#7c7c82", gold: "#e7bb46", goldLt: "#f7df9b", goldDp: "#b88a28", cream: "#f4f2ee", red: "#e08a6a" },
+  },
+  terracotta: {
+    label: "Terracotta & Sable",
+    colors: { bg: "#24100a", bg2: "#361a10", green: "#c05a2e", greenBr: "#e58150", gold: "#e9c07a", goldLt: "#fbe3b8", goldDp: "#b58d46", cream: "#faf0e4", red: "#e0705a" },
+  },
+  ocean: {
+    label: "Océan & Turquoise",
+    colors: { bg: "#04191f", bg2: "#07262f", green: "#0e7c86", greenBr: "#2bb3bf", gold: "#5fd6c4", goldLt: "#a8f0e5", goldDp: "#3a9e90", cream: "#e9f7f6", red: "#e88a72" },
+  },
+};
+
+const DEFAULT_THEME_PRESET = "indigo";
 
 let db;
 const sessions = new Map();
@@ -162,6 +213,7 @@ function ensureParticipantColumns() {
     ["fedapay_reference", "TEXT"],
     ["fedapay_status", "TEXT"],
     ["qr_code_url", "TEXT"],
+    ["scan_device_id", "TEXT"],
   ];
 
   requiredColumns.forEach(([name, definition]) => {
@@ -194,6 +246,7 @@ async function initDatabase() {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   fs.mkdirSync(PARTICIPANT_PHOTOS_DIR, { recursive: true });
   fs.mkdirSync(QRCODES_DIR, { recursive: true });
+  fs.mkdirSync(BRANDING_DIR, { recursive: true });
 
   const SQL = await initSqlJs();
   const existing = fs.existsSync(DB_PATH) ? fs.readFileSync(DB_PATH) : null;
@@ -346,6 +399,74 @@ function requireAdmin(request) {
   return true;
 }
 
+function hexToRgb(hex) {
+  const clean = String(hex || "").trim().replace(/^#/, "");
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) {
+    return null;
+  }
+
+  return {
+    r: parseInt(full.slice(0, 2), 16),
+    g: parseInt(full.slice(2, 4), 16),
+    b: parseInt(full.slice(4, 6), 16),
+  };
+}
+
+function rgba(hex, alpha) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return `rgba(255,255,255,${alpha})`;
+  return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+}
+
+// Le theme effectif = preset choisi, surcharge par les couleurs personnalisees.
+function resolveTheme(settings = getSettings()) {
+  const presetKey = THEME_PRESETS[settings.theme_preset] ? settings.theme_preset : DEFAULT_THEME_PRESET;
+  const preset = THEME_PRESETS[presetKey];
+
+  let custom = {};
+  try {
+    const parsed = JSON.parse(settings.theme_custom_json || "{}");
+    if (parsed && typeof parsed === "object") custom = parsed;
+  } catch {}
+
+  const colors = { ...preset.colors };
+  Object.keys(preset.colors).forEach((key) => {
+    if (hexToRgb(custom[key])) {
+      colors[key] = String(custom[key]).trim();
+    }
+  });
+
+  return { preset: presetKey, label: preset.label, colors };
+}
+
+// Feuille servie a toutes les pages : elle surcharge les :root inline des HTML.
+function buildThemeCss(settings = getSettings()) {
+  const { colors } = resolveTheme(settings);
+  const c = colors;
+
+  return `:root{
+  --bg:${c.bg};--bg-2:${c.bg2};
+  --green:${c.green};--green-br:${c.greenBr};
+  --gold:${c.gold};--gold-lt:${c.goldLt};--gold-dp:${c.goldDp};
+  --cream:${c.cream};
+  --cream-72:${rgba(c.cream, 0.74)};--cream-52:${rgba(c.cream, 0.52)};--cream-32:${rgba(c.cream, 0.32)};
+  --glass:rgba(255,255,255,.05);--glass-2:rgba(255,255,255,.08);
+  --stroke:${rgba(c.cream, 0.12)};--stroke-gd:${rgba(c.gold, 0.36)};
+  --red:${c.red};
+  --surface:${rgba(c.cream, 0.08)};--surface-strong:${rgba(c.cream, 0.12)};--surface-border:${rgba(c.gold, 0.12)};
+  --text:${c.cream};--muted:${rgba(c.cream, 0.85)};--sand:${c.goldLt};--bg-soft:${c.bg2};
+}
+body{background:
+  radial-gradient(circle at top left, ${rgba(c.green, 0.22)}, transparent 30%),
+  radial-gradient(circle at top right, ${rgba(c.gold, 0.18)}, transparent 24%),
+  linear-gradient(180deg, ${c.bg} 0%, ${c.bg2} 45%, ${c.bg} 100%);
+  background-attachment:fixed;
+}
+`;
+}
+
 function publicSettings(settings = getSettings()) {
   let chiefs = [], sponsors = [], eventItems = [];
   try { chiefs = JSON.parse(settings.chiefs_json || "[]"); } catch {}
@@ -363,6 +484,8 @@ function publicSettings(settings = getSettings()) {
     mtnNumber:   settings.mtn_numero || "",
     waLink:      settings.wa_link || "",
     email:       settings.vendeur_email || "",
+    logoUrl:     settings.logo_url || "",
+    theme:       resolveTheme(settings),
     chiefs,
     sponsors,
     eventItems,
@@ -493,6 +616,44 @@ function saveReceiptProof(dataUrl, participantId) {
 
 function saveParticipantPhoto(dataUrl, participantId) {
   return saveImageUpload(dataUrl, PARTICIPANT_PHOTOS_DIR, participantId, "Photo du participant");
+}
+
+// Le logo accepte aussi le SVG, contrairement aux autres uploads. Le nom de
+// fichier est stable, donc on suffixe une version pour casser les caches.
+function saveBrandingLogo(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|jpg|png|webp|svg\+xml));base64,(.+)$/);
+  if (!match) {
+    throw new Error("Logo invalide. Formats acceptes : PNG, JPG, WEBP, SVG.");
+  }
+
+  const mime = match[1];
+  const extension = mime.includes("svg") ? "svg" : mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+  const bytes = Buffer.from(match[2], "base64");
+
+  if (!bytes.length || bytes.length > MAX_BODY_BYTES) {
+    throw new Error("Logo trop volumineux (5 Mo maximum).");
+  }
+
+  fs.mkdirSync(BRANDING_DIR, { recursive: true });
+  // On purge les anciennes extensions pour ne pas laisser de logo orphelin.
+  ["png", "jpg", "webp", "svg"].forEach((ext) => {
+    const stale = path.join(BRANDING_DIR, `logo.${ext}`);
+    if (ext !== extension && fs.existsSync(stale)) {
+      try { fs.unlinkSync(stale); } catch {}
+    }
+  });
+
+  fs.writeFileSync(path.join(BRANDING_DIR, `logo.${extension}`), bytes);
+  return `/uploads/branding/logo.${extension}?v=${Date.now()}`;
+}
+
+function removeBrandingLogo() {
+  ["png", "jpg", "webp", "svg"].forEach((ext) => {
+    const target = path.join(BRANDING_DIR, `logo.${ext}`);
+    if (fs.existsSync(target)) {
+      try { fs.unlinkSync(target); } catch {}
+    }
+  });
 }
 
 async function saveQrCode(code, participantId) {
@@ -645,6 +806,16 @@ function splitFullName(fullName) {
   };
 }
 
+// Pays acceptes pour le numero du client. La page de paiement hebergee gere
+// le reste du monde via la carte bancaire, mais FedaPay veut un pays valide
+// pour rattacher le numero de telephone.
+const SUPPORTED_PHONE_COUNTRIES = new Set(["BJ", "TG", "CI", "SN", "NE", "BF", "ML", "GN"]);
+
+function resolvePhoneCountry(value) {
+  const code = String(value || "").trim().toUpperCase();
+  return SUPPORTED_PHONE_COUNTRIES.has(code) ? code : "BJ";
+}
+
 async function createPaymentCustomer(settings, participant) {
   const names = splitFullName(participant.nom);
   const payload = await fedapayRequest(settings, "POST", "/customers", {
@@ -653,7 +824,7 @@ async function createPaymentCustomer(settings, participant) {
     email: participant.email,
     phone_number: {
       number: normalizePhoneNumber(participant.telephone),
-      country: "BJ",
+      country: resolvePhoneCountry(participant.pays),
     },
   });
 
@@ -679,8 +850,11 @@ async function createPaymentTransaction(settings, participant, customer) {
     },
   };
 
+  // callback_url = page de RETOUR du client apres paiement (pas le webhook :
+  // celui-ci se configure dans le tableau de bord FedaPay et arrive sur
+  // /api/fedapay/webhook). On y renvoie l'id participant pour finaliser.
   if (callbackBase) {
-    body.callback_url = `${callbackBase.replace(/\/+$/, "")}/api/fedapay/webhook`;
+    body.callback_url = `${callbackBase.replace(/\/+$/, "")}/retour-paiement.html?p=${encodeURIComponent(participant.id)}`;
   }
 
   const payload = await fedapayRequest(settings, "POST", "/transactions", body);
@@ -738,41 +912,24 @@ function updateParticipantPaymentStatus(participantId, transaction) {
   persistDatabase();
 }
 
+// FedaPay renvoie ici le jeton ET l'URL de sa page de paiement hebergee.
+// C'est cette page qui ouvre tous les pays : elle propose la carte bancaire
+// (Visa/Mastercard, international) en plus des Mobile Money regionaux, et
+// s'adapte au pays du client. On redirige donc l'utilisateur dessus.
 async function createPaymentToken(settings, transactionId) {
   const payload = await fedapayRequest(settings, "POST", `/transactions/${encodeURIComponent(transactionId)}/token`);
-  const tokenObject = payload.token || payload.data || payload;
+  const tokenObject = payload.token ? payload : payload.data || payload;
   const token = tokenObject.token || tokenObject.value || tokenObject.id;
+  const url = payload.url || tokenObject.url || "";
 
   if (!token) {
     throw new Error("Token de paiement non genere.");
   }
 
-  return token;
-}
-
-async function sendDirectMobileMoneyPayment(settings, participant, mode) {
-  const allowedModes = new Set(["moov", "mtn_open", "sbin"]);
-  if (!allowedModes.has(mode)) {
-    throw new Error("Methode de paiement non disponible.");
-  }
-
-  const token = await createPaymentToken(settings, participant.fedapay_transaction_id);
-  const payload = await fedapayRequest(settings, "POST", `/transactions/${encodeURIComponent(mode)}`, {
+  return {
     token,
-    phone_number: {
-      number: normalizePhoneNumber(participant.telephone),
-      country: "BJ",
-    },
-  });
-  const intent = Array.isArray(payload) ? payload[0] : payload.transaction || payload.data || payload;
-
-  updateParticipantPaymentStatus(participant.id, {
-    status: intent.status || "pending",
-    reference: intent.reference || participant.fedapay_reference,
-    receipt_url: intent.receipt_url || null,
-  });
-
-  return intent;
+    url: url || `https://${getPaymentCredentials(settings).environment === "live" ? "process" : "sandbox-process"}.fedapay.com/${token}`,
+  };
 }
 
 function getPublicBaseUrl(settings) {
@@ -795,6 +952,7 @@ function buildPendingParticipant(body, settings) {
     telephone,
     whatsapp: telephone,
     email,
+    pays: resolvePhoneCountry(body.pays || body.country),
     montant: formatMontant(amount),
     montant_valeur: amount,
     paiement: "paiement_securise",
@@ -1076,6 +1234,58 @@ async function handleApi(request, response, url) {
       return;
     }
 
+    // Manifests PWA generes a la volee : l'icone de l'app installee suit le
+    // logo choisi dans l'admin, et le nom suit celui de l'evenement.
+    if (url.pathname.startsWith("/api/manifest/") && request.method === "GET") {
+      const settings = getSettings();
+      const theme = resolveTheme(settings);
+      const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
+      const icon = settings.logo_url || "/logo.png";
+      const isScan = url.pathname === "/api/manifest/scan.webmanifest";
+
+      // Le logo est fourni par l'organisateur : on ignore ses dimensions et son
+      // format reels. On declare donc sizes:"any" (le navigateur redimensionne,
+      // et "any" satisfait les criteres d'installation) plutot que d'annoncer un
+      // 192x192 mensonger, et on deduit le type de l'extension.
+      const iconExtension = (icon.split("?")[0].match(/\.(\w+)$/) || [])[1] || "png";
+      const iconType = MIME_TYPES[`.${iconExtension.toLowerCase()}`] || "image/png";
+
+      response.writeHead(200, {
+        "Content-Type": "application/manifest+json; charset=utf-8",
+        "Cache-Control": "no-cache",
+      });
+      response.end(
+        JSON.stringify({
+          name: isScan ? `${eventName} — Scan` : `${eventName} — Admin`,
+          short_name: isScan ? "Scan" : "Admin",
+          description: isScan
+            ? "Controle des QR codes a l'entree, meme sans reseau."
+            : "Administration de l'evenement.",
+          start_url: isScan ? "/scan.html" : "/admin.html",
+          scope: "/",
+          display: "standalone",
+          orientation: isScan ? "portrait" : "any",
+          background_color: theme.colors.bg,
+          theme_color: theme.colors.bg,
+          // Pas de purpose "maskable" : un logo quelconque n'a pas la marge de
+          // securite requise et se ferait rogner par le systeme.
+          icons: [{ src: icon, sizes: "any", type: iconType, purpose: "any" }],
+        }),
+      );
+      return;
+    }
+
+    // Feuille de style du theme, liee dans le <head> de chaque page : les
+    // couleurs sont donc appliquees au premier rendu, sans clignotement.
+    if (url.pathname === "/api/theme.css" && request.method === "GET") {
+      response.writeHead(200, {
+        "Content-Type": "text/css; charset=utf-8",
+        "Cache-Control": "no-cache",
+      });
+      response.end(buildThemeCss());
+      return;
+    }
+
     if (url.pathname === "/api/public-stats" && request.method === "GET") {
       sendJson(response, 200, { participants: getStats().total });
       return;
@@ -1216,6 +1426,11 @@ async function handleApi(request, response, url) {
 
       insertParticipant(participant);
 
+      // Redirection totale : on renvoie l'URL de la page FedaPay hebergee,
+      // le navigateur y envoie le client et FedaPay le ramene sur
+      // /retour-paiement.html une fois le paiement termine.
+      const checkout = await createPaymentToken(settings, transactionId);
+
       sendJson(response, 201, {
         participant: {
           id: participant.id,
@@ -1230,37 +1445,7 @@ async function handleApi(request, response, url) {
           reference: participant.fedapay_reference,
           status: participant.fedapay_status,
         },
-      });
-      return;
-    }
-
-    if (url.pathname === "/api/payments/send" && request.method === "POST") {
-      const body = await parseJsonBody(request);
-      const settings = getSettings();
-      const participantId = String(body.participant_id || "").trim();
-      const fedapayTransactionId = String(body.fedapay_transaction_id || body.transaction_id || "").trim();
-      const mode = String(body.mode || "").trim();
-
-      if (!participantId || !fedapayTransactionId || !mode) {
-        sendJson(response, 400, { error: "Participant, transaction et methode de paiement obligatoires." });
-        return;
-      }
-
-      const participant = getParticipantById(participantId);
-      if (!participant) {
-        sendJson(response, 404, { error: "Participant introuvable." });
-        return;
-      }
-
-      if (String(participant.fedapay_transaction_id || "") !== fedapayTransactionId) {
-        sendJson(response, 400, { error: "Transaction non associee a ce participant." });
-        return;
-      }
-
-      const intent = await sendDirectMobileMoneyPayment(settings, participant, mode);
-      sendJson(response, 200, {
-        status: intent.status || "pending",
-        reference: intent.reference || participant.fedapay_reference,
+        checkout_url: checkout.url,
       });
       return;
     }
@@ -1269,16 +1454,25 @@ async function handleApi(request, response, url) {
       const body = await parseJsonBody(request);
       const settings = getSettings();
       const participantId = String(body.participant_id || "").trim();
-      const fedapayTransactionId = String(body.fedapay_transaction_id || body.transaction_id || "").trim();
+      const requestedTransactionId = String(body.fedapay_transaction_id || body.transaction_id || "").trim();
 
-      if (!participantId || !fedapayTransactionId) {
-        sendJson(response, 400, { error: "Participant et transaction de paiement obligatoires." });
+      if (!participantId) {
+        sendJson(response, 400, { error: "Participant obligatoire." });
         return;
       }
 
       const participant = getParticipantById(participantId);
       if (!participant) {
         sendJson(response, 404, { error: "Participant introuvable." });
+        return;
+      }
+
+      // Au retour de FedaPay on ne dispose que de l'id participant : on
+      // retombe alors sur la transaction deja enregistree a l'inscription.
+      const fedapayTransactionId = requestedTransactionId || String(participant.fedapay_transaction_id || "");
+
+      if (!fedapayTransactionId) {
+        sendJson(response, 400, { error: "Aucune transaction associee a ce participant." });
         return;
       }
 
@@ -1462,6 +1656,53 @@ async function handleApi(request, response, url) {
         return;
       }
 
+      if (url.pathname === "/api/admin/branding/logo" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const logoUrl = saveBrandingLogo(body.logo_base64);
+        saveSettings({ logo_url: logoUrl });
+        sendJson(response, 200, { logo_url: logoUrl });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/branding/logo" && request.method === "DELETE") {
+        removeBrandingLogo();
+        saveSettings({ logo_url: "" });
+        sendJson(response, 200, { logo_url: "" });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/theme" && request.method === "GET") {
+        sendJson(response, 200, {
+          current: resolveTheme(),
+          presets: Object.entries(THEME_PRESETS).map(([key, preset]) => ({
+            key,
+            label: preset.label,
+            colors: preset.colors,
+          })),
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/theme" && request.method === "PUT") {
+        const body = await parseJsonBody(request);
+        const preset = THEME_PRESETS[body.preset] ? body.preset : DEFAULT_THEME_PRESET;
+        const custom = {};
+
+        if (body.custom && typeof body.custom === "object") {
+          Object.entries(body.custom).forEach(([key, value]) => {
+            // On ne garde que des cles connues et des couleurs valides : le
+            // theme est reinjecte tel quel dans du CSS.
+            if (THEME_PRESETS[preset].colors[key] !== undefined && hexToRgb(value)) {
+              custom[key] = String(value).trim().toLowerCase();
+            }
+          });
+        }
+
+        saveSettings({ theme_preset: preset, theme_custom_json: JSON.stringify(custom) });
+        sendJson(response, 200, { current: resolveTheme() });
+        return;
+      }
+
       if (url.pathname === "/api/admin/validate-payment" && request.method === "POST") {
         const body = await parseJsonBody(request);
         const participant = getParticipantById(body.id);
@@ -1517,6 +1758,105 @@ async function handleApi(request, response, url) {
         run("UPDATE participants SET items_received = ? WHERE id = ?", [JSON.stringify(items), participantId]);
         persistDatabase();
         sendJson(response, 200, { participant_id: participantId, item_id: itemId, received, items_received: items });
+        return;
+      }
+
+      // Instantane telecharge par l'app de scan pour fonctionner sans reseau.
+      // On n'envoie que le strict necessaire a l'ecran de controle.
+      if (url.pathname === "/api/admin/scan/snapshot" && request.method === "GET") {
+        const settings = getSettings();
+        let eventItems = [];
+        try { eventItems = JSON.parse(settings.event_items_json || "[]"); } catch {}
+
+        const codes = getParticipants()
+          .filter((p) => p.statut_paiement === "Valide" && p.code_unique)
+          .map((p) => {
+            let itemsReceived = {};
+            try { itemsReceived = JSON.parse(p.items_received || "{}"); } catch {}
+            return {
+              code: String(p.code_unique).toUpperCase(),
+              id: p.id,
+              nom: p.nom,
+              montant: p.montant,
+              lieu_retrait: p.lieu_retrait,
+              used: p.statut_code === "utilise",
+              used_at: p.retrait_effectue_at || null,
+              items_received: itemsReceived,
+            };
+          });
+
+        sendJson(response, 200, {
+          version: Date.now(),
+          event_name: settings.event_name || DEFAULT_SETTINGS.event_name,
+          event_items: eventItems,
+          codes,
+        });
+        return;
+      }
+
+      // Remontee des scans faits hors-ligne. Chaque scan est idempotent : si le
+      // code a deja ete consomme AILLEURS (autre telephone), on ne l'ecrase pas
+      // et on renvoie "conflict" pour que l'agent soit alerte.
+      if (url.pathname === "/api/admin/scan/sync" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const scans = Array.isArray(body.scans) ? body.scans : [];
+        const deviceId = String(body.device_id || "").trim() || "inconnu";
+        const results = [];
+
+        for (const scan of scans) {
+          const code = String(scan.code || "").trim().toUpperCase();
+          const scannedAt = Number(scan.scanned_at) || Date.now();
+
+          if (!code) {
+            results.push({ code, status: "invalid" });
+            continue;
+          }
+
+          const participant = getParticipantByCode(code);
+
+          if (!participant || participant.statut_paiement !== "Valide") {
+            results.push({ code, status: "not_found" });
+            continue;
+          }
+
+          if (participant.statut_code === "utilise") {
+            const sameDevice = String(participant.scan_device_id || "") === deviceId;
+            results.push({
+              code,
+              status: sameDevice ? "applied" : "conflict",
+              nom: participant.nom,
+              used_at: participant.retrait_effectue_at || null,
+              used_by: participant.scan_device_id || null,
+            });
+            continue;
+          }
+
+          run(
+            "UPDATE participants SET statut_code = ?, retrait_effectue_at = ?, scan_device_id = ? WHERE id = ?",
+            ["utilise", scannedAt, deviceId, participant.id],
+          );
+
+          if (scan.items && typeof scan.items === "object") {
+            let items = {};
+            try { items = JSON.parse(participant.items_received || "{}"); } catch {}
+            Object.entries(scan.items).forEach(([itemId, received]) => {
+              items[String(itemId)] = received !== false;
+            });
+            run("UPDATE participants SET items_received = ? WHERE id = ?", [JSON.stringify(items), participant.id]);
+          }
+
+          results.push({ code, status: "applied", nom: participant.nom });
+        }
+
+        if (scans.length) {
+          persistDatabase();
+        }
+
+        sendJson(response, 200, {
+          synced: results.filter((r) => r.status === "applied").length,
+          conflicts: results.filter((r) => r.status === "conflict").length,
+          results,
+        });
         return;
       }
 

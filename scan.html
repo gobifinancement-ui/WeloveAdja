@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#05201a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Scan — Contrôle d'entrée</title>
+<link rel="manifest" href="/api/manifest/scan.webmanifest">
+<link rel="apple-touch-icon" href="/logo.png">
+<style>
+:root{
+  --bg:#05201a;--bg-2:#082b22;--green:#1f9162;--green-br:#3fc189;
+  --gold:#e7bb46;--gold-lt:#f7df9b;--gold-dp:#b88a28;--cream:#f6f1e6;
+  --cream-72:rgba(246,241,230,.74);--cream-52:rgba(246,241,230,.52);--cream-32:rgba(246,241,230,.32);
+  --glass:rgba(255,255,255,.05);--glass-2:rgba(255,255,255,.08);
+  --stroke:rgba(246,241,230,.12);--stroke-gd:rgba(231,187,70,.36);
+  --red:#e08a6a;
+  --body:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:"Fraunces",Georgia,serif;
+  --ok:#3fc189;--ko:#e0604a;--warn:#e7bb46;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;font-family:var(--body);color:var(--cream);background:var(--bg);
+  display:flex;flex-direction:column;overflow:hidden;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+button{font-family:inherit}
+
+/* ---------- Barre du haut ---------- */
+.top{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg-2);border-bottom:1px solid var(--stroke);flex:none}
+.top .logo{width:32px;height:32px;border-radius:9px;object-fit:contain;background:var(--glass);flex:none}
+.top .id{flex:1;min-width:0}
+.top .id b{display:block;font-size:.92rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .id span{display:block;font-size:.7rem;color:var(--cream-52)}
+.net{display:flex;align-items:center;gap:6px;font-size:.7rem;font-weight:700;padding:5px 9px;border-radius:999px;border:1px solid var(--stroke);white-space:nowrap}
+.net .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.net.off{color:var(--warn);border-color:rgba(231,187,70,.4)}
+.net.off .dot{background:var(--warn)}
+.icon-btn{background:var(--glass);border:1px solid var(--stroke);color:var(--cream);border-radius:10px;width:36px;height:36px;display:grid;place-items:center;cursor:pointer;flex:none}
+
+/* ---------- Bandeau d'état ---------- */
+.strip{display:flex;gap:8px;padding:8px 14px;background:rgba(0,0,0,.25);font-size:.68rem;color:var(--cream-52);flex:none;overflow-x:auto}
+.strip b{color:var(--cream);font-weight:800}
+.strip .chip{white-space:nowrap;padding:3px 8px;border-radius:999px;background:var(--glass);border:1px solid var(--stroke)}
+.strip .chip.alert{color:var(--warn);border-color:rgba(231,187,70,.4)}
+
+/* ---------- Caméra ---------- */
+.cam{position:relative;flex:1;min-height:0;background:#000;overflow:hidden}
+.cam video{width:100%;height:100%;object-fit:cover;display:block}
+.frame{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.frame .box{width:min(68vw,300px);aspect-ratio:1;border-radius:22px;box-shadow:0 0 0 9999px rgba(0,0,0,.45);position:relative}
+.frame .box::before,.frame .box::after{content:"";position:absolute;width:34px;height:34px;border:3px solid var(--gold)}
+.frame .box::before{top:-1px;left:-1px;border-right:0;border-bottom:0;border-radius:22px 0 0 0}
+.frame .box::after{bottom:-1px;right:-1px;border-left:0;border-top:0;border-radius:0 0 22px 0}
+.laser{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);animation:sweep 2.4s ease-in-out infinite}
+@keyframes sweep{0%,100%{top:6%}50%{top:94%}}
+.cam-msg{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:26px;background:var(--bg);z-index:3}
+.cam-msg.show{display:grid}
+.cam-msg p{color:var(--cream-72);font-size:.9rem;line-height:1.6;margin:10px 0 18px}
+.hint{position:absolute;left:0;right:0;bottom:12px;text-align:center;font-size:.78rem;color:var(--cream-72);text-shadow:0 1px 4px #000;pointer-events:none}
+.cam-tools{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:8px;z-index:2}
+.cam-tools button{background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:11px;width:42px;height:42px;display:grid;place-items:center;cursor:pointer}
+.cam-tools button.on{background:var(--gold);color:#1a1206;border-color:var(--gold)}
+
+/* ---------- Barre du bas ---------- */
+.bottom{flex:none;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--bg-2);border-top:1px solid var(--stroke);display:flex;gap:8px}
+.btn{flex:1;border:0;border-radius:13px;padding:13px;font-weight:800;font-size:.86rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
+.btn-gold{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#231a06}
+.btn-ghost{background:var(--glass);border:1px solid var(--stroke);color:var(--cream)}
+.btn:disabled{opacity:.5}
+
+/* ---------- Verdict ---------- */
+.sheet{position:fixed;inset:0;z-index:20;display:none;align-items:flex-end;background:rgba(0,0,0,.55);backdrop-filter:blur(3px)}
+.sheet.show{display:flex;animation:fade .18s both}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet .card{
+  width:100%;background:var(--bg-2);border-radius:26px 26px 0 0;border-top:4px solid var(--x,var(--ok));
+  padding:22px 18px calc(18px + env(safe-area-inset-bottom));animation:up .26s cubic-bezier(.32,.72,0,1) both;
+  max-height:88vh;overflow-y:auto;
+}
+@keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.verdict{display:flex;align-items:center;gap:13px;margin-bottom:6px}
+.verdict .ic{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:color-mix(in oklab,var(--x) 22%,transparent);color:var(--x);flex:none}
+.verdict h2{margin:0;font-family:var(--display);font-size:1.4rem;color:var(--x)}
+.verdict .sub{font-size:.78rem;color:var(--cream-52);margin-top:2px}
+.who{margin:14px 0;padding:14px;border-radius:16px;background:var(--glass);border:1px solid var(--stroke)}
+.who .nm{font-size:1.15rem;font-weight:800;margin-bottom:3px}
+.who .cd{font-family:ui-monospace,monospace;font-size:.82rem;color:var(--gold-lt);letter-spacing:.1em}
+.who .meta{font-size:.75rem;color:var(--cream-52);margin-top:7px;display:flex;flex-wrap:wrap;gap:4px 12px}
+.items{margin-top:14px}
+.items h4{margin:0 0 9px;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-52);font-weight:800}
+.item{display:flex;align-items:center;gap:11px;padding:12px;border-radius:13px;background:var(--glass);border:1px solid var(--stroke);margin-bottom:7px;cursor:pointer}
+.item input{width:21px;height:21px;accent-color:var(--green-br);flex:none;pointer-events:none}
+.item span{font-size:.88rem;font-weight:600}
+.item.done{border-color:rgba(63,193,137,.42);background:rgba(63,193,137,.1)}
+.warnbox{margin-top:12px;padding:12px;border-radius:13px;background:rgba(224,96,74,.12);border:1px solid rgba(224,96,74,.4);font-size:.8rem;line-height:1.55;color:#ffd9d0}
+.warnbox b{color:#fff}
+
+/* ---------- Réglages ---------- */
+.modal{position:fixed;inset:0;z-index:30;display:none;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);padding:18px;overflow-y:auto}
+.modal.show{display:block}
+.modal .box{max-width:440px;margin:36px auto;background:var(--bg-2);border:1px solid var(--stroke);border-radius:22px;padding:20px}
+.modal h3{margin:0 0 4px;font-family:var(--display);font-size:1.2rem}
+.modal .gsub{font-size:.76rem;color:var(--cream-52);margin:0 0 16px;line-height:1.55}
+.f{margin-bottom:14px}
+.f label{display:block;font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--cream-72);margin-bottom:5px}
+.f .desc{display:block;font-size:.72rem;color:var(--cream-32);margin-bottom:6px;text-transform:none;letter-spacing:0;font-weight:500}
+.in{width:100%;background:var(--glass);border:1px solid var(--stroke);color:var(--cream);border-radius:11px;padding:11px 13px;font-size:.9rem;font-family:inherit}
+.in:focus{outline:none;border-color:var(--stroke-gd)}
+.rows{font-size:.8rem;color:var(--cream-72)}
+.rows div{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--stroke)}
+.rows div:last-child{border-bottom:0}
+.rows b{color:var(--cream)}
+.danger{color:var(--ko);background:transparent;border:1px solid rgba(224,96,74,.4);border-radius:11px;padding:10px;width:100%;font-weight:700;cursor:pointer;margin-top:6px;font-size:.82rem}
+
+.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%) translateY(20px);background:rgba(0,0,0,.9);color:#fff;padding:10px 16px;border-radius:11px;font-size:.82rem;font-weight:600;opacity:0;transition:.25s;z-index:40;pointer-events:none;max-width:90vw;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.mono{font-family:ui-monospace,monospace}
+</style>
+<link rel="stylesheet" href="/api/theme.css">
+</head>
+<body>
+
+<div class="top">
+  <img class="logo" id="brandLogo" src="/logo.png" alt="" onerror="this.style.visibility='hidden'">
+  <div class="id">
+    <b id="evName">Contrôle d'entrée</b>
+    <span id="devLabel">Poste non nommé</span>
+  </div>
+  <div class="net" id="net"><span class="dot"></span><span id="netTxt">En ligne</span></div>
+  <button class="icon-btn" id="openSettings" aria-label="Réglages">
+    <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+</div>
+
+<div class="strip">
+  <span class="chip">Base locale <b id="sCodes">–</b></span>
+  <span class="chip" id="sQueueChip">À synchroniser <b id="sQueue">0</b></span>
+  <span class="chip">Scannés <b id="sDone">0</b></span>
+  <span class="chip" id="sSyncChip">Maj <b id="sSync">jamais</b></span>
+</div>
+
+<div class="cam">
+  <video id="video" playsinline muted></video>
+  <div class="frame"><div class="box"><span class="laser"></span></div></div>
+  <div class="cam-tools">
+    <button id="torchBtn" title="Lampe" style="display:none">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 2h6l-1 6 3 2-7 12 1-9H7l2-11z"/></svg>
+    </button>
+    <button id="typeBtn" title="Saisir le code">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
+    </button>
+  </div>
+  <div class="hint" id="hint">Place le QR code dans le cadre</div>
+  <div class="cam-msg" id="camMsg">
+    <div>
+      <svg width="42" height="42" fill="none" stroke="var(--warn)" stroke-width="1.6" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <p id="camMsgTxt">Caméra en attente d'autorisation…</p>
+      <button class="btn btn-gold" id="camRetry" style="max-width:220px;margin:0 auto">Activer la caméra</button>
+    </div>
+  </div>
+</div>
+
+<div class="bottom">
+  <button class="btn btn-ghost" id="syncBtn">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg>
+    Synchroniser
+  </button>
+  <button class="btn btn-gold" id="scanBtn">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+    Scanner
+  </button>
+</div>
+
+<!-- Verdict -->
+<div class="sheet" id="sheet">
+  <div class="card" id="sheetCard">
+    <div class="verdict">
+      <div class="ic" id="vIc"></div>
+      <div>
+        <h2 id="vTitle">—</h2>
+        <div class="sub" id="vSub"></div>
+      </div>
+    </div>
+    <div class="who" id="who">
+      <div class="nm" id="wName">—</div>
+      <div class="cd" id="wCode">—</div>
+      <div class="meta" id="wMeta"></div>
+    </div>
+    <div id="warnHost"></div>
+    <div class="items" id="itemsHost" style="display:none">
+      <h4>À remettre</h4>
+      <div id="itemsList"></div>
+    </div>
+    <button class="btn btn-gold" id="closeSheet" style="margin-top:16px;width:100%">Scanner le suivant</button>
+  </div>
+</div>
+
+<!-- Réglages -->
+<div class="modal" id="settings">
+  <div class="box">
+    <h3>Réglages du poste</h3>
+    <p class="gsub">Nomme ce téléphone pour retrouver l'origine des scans dans l'admin.</p>
+
+    <div class="f">
+      <label>Nom du poste</label>
+      <span class="desc">Ex. « Entrée principale », « Portail VIP »</span>
+      <input class="in" id="devLabelIn" placeholder="Entrée principale">
+    </div>
+
+    <div class="f">
+      <label>Identifiant appareil</label>
+      <div class="in mono" id="devIdOut" style="opacity:.6">—</div>
+    </div>
+
+    <div class="rows" style="margin:16px 0">
+      <div><span>Codes en base locale</span><b id="mCodes">–</b></div>
+      <div><span>Scans en attente d'envoi</span><b id="mQueue">–</b></div>
+      <div><span>Dernière mise à jour</span><b id="mSync">–</b></div>
+    </div>
+
+    <button class="btn btn-gold" id="refreshBtn" style="width:100%">Mettre à jour la base locale</button>
+    <button class="danger" id="wipeBtn">Effacer les données locales</button>
+    <p class="gsub" style="margin:8px 0 0;font-size:.7rem">L'effacement supprime le registre anti-double-scan de ce téléphone. Les scans non synchronisés seraient perdus.</p>
+
+    <button class="btn btn-ghost" id="closeSettings" style="width:100%;margin-top:14px">Fermer</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/qr-scanner.js"></script>
+<script src="/js/scan-store.js"></script>
+<script src="/js/scan-app.js"></script>
+</body>
+</html>

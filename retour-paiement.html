@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#05201a">
+<title>Confirmation du paiement</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05201a;--bg-2:#082b22;--green:#1f9162;--green-br:#3fc189;
+  --gold:#e7bb46;--gold-lt:#f7df9b;--gold-dp:#b88a28;--cream:#f6f1e6;
+  --cream-72:rgba(246,241,230,.74);--cream-52:rgba(246,241,230,.52);--cream-32:rgba(246,241,230,.32);
+  --glass:rgba(255,255,255,.05);--stroke:rgba(246,241,230,.12);--stroke-gd:rgba(231,187,70,.36);
+  --red:#e08a6a;--ok:#3fc189;--ko:#e0604a;
+  --display:"Fraunces",Georgia,serif;--body:"Hanken Grotesk",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:var(--body);color:var(--cream);background:var(--bg);display:grid;place-items:center;padding:20px}
+.card{width:100%;max-width:460px;background:var(--bg-2);border:1px solid var(--stroke);border-radius:24px;padding:32px 24px;text-align:center;box-shadow:0 40px 90px -34px rgba(0,0,0,.78)}
+.logo{width:56px;height:56px;object-fit:contain;margin:0 auto 18px;display:block}
+.ic{width:74px;height:74px;border-radius:50%;display:grid;place-items:center;margin:0 auto 18px;background:color-mix(in oklab,var(--x,var(--gold)) 20%,transparent);color:var(--x,var(--gold))}
+h1{font-family:var(--display);font-size:1.5rem;margin:0 0 8px;color:var(--x,var(--cream))}
+p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
+.box{background:var(--glass);border:1px solid var(--stroke);border-radius:16px;padding:16px;margin:18px 0;text-align:left}
+.row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;font-size:.86rem;border-bottom:1px solid var(--stroke)}
+.row:last-child{border-bottom:0}
+.row span{color:var(--cream-52)}
+.row b{font-weight:700;text-align:right}
+.code{font-family:ui-monospace,monospace;letter-spacing:.14em;color:var(--gold-lt);font-size:1.05rem}
+.qr{width:170px;border-radius:14px;margin:16px auto 0;display:block;background:#fff;padding:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:13px;padding:14px;font-weight:800;font-size:.9rem;cursor:pointer;text-decoration:none;font-family:inherit;margin-top:8px}
+.btn-gold{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#231a06}
+.btn-ghost{background:var(--glass);border:1px solid var(--stroke);color:var(--cream)}
+.spin{width:44px;height:44px;border:3px solid var(--stroke);border-top-color:var(--gold);border-radius:50%;margin:0 auto 18px;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none}
+.muted{font-size:.76rem;color:var(--cream-32);margin-top:14px}
+</style>
+<link rel="stylesheet" href="/api/theme.css">
+</head>
+<body>
+<div class="card">
+  <img class="logo" id="brandLogo" src="/logo.png" alt="" onerror="this.style.display='none'">
+
+  <!-- Attente -->
+  <div id="pending">
+    <div class="spin"></div>
+    <h1>Vérification du paiement…</h1>
+    <p>Ne ferme pas cette page. Nous confirmons ton paiement auprès de l'opérateur.</p>
+    <p class="muted" id="tries"></p>
+  </div>
+
+  <!-- Succès -->
+  <div id="ok" class="hidden" style="--x:var(--ok)">
+    <div class="ic"><svg width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.6" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></div>
+    <h1>Paiement confirmé</h1>
+    <p>Ton inscription est validée. Garde ce code, il te sera demandé à l'entrée.</p>
+    <div class="box">
+      <div class="row"><span>Participant</span><b id="oName">—</b></div>
+      <div class="row"><span>Code d'accès</span><b class="code" id="oCode">—</b></div>
+      <div class="row"><span>Montant</span><b id="oAmount">—</b></div>
+      <div class="row"><span>Lieu</span><b id="oPlace">—</b></div>
+    </div>
+    <img class="qr hidden" id="oQr" alt="QR code d'accès">
+    <p class="muted">Un email de confirmation t'a été envoyé avec ce QR code.</p>
+    <a class="btn btn-gold" href="/">Retour à l'accueil</a>
+  </div>
+
+  <!-- Échec / en attente prolongée -->
+  <div id="ko" class="hidden" style="--x:var(--ko)">
+    <div class="ic" id="koIc"><svg width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.01"/><circle cx="12" cy="12" r="9"/></svg></div>
+    <h1 id="koTitle">Paiement non confirmé</h1>
+    <p id="koText">Le paiement n'a pas été validé par l'opérateur.</p>
+    <button class="btn btn-gold" id="retry">Vérifier à nouveau</button>
+    <a class="btn btn-ghost" href="/">Retour à l'accueil</a>
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+// FedaPay renvoie ses propres parametres ; le notre est `p`.
+const participantId = params.get('p') || params.get('participant') || '';
+const $ = (id) => document.getElementById(id);
+const show = (id) => ['pending','ok','ko'].forEach(k => $(k).classList.toggle('hidden', k !== id));
+
+fetch('/api/public-config').then(r => r.json()).then(c => {
+  if (c.logoUrl) $('brandLogo').src = c.logoUrl;
+}).catch(() => {});
+
+let attempt = 0;
+const MAX_ATTEMPTS = 10;
+
+function fail(title, text, soft) {
+  $('koTitle').textContent = title;
+  $('koText').innerHTML = text;
+  $('ko').style.setProperty('--x', soft ? 'var(--gold)' : 'var(--ko)');
+  show('ko');
+}
+
+async function check() {
+  if (!participantId) {
+    fail('Lien incomplet', "Ce lien ne contient pas de référence d'inscription. Ouvre l'email de confirmation ou contacte l'organisateur.");
+    return;
+  }
+
+  attempt++;
+  $('tries').textContent = attempt > 1 ? `Tentative ${attempt} sur ${MAX_ATTEMPTS}…` : '';
+
+  try {
+    const response = await fetch('/api/payments/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ participant_id: participantId })
+    });
+    const data = await response.json();
+
+    if (!response.ok) throw new Error(data.error || 'Erreur');
+
+    if (data.status === 'approved') {
+      const p = data.participant || {};
+      $('oName').textContent = p.nom || '—';
+      $('oCode').textContent = p.code_unique || '—';
+      $('oAmount').textContent = p.montant || '—';
+      $('oPlace').textContent = p.lieu_retrait || '—';
+      if (p.qr_code_url) { $('oQr').src = p.qr_code_url; $('oQr').classList.remove('hidden'); }
+      show('ok');
+      return;
+    }
+
+    const status = String(data.status || '').toLowerCase();
+
+    if (['declined', 'canceled', 'cancelled', 'failed', 'refunded'].includes(status)) {
+      fail('Paiement refusé', "Le paiement a été refusé ou annulé. Aucun montant n'a été débité. Tu peux réessayer depuis la page d'accueil.");
+      return;
+    }
+
+    // Le webhook FedaPay peut arriver avec quelques secondes de retard : on
+    // repasse plusieurs fois avant de conclure.
+    if (attempt < MAX_ATTEMPTS) {
+      setTimeout(check, 3000);
+      return;
+    }
+
+    fail(
+      'Paiement en cours de traitement',
+      "L'opérateur n'a pas encore confirmé. Si le montant a été débité, ton code arrivera par email dans quelques minutes — inutile de repayer.",
+      true
+    );
+  } catch (error) {
+    if (attempt < MAX_ATTEMPTS) {
+      setTimeout(check, 3000);
+      return;
+    }
+    fail('Vérification impossible', "Nous n'arrivons pas à joindre le serveur. Si le montant a été débité, contacte l'organisateur avec ta référence : <b>" + participantId + "</b>", true);
+  }
+}
+
+$('retry').addEventListener('click', () => { attempt = 0; show('pending'); check(); });
+check();
+</script>
+</body>
+</html>

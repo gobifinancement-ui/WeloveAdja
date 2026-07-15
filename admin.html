@@ -17,8 +17,8 @@
   --red:#e08a6a;--shadow:0 40px 90px -34px rgba(0,0,0,.78);
   --display:"Fraunces",Georgia,serif;--body:"Hanken Grotesk",system-ui,sans-serif;
 }
-html[data-theme="indigo"]{--bg:#0a0e2a;--bg-2:#121845;--green:#5b6bd6;--green-br:#8a96f0;--gold:#f0c64f;--gold-lt:#ffe6a0;--gold-dp:#c2942f;--stroke-gd:rgba(240,198,79,.36)}
-html[data-theme="terre"]{--bg:#241510;--bg-2:#34201a;--green:#c2703a;--green-br:#e0925a;--gold:#e8b563;--gold-lt:#f7d8a0;--gold-dp:#b9842f;--stroke-gd:rgba(232,181,99,.4)}
+/* Couleurs pilotées par /api/theme.css (Réglages → Apparence).
+   Les anciennes règles html[data-theme="…"] écrasaient le thème choisi. */
 html[data-display="bricolage"]{--display:"Bricolage Grotesque",system-ui,sans-serif}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:var(--body);color:var(--cream);line-height:1.55;min-height:100vh;-webkit-font-smoothing:antialiased;
@@ -72,6 +72,40 @@ button{font-family:var(--body);cursor:pointer}
 .panel{display:none;animation:fade .3s both}
 .panel.show{display:block}
 @keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* scanner caméra (onglet Vérifier) */
+.scan-open{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:12px;background:transparent;color:var(--gold-lt);font-family:inherit;font-weight:700;font-size:.9rem;border:1px solid var(--gold-dp);border-radius:14px;padding:13px 16px;cursor:pointer;transition:.2s}
+.scan-open:hover{background:color-mix(in oklab,var(--gold) 12%,transparent)}
+.scanbox{display:none;position:relative;margin-top:14px;border-radius:18px;overflow:hidden;background:#000;aspect-ratio:1/1;max-width:400px;margin-inline:auto}
+.scanbox.show{display:block}
+.scanbox video{width:100%;height:100%;object-fit:cover;display:block}
+.scanframe{position:absolute;inset:16%;border:2px solid var(--gold);border-radius:16px;box-shadow:0 0 0 9999px rgba(0,0,0,.4);pointer-events:none}
+.scan-x{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.65);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:10px;padding:7px 12px;font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit}
+.scan-tip{position:absolute;left:0;right:0;bottom:10px;text-align:center;color:var(--cream-72);font-size:.8rem;text-shadow:0 1px 3px #000;padding:0 12px}
+.scan-note{font-size:.78rem;color:var(--cream-52);margin-top:12px;line-height:1.6}
+.scan-note a{color:var(--gold-lt);font-weight:700}
+
+/* apparence : logo + thèmes */
+.logo-zone{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.logo-pv{width:88px;height:88px;border-radius:18px;background:var(--glass);border:1px solid var(--stroke);display:grid;place-items:center;flex:none;overflow:hidden}
+.logo-pv img{width:100%;height:100%;object-fit:contain}
+.logo-pv .none{font-size:.68rem;color:var(--cream-32);text-align:center;padding:6px;line-height:1.4}
+.logo-acts{display:flex;flex-direction:column;gap:8px;flex:1;min-width:190px}
+.logo-acts .hint{font-size:.72rem;color:var(--cream-32);line-height:1.55}
+.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.theme-card{border:1px solid var(--stroke);border-radius:16px;padding:12px;background:var(--glass);cursor:pointer;transition:.2s;text-align:left}
+.theme-card:hover{border-color:var(--stroke-gd)}
+.theme-card.sel{border-color:var(--gold);box-shadow:0 0 0 3px color-mix(in oklab,var(--gold) 16%,transparent)}
+.theme-card .swatches{display:flex;gap:5px;margin-bottom:9px}
+.theme-card .sw{width:100%;height:30px;border-radius:7px;border:1px solid rgba(255,255,255,.1)}
+.theme-card b{font-size:.82rem;font-weight:700;display:block}
+.theme-card span{font-size:.68rem;color:var(--cream-32)}
+.color-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:6px}
+.color-f{display:flex;align-items:center;gap:10px;background:var(--glass);border:1px solid var(--stroke);border-radius:12px;padding:9px 11px}
+.color-f input[type=color]{width:34px;height:34px;border:0;border-radius:8px;background:none;padding:0;cursor:pointer;flex:none}
+.color-f .cl{flex:1;min-width:0}
+.color-f .cl b{display:block;font-size:.76rem;font-weight:700}
+.color-f .cl span{display:block;font-size:.66rem;color:var(--cream-32);font-family:ui-monospace,monospace}
 
 /* stats */
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:28px}
@@ -202,6 +236,23 @@ button{font-family:var(--body);cursor:pointer}
   .settings{max-width:100%}
   .set-group{padding:18px}
 }
+/* Mobile / app installée : encoche, cibles tactiles, onglets toujours atteignables */
+@media(max-width:639px){
+  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  .wrap{padding-inline:14px}
+  .topbar{position:sticky;top:0;z-index:20;flex-wrap:wrap;gap:8px}
+  .topbar .live-pill{display:none}
+  .tabs{position:sticky;top:60px;z-index:15;margin-bottom:18px}
+  .tab{font-size:.8rem;padding:12px 10px;min-height:46px}
+  .tab svg{display:none}
+  .btn{min-height:46px}
+  .in,.f input,.f select{font-size:16px} /* 16px : empêche le zoom auto iOS */
+  .set-group{padding:16px}
+  .theme-grid{grid-template-columns:1fr 1fr}
+  .color-grid{grid-template-columns:1fr 1fr}
+  .verify-box{padding:18px 14px}
+  .scanbox{aspect-ratio:3/4}
+}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 /* items checklist */
@@ -220,13 +271,20 @@ button{font-family:var(--body);cursor:pointer}
 .toast b{font-family:var(--display);font-weight:600}
 .toast span{display:block;font-size:.82rem;color:var(--cream-72)}
 </style>
+<link rel="stylesheet" href="/api/theme.css">
+<script src="/js/qr-scanner.js" defer></script>
+<link rel="manifest" href="/api/manifest/admin.webmanifest">
+<link rel="apple-touch-icon" href="/logo.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script src="/js/branding.js" defer></script>
 </head>
 <body>
 
 <!-- ====================== LOGIN ====================== -->
 <div class="login-screen" id="login">
   <div class="login-card">
-    <svg class="mark" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg>
+    <img class="mark" data-brand-logo alt="" style="display:none;object-fit:contain"><svg class="mark" data-brand-mark viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg>
     <h1>Administration</h1>
     <p>Espace réservé à l'organisation – <span id="loginEventName">Pluri Party</span></p>
     <input class="in" id="pw" type="password" placeholder="Mot de passe admin" autocomplete="current-password">
@@ -239,7 +297,7 @@ button{font-family:var(--body);cursor:pointer}
 <div class="app" id="app">
   <div class="topbar">
     <div class="brand">
-      <svg class="mark" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="16" font-weight="700" fill="#f6f1e6">P</text></svg>
+      <img class="mark" data-brand-logo alt="" style="display:none;object-fit:contain"><svg class="mark" data-brand-mark viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="16" font-weight="700" fill="#f6f1e6">P</text></svg>
       <div><b id="topbarEventName">Pluri Party</b><span>Administration</span></div>
     </div>
     <div class="right">
@@ -289,6 +347,23 @@ button{font-family:var(--body);cursor:pointer}
         <h2>Vérifier un code le jour J</h2>
         <p>Scanne ou saisis le code du participant. Tu pourras ensuite marquer ce qu'il a reçu.</p>
         <div class="code-row"><input class="in" id="vcode" type="text" placeholder="XXXXXXXX" autocomplete="off" style="text-transform:uppercase"><button class="btn btn-gold" id="vbtn">Vérifier</button></div>
+
+        <button class="scan-open" id="scanOpen" type="button">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+          Scanner le QR code avec la caméra
+        </button>
+
+        <div class="scanbox" id="scanBox">
+          <video id="scanVideo" playsinline muted></video>
+          <div class="scanframe"></div>
+          <button class="scan-x" id="scanClose" type="button">Fermer</button>
+          <div class="scan-tip" id="scanTip">Place le QR code dans le cadre…</div>
+        </div>
+
+        <p class="scan-note">
+          Sur le terrain, préfère l'<a href="/scan.html" target="_blank" rel="noopener">app de scan dédiée</a> : elle est plein écran, installable et fonctionne <b>sans réseau</b>.
+        </p>
+
         <div class="vres" id="vres"></div>
         <!-- Checklist items (apparaît après vérification valide) -->
         <div id="itemsChecklist" style="display:none;margin-top:20px;text-align:left">
@@ -308,6 +383,38 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Lieu</label><input class="in" data-set="lieu"></div>
           <div class="f"><label>Date (texte affiché)</label><span class="desc">Ex. « 28 Déc. 2026 »</span><input class="in" data-set="dateLabel"></div>
           <div class="f"><label>Date & heure (compte à rebours)</label><span class="desc">Format : 2026-12-28T09:00:00</span><input class="in" data-set="eventDate"></div>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="13" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="10" cy="20" r="2.5"/><path d="M12 2a10 10 0 1 0 0 20c1 0 1.5-.6 1.5-1.3 0-1.5-1.5-1.6-1.5-3.2 0-1 .8-1.5 2-1.5h1.5A6.5 6.5 0 0 0 22 9.5C22 5.4 17.5 2 12 2z"/></svg> Apparence du site</h3>
+        <p class="gsub">Le logo et les couleurs choisis ici s'appliquent <b class="gold">immédiatement</b> sur le site public, l'admin, la page de vérification et l'app de scan.</p>
+
+        <div class="f" style="margin-bottom:22px">
+          <label>Logo</label>
+          <span class="desc">PNG, JPG, WEBP ou SVG — 5 Mo max. Idéalement carré et à fond transparent. Il sert aussi de favicon et d'icône de l'app installée.</span>
+          <div class="logo-zone">
+            <div class="logo-pv" id="logoPv"><span class="none">Aucun logo</span></div>
+            <div class="logo-acts">
+              <input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+              <button class="btn btn-gold btn-sm" id="logoPick" type="button">Choisir un logo</button>
+              <button class="btn btn-ghost btn-sm" id="logoDel" type="button" style="display:none">Retirer le logo</button>
+              <span class="hint" id="logoHint">Sans logo, le marquage par défaut est affiché.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="f" style="margin-bottom:20px">
+          <label>Thème de couleurs</label>
+          <span class="desc">Choisis une palette prête à l'emploi.</span>
+          <div class="theme-grid" id="themeGrid"></div>
+        </div>
+
+        <div class="f">
+          <label>Couleurs personnalisées</label>
+          <span class="desc">Ajuste finement si besoin. Chaque couleur laissée telle quelle suit le thème choisi.</span>
+          <div class="color-grid" id="colorGrid"></div>
+          <button class="btn btn-ghost btn-sm" id="themeReset" type="button" style="margin-top:12px">Revenir aux couleurs du thème</button>
         </div>
       </div>
 
@@ -420,7 +527,6 @@ async function apiFetch(url, opts = {}) {
   return res;
 }
 
-document.documentElement.dataset.theme = 'indigo';
 document.documentElement.dataset.display = 'bricolage';
 
 /* ---------- LOGIN ---------- */
@@ -431,6 +537,8 @@ async function openApp() {
   app.classList.add('show');
   await render();
   await fillSettings();
+  await loadTheme();
+  paintLogo((window.__brand && window.__brand.logoUrl) || '');
 }
 
 document.getElementById('loginBtn').addEventListener('click', doLogin);
@@ -852,6 +960,219 @@ document.querySelectorAll('[data-reveal]').forEach(b => b.addEventListener('clic
   const inp = b.parentElement.querySelector('input');
   inp.type = inp.type === 'password' ? 'text' : 'password';
 }));
+
+/* ============================================================
+   APPARENCE — logo & couleurs
+   ============================================================ */
+const COLOR_LABELS = {
+  bg:'Fond', bg2:'Fond dégradé', green:'Accent principal', greenBr:'Accent clair',
+  gold:'Or / doré', goldLt:'Or clair', goldDp:'Or foncé', cream:'Texte', red:'Alerte'
+};
+let themeState = { preset:'emeraude', colors:{}, presets:[] };
+
+function presetColors(key) {
+  const p = themeState.presets.find(x => x.key === key);
+  return p ? p.colors : {};
+}
+
+// Une couleur n'est "personnalisée" que si elle diffère du preset : on ne
+// renvoie donc au serveur que les écarts réels.
+function customDiff() {
+  const base = presetColors(themeState.preset);
+  const diff = {};
+  Object.entries(themeState.colors).forEach(([k, v]) => {
+    if (base[k] && v && v.toLowerCase() !== base[k].toLowerCase()) diff[k] = v;
+  });
+  return diff;
+}
+
+function renderThemeGrid() {
+  document.getElementById('themeGrid').innerHTML = themeState.presets.map(p => `
+    <button class="theme-card${p.key === themeState.preset ? ' sel' : ''}" data-preset="${p.key}" type="button">
+      <div class="swatches">
+        <span class="sw" style="background:${p.colors.bg}"></span>
+        <span class="sw" style="background:${p.colors.green}"></span>
+        <span class="sw" style="background:${p.colors.gold}"></span>
+        <span class="sw" style="background:${p.colors.cream}"></span>
+      </div>
+      <b>${p.label}</b>
+      <span>${p.key === themeState.preset ? 'Actif' : 'Appliquer'}</span>
+    </button>`).join('');
+}
+
+function renderColorGrid() {
+  document.getElementById('colorGrid').innerHTML = Object.entries(COLOR_LABELS).map(([key, label]) => {
+    const value = themeState.colors[key] || presetColors(themeState.preset)[key] || '#000000';
+    return `<label class="color-f">
+      <input type="color" value="${value}" data-color="${key}">
+      <span class="cl"><b>${label}</b><span>${value}</span></span>
+    </label>`;
+  }).join('');
+}
+
+// Recharge la feuille servie par le serveur : le rendu se met à jour sans F5.
+function reloadThemeCss() {
+  document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+    if (link.href.includes('/api/theme.css')) {
+      link.href = '/api/theme.css?v=' + Date.now();
+    }
+  });
+}
+
+async function loadTheme() {
+  try {
+    const res = await apiFetch('/api/admin/theme');
+    const data = await res.json();
+    themeState.presets = data.presets;
+    themeState.preset = data.current.preset;
+    themeState.colors = { ...data.current.colors };
+    renderThemeGrid();
+    renderColorGrid();
+  } catch (e) { /* l'onglet reste utilisable sans l'apparence */ }
+}
+
+async function saveTheme() {
+  try {
+    const res = await apiFetch('/api/admin/theme', {
+      method: 'PUT',
+      body: JSON.stringify({ preset: themeState.preset, custom: customDiff() })
+    });
+    const data = await res.json();
+    themeState.colors = { ...data.current.colors };
+    reloadThemeCss();
+    renderColorGrid();
+    toast('Apparence enregistrée');
+  } catch (e) { toast(e.message || 'Enregistrement impossible'); }
+}
+
+document.getElementById('themeGrid').addEventListener('click', e => {
+  const card = e.target.closest('[data-preset]');
+  if (!card) return;
+  themeState.preset = card.dataset.preset;
+  // Un changement de thème repart de ses couleurs : sinon les anciennes
+  // personnalisations écraseraient la palette qu'on vient de choisir.
+  themeState.colors = { ...presetColors(themeState.preset) };
+  renderThemeGrid();
+  renderColorGrid();
+  saveTheme();
+});
+
+let colorTimer = null;
+document.getElementById('colorGrid').addEventListener('input', e => {
+  const input = e.target.closest('[data-color]');
+  if (!input) return;
+  themeState.colors[input.dataset.color] = input.value;
+  const out = input.parentElement.querySelector('.cl span');
+  if (out) out.textContent = input.value;
+  // Le color picker émet en continu : on n'enregistre qu'à la pause.
+  clearTimeout(colorTimer);
+  colorTimer = setTimeout(saveTheme, 500);
+});
+
+document.getElementById('themeReset').addEventListener('click', () => {
+  themeState.colors = { ...presetColors(themeState.preset) };
+  renderColorGrid();
+  saveTheme();
+});
+
+/* ---------- Logo ---------- */
+function paintLogo(url) {
+  const pv = document.getElementById('logoPv');
+  const del = document.getElementById('logoDel');
+  if (url) {
+    pv.innerHTML = `<img src="${url}" alt="Logo">`;
+    del.style.display = '';
+    document.getElementById('logoHint').textContent = 'Ce logo est appliqué partout sur le site.';
+  } else {
+    pv.innerHTML = '<span class="none">Aucun logo</span>';
+    del.style.display = 'none';
+    document.getElementById('logoHint').textContent = 'Sans logo, le marquage par défaut est affiché.';
+  }
+}
+
+// branding.js charge la config en parallèle : selon qui gagne la course, on
+// peint le logo à l'ouverture de l'app ou à l'arrivée de la config.
+document.addEventListener('brand:ready', e => paintLogo(e.detail.logoUrl || ''));
+
+document.getElementById('logoPick').addEventListener('click', () => document.getElementById('logoFile').click());
+
+document.getElementById('logoFile').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  if (file.size > 5 * 1024 * 1024) { toast('Logo trop volumineux (5 Mo max)'); return; }
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const res = await apiFetch('/api/admin/branding/logo', {
+        method: 'POST',
+        body: JSON.stringify({ logo_base64: reader.result })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Envoi impossible');
+      paintLogo(data.logo_url);
+      document.querySelectorAll('[data-brand-logo]').forEach(img => { img.src = data.logo_url; img.style.display = ''; });
+      document.querySelectorAll('[data-brand-mark]').forEach(el => { el.style.display = 'none'; });
+      toast('Logo mis à jour');
+    } catch (err) { toast(err.message); }
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+});
+
+document.getElementById('logoDel').addEventListener('click', async () => {
+  if (!confirm('Retirer le logo et revenir au marquage par défaut ?')) return;
+  try {
+    await apiFetch('/api/admin/branding/logo', { method: 'DELETE' });
+    paintLogo('');
+    document.querySelectorAll('[data-brand-logo]').forEach(img => { img.style.display = 'none'; });
+    document.querySelectorAll('[data-brand-mark]').forEach(el => { el.style.display = ''; });
+    toast('Logo retiré');
+  } catch (e) { toast(e.message); }
+});
+
+/* ============================================================
+   SCANNER CAMÉRA (onglet Vérifier)
+   ============================================================ */
+let adminScanner = null;
+
+async function openScanner() {
+  const box = document.getElementById('scanBox');
+  box.classList.add('show');
+  document.getElementById('scanTip').textContent = 'Démarrage de la caméra…';
+
+  adminScanner = QrScanner.createScanner({
+    video: document.getElementById('scanVideo'),
+    onResult: code => {
+      closeScanner();
+      const value = QrScanner.extractCode(code);
+      document.getElementById('vcode').value = value;
+      document.getElementById('vbtn').click();
+    },
+    onError: err => { document.getElementById('scanTip').textContent = err.message; }
+  });
+
+  await adminScanner.start();
+  if (adminScanner.isRunning()) document.getElementById('scanTip').textContent = 'Place le QR code dans le cadre…';
+}
+
+function closeScanner() {
+  if (adminScanner) adminScanner.stop();
+  adminScanner = null;
+  document.getElementById('scanBox').classList.remove('show');
+}
+
+document.getElementById('scanOpen').addEventListener('click', openScanner);
+document.getElementById('scanClose').addEventListener('click', closeScanner);
+
+// La caméra ne doit pas rester allumée si on quitte l'onglet Vérifier.
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  if (t.dataset.tab !== 'verify') closeScanner();
+}));
+
+/* --- PWA : rend l'admin installable et résistant aux coupures --- */
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
 /* --- Auto-login si token en session --- */
 if (getToken()) openApp();
