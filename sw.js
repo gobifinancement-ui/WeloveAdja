@@ -12,7 +12,7 @@
  *    propre instantane cote IndexedDB.
  */
 
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL_CACHE = `adja-shell-${VERSION}`;
 const RUNTIME_CACHE = `adja-runtime-${VERSION}`;
 
@@ -88,6 +88,26 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // L'ouverture d'une page passe TOUJOURS par le reseau d'abord, cache en
+  // secours. Ce test doit precéder isShellAsset : sinon /scan.html serait servi
+  // depuis le cache, et un correctif deploye le matin de l'evenement
+  // n'apparaitrait qu'a la deuxieme ouverture de l'app.
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(async () => {
+          const cached = await caches.match(request);
+          return cached || (await caches.match("/scan.html")) || new Response("Hors-ligne", { status: 503 });
+        }),
+    );
+    return;
+  }
+
   if (url.pathname === "/api/theme.css") {
     event.respondWith(networkFirst(request, SHELL_CACHE));
     return;
@@ -100,22 +120,6 @@ self.addEventListener("fetch", (event) => {
 
   // Les donnees participants ne sont jamais mises en cache HTTP.
   if (url.pathname.startsWith("/api/")) return;
-
-  if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          return cached || (await caches.match("/scan.html")) || new Response("Hors-ligne", { status: 503 });
-        }),
-    );
-    return;
-  }
 
   event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE));
 });

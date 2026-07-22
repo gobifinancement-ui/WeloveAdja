@@ -24,19 +24,13 @@
   function apply(config) {
     const logo = config.logoUrl || "";
 
-    document.querySelectorAll("[data-brand-logo]").forEach((element) => {
-      if (logo) {
+    // Le HTML pointe deja sur l'icone generee par le serveur (monogramme aux
+    // couleurs du theme) : on ne remplace la source que si un vrai logo existe.
+    if (logo) {
+      document.querySelectorAll("[data-brand-logo]").forEach((element) => {
         element.src = logo;
-        element.style.display = "";
-      } else {
-        element.style.display = "none";
-      }
-    });
-
-    // Le marquage par defaut (SVG inline) s'efface des qu'un vrai logo existe.
-    document.querySelectorAll("[data-brand-mark]").forEach((element) => {
-      element.style.display = logo ? "none" : "";
-    });
+      });
+    }
 
     if (config.eventName) {
       document.querySelectorAll("[data-brand-name]").forEach((element) => {

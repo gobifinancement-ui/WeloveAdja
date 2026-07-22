@@ -16,6 +16,8 @@ const UPLOADS_DIR = path.join(ROOT, "uploads", "proofs");
 const PARTICIPANT_PHOTOS_DIR = path.join(ROOT, "uploads", "participants");
 const QRCODES_DIR = path.join(ROOT, "uploads", "qrcodes");
 const BRANDING_DIR = path.join(ROOT, "uploads", "branding");
+const BACKUP_DIR = path.join(DATA_DIR, "backups");
+const MAX_BACKUPS = 24;
 const DB_PATH = path.join(DATA_DIR, "weloveadja.sqlite");
 const LEGACY_DB_PATH = path.join(DATA_DIR, "feja.sqlite");
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
@@ -202,9 +204,40 @@ async function serveStaticFile(request, response, pathname) {
   }
 }
 
+// Ecriture atomique : on ecrit dans un fichier temporaire puis on le renomme.
+// Un writeFileSync direct sur la base laisse une fenetre pendant laquelle une
+// coupure de courant ou un arret brutal donne un fichier tronque, donc la perte
+// de TOUS les participants. Le rename, lui, est atomique sur un meme disque.
 function persistDatabase() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(DB_PATH, Buffer.from(db.export()));
+  const data = Buffer.from(db.export());
+  const tempPath = `${DB_PATH}.tmp`;
+
+  fs.writeFileSync(tempPath, data);
+  fs.renameSync(tempPath, DB_PATH);
+}
+
+// Copie de securite horodatee, gardee en rotation. Sert de filet si la base
+// est corrompue ou effacee par erreur la veille de l'evenement.
+function backupDatabase() {
+  try {
+    if (!fs.existsSync(DB_PATH)) return;
+
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const stamp = new Date().toISOString().slice(0, 13).replace(/[-T:]/g, "");
+    fs.copyFileSync(DB_PATH, path.join(BACKUP_DIR, `weloveadja-${stamp}.sqlite`));
+
+    const backups = fs
+      .readdirSync(BACKUP_DIR)
+      .filter((name) => name.endsWith(".sqlite"))
+      .sort();
+
+    backups.slice(0, Math.max(0, backups.length - MAX_BACKUPS)).forEach((name) => {
+      try { fs.unlinkSync(path.join(BACKUP_DIR, name)); } catch {}
+    });
+  } catch (error) {
+    console.warn("Sauvegarde de la base impossible:", error.message);
+  }
 }
 
 function statementAll(sql, params = []) {
@@ -585,6 +618,130 @@ function buildDefaultIcon(settings = getSettings()) {
         font-family="Georgia, 'Times New Roman', serif" font-size="150" font-weight="700"
         fill="${colors.cream}">${safeInitial}</text>
 </svg>`;
+}
+
+// Une URL locale marche sur la machine de dev mais pas pour un client : apres
+// paiement, FedaPay renvoie le visiteur sur cette adresse, et "localhost"
+// designe alors SON telephone. Il paie et ne recoit jamais son code.
+function isPubliclyReachableUrl(value) {
+  const url = String(value || "").trim();
+  if (!url) return false;
+  if (!/^https?:\/\//i.test(url)) return false;
+  return !/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(url);
+}
+
+// Etat de preparation de l'evenement. Transforme les erreurs de configuration
+// silencieuses (cle absente, URL locale, montant a zero) en liste de controle
+// affichee dans l'admin.
+function getConfigHealth(settings = getSettings()) {
+  const checks = [];
+  const add = (level, key, label, detail) => checks.push({ level, key, label, detail });
+
+  const baseUrl = process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
+  if (!baseUrl) {
+    add("error", "base_url", "Adresse publique du site absente",
+      "Sans elle, le participant n'est pas ramené sur le site après son paiement et ne voit jamais son code. À renseigner dans Réglages → Clés & sécurité.");
+  } else if (!isPubliclyReachableUrl(baseUrl)) {
+    add("error", "base_url", "Adresse publique invalide (adresse locale)",
+      `« ${baseUrl} » ne fonctionne que sur cet ordinateur. Après paiement, le participant serait renvoyé vers son propre téléphone et ne verrait jamais son code. Mets l'adresse publique du site (https://…).`);
+  } else {
+    add("ok", "base_url", "Adresse publique configurée", baseUrl);
+  }
+
+  const secretKey = process.env.FEDAPAY_SECRET_KEY || settings.payment_secret_key || "";
+  if (!secretKey) {
+    add("error", "payment_key", "Clé de paiement absente", "Aucun paiement n'est possible.");
+  } else if (!/^sk_/.test(secretKey) || secretKey.length < 28) {
+    add("error", "payment_key", "Clé de paiement invalide",
+      "Elle ne ressemble pas à une clé FedaPay complète (sk_… d'environ 33 caractères). Les paiements seront refusés.");
+  } else {
+    add("ok", "payment_key", "Clé de paiement présente", null);
+  }
+
+  const environment = process.env.FEDAPAY_ENVIRONMENT || settings.payment_environment || "sandbox";
+  if (environment === "live") {
+    add("ok", "environment", "Environnement de paiement : production", null);
+  } else {
+    add("warn", "environment", "Environnement de paiement : test (sandbox)",
+      "Les paiements ne sont pas réels. À basculer sur « live » avant l'événement.");
+  }
+
+  if (!getFedapayWebhookSecret(settings)) {
+    add("warn", "webhook", "Secret webhook absent",
+      "Les notifications de paiement ne sont pas signées. Le serveur revérifie chaque paiement auprès de FedaPay, donc ce n'est pas bloquant, mais c'est recommandé.");
+  } else {
+    add("ok", "webhook", "Secret webhook configuré", null);
+  }
+
+  const resendKey = process.env.RESEND_API_KEY || settings.resend_api_key || "";
+  if (!resendKey) {
+    add("warn", "email", "Envoi d'emails non configuré",
+      "Les participants ne recevront pas leur code par email. Ils le verront à l'écran après paiement.");
+  } else if (resendKey.length < 20) {
+    add("warn", "email", "Clé email probablement incomplète", "Les emails risquent de ne pas partir.");
+  } else {
+    add("ok", "email", "Envoi d'emails configuré", null);
+  }
+
+  const amount = Number(settings.participation_fee);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    add("error", "amount", "Montant de participation invalide", "Renseigne un montant supérieur à zéro.");
+  } else {
+    add("ok", "amount", `Montant : ${formatMontant(amount)}`, null);
+  }
+
+  if (!settings.pickup_location) {
+    add("warn", "pickup", "Lieu de retrait non renseigné", "Il apparaît sur le billet et dans l'email.");
+  } else {
+    add("ok", "pickup", `Lieu : ${settings.pickup_location}`, null);
+  }
+
+  // Sans date, le compte à rebours de la page d'accueil reste bloqué sur
+  // 00:00:00:00, ce qui donne l'impression d'un site en panne.
+  const eventDate = settings.event_date || "";
+  const parsedDate = eventDate ? new Date(eventDate) : null;
+  if (!eventDate) {
+    add("warn", "date", "Date de l'événement non renseignée",
+      "Le compte à rebours de la page d'accueil affiche 00:00:00:00, ce qui fait croire à un site en panne.");
+  } else if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
+    add("warn", "date", "Date de l'événement illisible",
+      `« ${eventDate} » n'est pas une date valide. Format attendu : 2026-12-28T09:00:00`);
+  } else if (parsedDate.getTime() < Date.now()) {
+    add("warn", "date", "Date de l'événement déjà passée",
+      "Le compte à rebours restera à zéro sur la page d'accueil.");
+  } else {
+    add("ok", "date", `Date : ${parsedDate.toLocaleString("fr-FR")}`, null);
+  }
+
+  if (!settings.event_date_label) {
+    add("warn", "date_label", "Date affichée non renseignée", "Le bloc « Date » de la page d'accueil reste vide.");
+  } else {
+    add("ok", "date_label", `Date affichée : ${settings.event_date_label}`, null);
+  }
+
+  const adminPassword = settings.admin_password || "";
+  if (!adminPassword || adminPassword === DEFAULT_SETTINGS.admin_password || adminPassword.length < 8) {
+    add("warn", "password", "Mot de passe administrateur faible",
+      "Il protège la liste des participants et l'app de scan. Choisis-en un d'au moins 8 caractères.");
+  } else {
+    add("ok", "password", "Mot de passe administrateur personnalisé", null);
+  }
+
+  let eventItems = [];
+  try { eventItems = JSON.parse(settings.event_items_json || "[]"); } catch {}
+  if (!eventItems.length) {
+    add("warn", "items", "Aucun élément à remettre configuré",
+      "La checklist du jour J (bracelet, kit…) sera vide lors des scans.");
+  } else {
+    add("ok", "items", `${eventItems.length} élément(s) à remettre`, null);
+  }
+
+  return {
+    ready: !checks.some((check) => check.level === "error"),
+    errors: checks.filter((check) => check.level === "error").length,
+    warnings: checks.filter((check) => check.level === "warn").length,
+    checks,
+  };
 }
 
 function publicSettings(settings = getSettings()) {
@@ -1810,6 +1967,11 @@ async function handleApi(request, response, url) {
         return;
       }
 
+      if (url.pathname === "/api/admin/health" && request.method === "GET") {
+        sendJson(response, 200, getConfigHealth());
+        return;
+      }
+
       if (url.pathname === "/api/admin/theme" && request.method === "GET") {
         sendJson(response, 200, {
           current: resolveTheme(),
@@ -2069,6 +2231,22 @@ function listen(port) {
   server.listen(port, () => {
     const settings = getSettings();
     console.log(`${settings.event_name || DEFAULT_SETTINGS.event_name} disponible sur http://localhost:${port}`);
+
+    // Les erreurs de configuration sont annoncees au demarrage : sinon elles ne
+    // se manifestent que le jour de l'evenement, au premier paiement reel.
+    const health = getConfigHealth(settings);
+    const problems = health.checks.filter((check) => check.level !== "ok");
+
+    if (problems.length) {
+      console.log("");
+      console.log("--- Preparation de l'evenement ---");
+      problems.forEach((check) => {
+        console.log(`${check.level === "error" ? "[BLOQUANT]" : "[a verifier]"} ${check.label}`);
+        if (check.detail) console.log(`             ${check.detail}`);
+      });
+      console.log(`Detail complet dans l'admin, onglet Reglages.`);
+      console.log("");
+    }
   });
 }
 
@@ -2076,6 +2254,8 @@ initDatabase()
   .then(() => {
     migrateStraySettingKeys();
     purgeExpiredSessions();
+    backupDatabase();
+    setInterval(backupDatabase, 60 * 60 * 1000).unref();
     setInterval(purgeExpiredSessions, 6 * 60 * 60 * 1000).unref();
     listen(PORT);
   })

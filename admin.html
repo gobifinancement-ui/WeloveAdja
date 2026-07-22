@@ -85,6 +85,24 @@ button{font-family:var(--body);cursor:pointer}
 .scan-note{font-size:.78rem;color:var(--cream-52);margin-top:12px;line-height:1.6}
 .scan-note a{color:var(--gold-lt);font-weight:700}
 
+/* préparation jour J */
+.health-list{display:flex;flex-direction:column;gap:8px}
+.health-loading{font-size:.82rem;color:var(--cream-52)}
+.hrow{display:flex;gap:11px;padding:12px;border-radius:13px;background:var(--glass);border:1px solid var(--stroke);align-items:flex-start}
+.hrow.error{border-color:rgba(224,96,74,.5);background:rgba(224,96,74,.09)}
+.hrow.warn{border-color:rgba(231,187,70,.42);background:rgba(231,187,70,.07)}
+.hrow.ok{opacity:.72}
+.hico{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:.72rem;font-weight:800;margin-top:1px}
+.hrow.error .hico{background:#e0604a;color:#fff}
+.hrow.warn .hico{background:var(--gold);color:#231a06}
+.hrow.ok .hico{background:var(--green-br);color:#06231a}
+.hbody{flex:1;min-width:0}
+.hbody b{display:block;font-size:.86rem;font-weight:700;margin-bottom:2px}
+.hbody span{display:block;font-size:.76rem;color:var(--cream-52);line-height:1.55;word-break:break-word}
+.hsum{padding:12px 14px;border-radius:13px;margin-bottom:12px;font-size:.85rem;font-weight:700}
+.hsum.ready{background:rgba(63,193,137,.14);border:1px solid rgba(63,193,137,.45);color:#a9efd0}
+.hsum.blocked{background:rgba(224,96,74,.14);border:1px solid rgba(224,96,74,.5);color:#ffc9bd}
+
 /* apparence : logo + thèmes */
 .logo-zone{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .logo-pv{width:88px;height:88px;border-radius:18px;background:var(--glass);border:1px solid var(--stroke);display:grid;place-items:center;flex:none;overflow:hidden}
@@ -285,7 +303,7 @@ button{font-family:var(--body);cursor:pointer}
 <!-- ====================== LOGIN ====================== -->
 <div class="login-screen" id="login">
   <div class="login-card">
-    <img class="mark" data-brand-logo alt="" style="display:none;object-fit:contain"><svg class="mark" data-brand-mark viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="18" font-weight="700" fill="#f6f1e6">P</text></svg>
+    <img class="mark" data-brand-logo src="/api/branding/default-icon.svg" alt="" style="object-fit:contain">
     <h1>Administration</h1>
     <p>Espace réservé à l'organisation – <span id="loginEventName">WeloveAdja</span></p>
     <input class="in" id="pw" type="password" placeholder="Mot de passe admin" autocomplete="current-password">
@@ -298,7 +316,7 @@ button{font-family:var(--body);cursor:pointer}
 <div class="app" id="app">
   <div class="topbar">
     <div class="brand">
-      <img class="mark" data-brand-logo alt="" style="display:none;object-fit:contain"><svg class="mark" data-brand-mark viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" stroke="var(--gold)" stroke-width="2.5"/><circle cx="50" cy="50" r="22" fill="var(--green)"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-size="16" font-weight="700" fill="#f6f1e6">P</text></svg>
+      <img class="mark" data-brand-logo src="/api/branding/default-icon.svg" alt="" style="object-fit:contain">
       <div><b id="topbarEventName">WeloveAdja</b><span>Administration</span></div>
     </div>
     <div class="right">
@@ -376,6 +394,13 @@ button{font-family:var(--body);cursor:pointer}
 
     <!-- ============ RÉGLAGES ============ -->
     <div class="panel settings" data-panel="settings">
+      <div class="set-group" id="healthGroup">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Prêt pour le jour J ?</h3>
+        <p class="gsub">Contrôle automatique de la configuration. Vérifie ce tableau <b class="gold">avant l'événement</b>.</p>
+        <div id="healthList" class="health-list"><div class="health-loading">Vérification…</div></div>
+        <button class="btn btn-ghost btn-sm" id="healthRefresh" type="button" style="margin-top:12px">Revérifier</button>
+      </div>
+
       <div class="set-group">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg> Événement</h3>
         <p class="gsub">Ces valeurs s'affichent directement sur la page publique.</p>
@@ -539,6 +564,7 @@ async function openApp() {
   await render();
   await fillSettings();
   await loadTheme();
+  await loadHealth();
   paintLogo((window.__brand && window.__brand.logoUrl) || '');
 }
 
@@ -963,6 +989,40 @@ document.querySelectorAll('[data-reveal]').forEach(b => b.addEventListener('clic
 }));
 
 /* ============================================================
+   PRÉPARATION JOUR J
+   ============================================================ */
+const HEALTH_ICON = { ok: '✓', warn: '!', error: '✕' };
+
+async function loadHealth() {
+  const host = document.getElementById('healthList');
+  try {
+    const res = await apiFetch('/api/admin/health');
+    const data = await res.json();
+
+    const summary = data.ready
+      ? `<div class="hsum ready">Tout est prêt${data.warnings ? ` — ${data.warnings} point(s) à vérifier` : ''}</div>`
+      : `<div class="hsum blocked">${data.errors} problème(s) bloquant(s) — à corriger avant l'événement</div>`;
+
+    // Problèmes d'abord : c'est ce qu'il faut voir en premier.
+    const order = { error: 0, warn: 1, ok: 2 };
+    const rows = [...data.checks].sort((a, b) => order[a.level] - order[b.level]).map(c => `
+      <div class="hrow ${c.level}">
+        <span class="hico">${HEALTH_ICON[c.level]}</span>
+        <span class="hbody">
+          <b>${esc(c.label)}</b>
+          ${c.detail ? `<span>${esc(c.detail)}</span>` : ''}
+        </span>
+      </div>`).join('');
+
+    host.innerHTML = summary + rows;
+  } catch (e) {
+    host.innerHTML = `<div class="health-loading">Vérification impossible : ${esc(e.message)}</div>`;
+  }
+}
+
+document.getElementById('healthRefresh').addEventListener('click', loadHealth);
+
+/* ============================================================
    APPARENCE — logo & couleurs
    ============================================================ */
 const COLOR_LABELS = {
@@ -1113,8 +1173,7 @@ document.getElementById('logoFile').addEventListener('change', async e => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Envoi impossible');
       paintLogo(data.logo_url);
-      document.querySelectorAll('[data-brand-logo]').forEach(img => { img.src = data.logo_url; img.style.display = ''; });
-      document.querySelectorAll('[data-brand-mark]').forEach(el => { el.style.display = 'none'; });
+      document.querySelectorAll('[data-brand-logo]').forEach(img => { img.src = data.logo_url; });
       toast('Logo mis à jour');
     } catch (err) { toast(err.message); }
   };
@@ -1127,8 +1186,9 @@ document.getElementById('logoDel').addEventListener('click', async () => {
   try {
     await apiFetch('/api/admin/branding/logo', { method: 'DELETE' });
     paintLogo('');
-    document.querySelectorAll('[data-brand-logo]').forEach(img => { img.style.display = 'none'; });
-    document.querySelectorAll('[data-brand-mark]').forEach(el => { el.style.display = ''; });
+    // Retour au monogramme généré par le serveur (initiale + couleurs du thème).
+    const fallback = '/api/branding/default-icon.svg?v=' + Date.now();
+    document.querySelectorAll('[data-brand-logo]').forEach(img => { img.src = fallback; });
     toast('Logo retiré');
   } catch (e) { toast(e.message); }
 });
