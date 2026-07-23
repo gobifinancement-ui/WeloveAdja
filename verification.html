@@ -43,7 +43,9 @@ body{font-family:var(--body);background:var(--bg);color:var(--cream);min-height:
 .search-zone{padding:22px 26px;border-bottom:1px solid var(--stroke)}
 .search-zone label{display:block;font-size:.76rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--cream-52);margin-bottom:10px}
 .code-row{display:flex;gap:10px}
-.code-input{flex:1;font-family:var(--display);font-weight:700;font-size:1.2rem;letter-spacing:.18em;text-align:center;text-transform:uppercase;color:var(--cream);background:rgba(0,0,0,.28);border:1px solid var(--stroke);border-radius:14px;padding:14px;min-height:54px;transition:.25s}
+/* min-width:0 : sans ca, le champ refuse de retrecir sous la largeur de son
+   contenu et pousse le bouton « Verifier » hors de l'ecran sur mobile. */
+.code-input{flex:1;min-width:0;font-family:var(--display);font-weight:700;font-size:1.2rem;letter-spacing:.18em;text-align:center;text-transform:uppercase;color:var(--cream);background:rgba(0,0,0,.28);border:1px solid var(--stroke);border-radius:14px;padding:14px;min-height:54px;transition:.25s}
 .code-input::placeholder{color:var(--cream-32);letter-spacing:.1em}
 .code-input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 4px color-mix(in oklab,var(--gold) 14%,transparent)}
 .check-btn{background:linear-gradient(135deg,var(--gold-lt),var(--gold) 56%,var(--gold-dp));color:#2a1d05;font-family:var(--body);font-weight:700;font-size:.95rem;border:none;border-radius:14px;padding:14px 20px;cursor:pointer;transition:.2s;white-space:nowrap}
