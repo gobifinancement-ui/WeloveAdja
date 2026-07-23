@@ -12,13 +12,14 @@
  *    propre instantane cote IndexedDB.
  */
 
-const VERSION = "v3";
+const VERSION = "v4";
 const SHELL_CACHE = `adja-shell-${VERSION}`;
 const RUNTIME_CACHE = `adja-runtime-${VERSION}`;
 
 const SHELL_ASSETS = [
   "/scan.html",
   "/admin.html",
+  "/installer.html",
   "/js/vendor/jsqr.js",
   "/js/scan-store.js",
   "/js/scan-app.js",

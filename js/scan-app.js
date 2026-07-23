@@ -454,6 +454,41 @@
     if (value) handleCode(value.trim().toUpperCase());
   }
 
+  /* ---------------- Installation de l'app ---------------- */
+
+  // Le navigateur n'emet beforeinstallprompt que si l'app est installable
+  // (HTTPS + service worker + manifest). On garde l'evenement pour declencher
+  // l'installation au clic sur le bouton des reglages.
+  let installPrompt = null;
+  function setupInstall() {
+    const button = $("installBtn");
+    if (!button) return;
+
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      installPrompt = event;
+      button.style.display = "block";
+    });
+
+    button.addEventListener("click", async () => {
+      if (!installPrompt) {
+        toast("Ouvre le menu du navigateur puis « Installer l'application »");
+        return;
+      }
+      installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      installPrompt = null;
+      if (choice.outcome === "accepted") {
+        button.style.display = "none";
+        toast("Application installée");
+      }
+    });
+
+    window.addEventListener("appinstalled", () => {
+      button.style.display = "none";
+    });
+  }
+
   /* ---------------- Démarrage ---------------- */
 
   async function boot() {
@@ -479,6 +514,8 @@
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
+
+    setupInstall();
 
     if (!getToken()) {
       askPassword();

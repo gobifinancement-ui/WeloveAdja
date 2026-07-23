@@ -1511,6 +1511,27 @@ async function handleApi(request, response, url) {
       return;
     }
 
+    // QR code d'installation : encode l'adresse a ouvrir sur le telephone.
+    // On privilegie l'adresse publique (HTTPS) ; a defaut on retombe sur l'hote
+    // de la requete, utile en test sur le reseau local.
+    if (url.pathname === "/api/install/qr.png" && request.method === "GET") {
+      const target = String(url.searchParams.get("target") || "scan");
+      const pagePath = target === "admin" ? "/admin.html" : "/scan.html";
+      const base = (getPublicBaseUrl() || `http://${request.headers.host}`).replace(/\/+$/, "");
+      const installUrl = `${base}${pagePath}`;
+
+      const buffer = await QRCode.toBuffer(installUrl, {
+        errorCorrectionLevel: "M",
+        margin: 2,
+        width: 320,
+        color: { dark: "#0b1020", light: "#ffffff" },
+      });
+
+      response.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-cache" });
+      response.end(buffer);
+      return;
+    }
+
     // Icone par defaut (monogramme aux couleurs du theme), servie tant qu'aucun
     // logo n'a ete televerse depuis l'admin.
     if (url.pathname === "/api/branding/default-icon.svg" && request.method === "GET") {

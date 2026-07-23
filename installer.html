@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05201a">
+<title>Installer l'application</title>
+<link rel="icon" href="/api/branding/default-icon.svg">
+<link rel="manifest" href="/api/manifest/scan.webmanifest">
+<link rel="apple-touch-icon" href="/api/branding/default-icon.svg">
+<style>
+:root{
+  --bg:#05201a;--bg-2:#082b22;--green:#1f9162;--green-br:#3fc189;
+  --gold:#e7bb46;--gold-lt:#f7df9b;--gold-dp:#b88a28;--cream:#f6f1e6;
+  --cream-72:rgba(246,241,230,.74);--cream-52:rgba(246,241,230,.52);--cream-32:rgba(246,241,230,.32);
+  --glass:rgba(255,255,255,.05);--stroke:rgba(246,241,230,.12);--stroke-gd:rgba(231,187,70,.36);
+  --ok:#3fc189;--warn:#e7bb46;--ko:#e0604a;
+  --display:"Fraunces",Georgia,serif;--body:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:var(--body);color:var(--cream);
+  background:radial-gradient(circle at top,rgba(31,145,98,.18),transparent 45%),var(--bg);
+  padding:26px 18px calc(26px + env(safe-area-inset-bottom))}
+.wrap{max-width:520px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:26px}
+.brand img{width:44px;height:44px;border-radius:12px;object-fit:contain;background:var(--glass);border:1px solid var(--stroke)}
+.brand b{font-size:1.05rem;font-weight:800}
+.brand span{display:block;font-size:.72rem;color:var(--cream-52)}
+h1{font-family:var(--display);font-size:1.7rem;margin:0 0 8px}
+.lead{color:var(--cream-72);font-size:.94rem;line-height:1.6;margin:0 0 24px}
+.card{background:var(--bg-2);border:1px solid var(--stroke);border-radius:20px;padding:20px;margin-bottom:16px}
+.card h2{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-lt);margin:0 0 14px;font-weight:800}
+.step{display:flex;gap:13px;margin-bottom:14px;align-items:flex-start}
+.step:last-child{margin-bottom:0}
+.num{width:26px;height:26px;border-radius:50%;background:var(--glass);border:1px solid var(--stroke);display:grid;place-items:center;font-size:.8rem;font-weight:800;flex:none;color:var(--gold-lt)}
+.step p{margin:0;font-size:.9rem;line-height:1.55;color:var(--cream-72)}
+.step b{color:var(--cream)}
+.btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;border:0;border-radius:14px;padding:15px;font-weight:800;font-size:.95rem;cursor:pointer;font-family:inherit;text-decoration:none;margin-top:6px}
+.btn-gold{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#231a06}
+.btn-ghost{background:var(--glass);border:1px solid var(--stroke);color:var(--cream)}
+.btn:disabled{opacity:.5}
+.qr-card{text-align:center}
+.qr-card img{width:230px;height:230px;border-radius:16px;background:#fff;padding:12px;margin:4px auto 14px;display:block;max-width:100%}
+.qr-card .url{font-family:ui-monospace,monospace;font-size:.78rem;color:var(--gold-lt);word-break:break-all;background:var(--glass);border:1px solid var(--stroke);border-radius:10px;padding:9px 12px}
+.banner{border-radius:14px;padding:13px 15px;font-size:.84rem;line-height:1.55;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start}
+.banner.warn{background:rgba(231,187,70,.1);border:1px solid rgba(231,187,70,.4);color:#f6e4b0}
+.banner.ok{background:rgba(63,193,137,.1);border:1px solid rgba(63,193,137,.4);color:#bff0d8}
+.banner b{color:#fff}
+.hide{display:none}
+.tabs{display:flex;gap:8px;margin-bottom:16px}
+.tabs button{flex:1;padding:11px;border-radius:12px;border:1px solid var(--stroke);background:var(--glass);color:var(--cream-72);font-weight:700;font-size:.85rem;cursor:pointer;font-family:inherit}
+.tabs button.sel{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#231a06;border-color:transparent}
+.foot{text-align:center;font-size:.78rem;color:var(--cream-32);margin-top:20px}
+.foot a{color:var(--gold-lt)}
+</style>
+<link rel="stylesheet" href="/api/theme.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <img id="brandLogo" src="/api/branding/default-icon.svg" alt="">
+    <div><b id="evName">WeloveAdja</b><span>Application de contrôle</span></div>
+  </div>
+
+  <h1>Installer l'application</h1>
+  <p class="lead">L'app de scan s'installe directement sur ton téléphone — pas besoin du Play Store. Une fois installée, elle s'ouvre en plein écran et fonctionne <b>même sans réseau</b>.</p>
+
+  <!-- Avertissement HTTPS (affiché si la connexion n'est pas sécurisée) -->
+  <div class="banner warn hide" id="httpsWarn">
+    <span>⚠️</span>
+    <div>Cette page n'est pas en <b>HTTPS</b>. L'installation ne sera pas proposée par le téléphone tant que le site n'est pas servi via une adresse sécurisée (https://…). Vois la note en bas.</div>
+  </div>
+
+  <div class="tabs">
+    <button id="tabAndroid" class="sel">Android</button>
+    <button id="tabIos">iPhone / iPad</button>
+  </div>
+
+  <!-- ANDROID -->
+  <div id="paneAndroid">
+    <div class="card">
+      <h2>Installation directe</h2>
+      <div class="banner ok hide" id="androidReady"><span>✓</span><div>Ton téléphone peut installer l'application. Appuie sur le bouton.</div></div>
+      <button class="btn btn-gold" id="installBtn" disabled>
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Installer l'application
+      </button>
+      <div class="step" style="margin-top:16px">
+        <span class="num">i</span>
+        <p>Si le bouton reste grisé : ouvre le menu <b>⋮</b> de Chrome, puis <b>« Installer l'application »</b> ou <b>« Ajouter à l'écran d'accueil »</b>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- iOS -->
+  <div id="paneIos" class="hide">
+    <div class="card">
+      <h2>Sur iPhone / iPad (Safari)</h2>
+      <div class="step"><span class="num">1</span><p>Ouvre cette page dans <b>Safari</b> (pas Chrome).</p></div>
+      <div class="step"><span class="num">2</span><p>Appuie sur le bouton <b>Partager</b> <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-2px"><path d="M12 2v13M8 6l4-4 4 4M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/></svg> en bas de l'écran.</p></div>
+      <div class="step"><span class="num">3</span><p>Choisis <b>« Sur l'écran d'accueil »</b>, puis <b>Ajouter</b>.</p></div>
+      <div class="step"><span class="num">4</span><p>L'icône apparaît sur ton écran d'accueil, comme une vraie app.</p></div>
+    </div>
+  </div>
+
+  <!-- QR pour ouvrir sur le téléphone -->
+  <div class="card qr-card">
+    <h2>Ouvrir sur le téléphone</h2>
+    <img id="qr" src="/api/install/qr.png" alt="QR code d'installation">
+    <p style="font-size:.84rem;color:var(--cream-72);margin:0 0 10px;line-height:1.5">Scanne ce QR code avec l'appareil photo de ton téléphone pour ouvrir directement l'app de scan, puis installe-la.</p>
+    <div class="url" id="installUrl">…</div>
+  </div>
+
+  <a class="btn btn-ghost" href="/scan.html">Ouvrir l'app de scan maintenant →</a>
+
+  <p class="foot">
+    Besoin d'une adresse sécurisée (https) ? Vois <a href="#" id="helpLink">comment rendre l'app installable</a>.
+  </p>
+
+  <div class="card hide" id="helpCard" style="margin-top:16px">
+    <h2>Rendre l'app installable</h2>
+    <p style="font-size:.86rem;color:var(--cream-72);line-height:1.6;margin:0 0 12px">
+      Les téléphones n'autorisent l'installation que si le site est servi en <b>HTTPS</b>. Deux moyens :
+    </p>
+    <div class="step"><span class="num">A</span><p><b>Héberger le site</b> (recommandé pour le jour J) sur un service qui fournit le HTTPS automatiquement. C'est aussi ce qui règle le paiement.</p></div>
+    <div class="step"><span class="num">B</span><p><b>Un tunnel</b> pour un test rapide : un outil comme <b>cloudflared</b> ou <b>localtunnel</b> crée une adresse https temporaire vers ton ordinateur. Demande-moi de le mettre en place.</p></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// Nom + logo de l'événement
+fetch('/api/public-config').then(r => r.json()).then(c => {
+  if (c.eventName) { $('evName').textContent = c.eventName; document.title = c.eventName + ' — Installer'; }
+  if (c.logoUrl) $('brandLogo').src = c.logoUrl;
+}).catch(() => {});
+
+// Adresse d'installation lisible
+const installUrl = location.origin + '/scan.html';
+$('installUrl').textContent = installUrl;
+
+// Avertissement HTTPS : l'installation exige un contexte sécurisé
+// (https, ou localhost pour les tests sur l'ordinateur même).
+if (!window.isSecureContext) $('httpsWarn').classList.remove('hide');
+
+// Onglets Android / iOS, pré-sélectionnés selon l'appareil
+const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+function selectTab(ios) {
+  $('tabIos').classList.toggle('sel', ios);
+  $('tabAndroid').classList.toggle('sel', !ios);
+  $('paneIos').classList.toggle('hide', !ios);
+  $('paneAndroid').classList.toggle('hide', ios);
+}
+$('tabAndroid').addEventListener('click', () => selectTab(false));
+$('tabIos').addEventListener('click', () => selectTab(true));
+selectTab(isIos);
+
+// Bouton d'installation natif (Android / Chrome) via beforeinstallprompt
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  $('installBtn').disabled = false;
+  $('androidReady').classList.remove('hide');
+});
+
+$('installBtn').addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const choice = await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  $('installBtn').disabled = true;
+  if (choice.outcome === 'accepted') {
+    $('androidReady').innerHTML = '<span>✓</span><div>Application installée ! Retrouve son icône sur ton écran d\'accueil.</div>';
+  }
+});
+
+// Déjà installée ?
+window.addEventListener('appinstalled', () => {
+  $('androidReady').classList.remove('hide');
+  $('androidReady').innerHTML = '<span>✓</span><div>Application déjà installée. Ouvre-la depuis ton écran d\'accueil.</div>';
+});
+
+$('helpLink').addEventListener('click', (e) => { e.preventDefault(); $('helpCard').classList.toggle('hide'); });
+
+// Enregistre le service worker pour rendre la page installable
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+</script>
+</body>
+</html>
