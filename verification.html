@@ -203,7 +203,7 @@ async function loadPublicConfig() {
   } catch(e) {}
 }
 
-function escHtml(s) { return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escHtml(s) { return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 async function verifyCode(code) {
   document.getElementById('loading').style.display = 'block';

@@ -682,12 +682,12 @@ function applyConfig() {
   renderChiefs(); renderSponsors();
 }
 
-function escHtml(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function escHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function initials(n){return String(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?';}
 function renderChiefs(){
   const c=document.getElementById('chiefs');if(!c)return;
   const arr=Array.isArray(CFG.chiefs)?CFG.chiefs:[];
-  c.innerHTML=arr.map(ch=>`<div class="chief"><div class="ring">${ch.photo?`<img class="cphoto" src="${ch.photo}" alt="${escHtml(ch.name)}">`:`<div class="cphoto ph">${escHtml(initials(ch.name))}</div>`}</div><div><div class="nm">${escHtml(ch.name)}</div><div class="role">${escHtml(ch.role)}</div></div></div>`).join('');
+  c.innerHTML=arr.map(ch=>`<div class="chief"><div class="ring">${ch.photo?`<img class="cphoto" src="${escHtml(ch.photo)}" alt="${escHtml(ch.name)}">`:`<div class="cphoto ph">${escHtml(initials(ch.name))}</div>`}</div><div><div class="nm">${escHtml(ch.name)}</div><div class="role">${escHtml(ch.role)}</div></div></div>`).join('');
 }
 function renderSponsors(){
   const s=document.getElementById('sponsors');if(!s)return;

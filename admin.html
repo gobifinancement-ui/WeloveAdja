@@ -510,8 +510,11 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Email expéditeur Resend</label><span class="desc">Ex. WeloveAdja &lt;noreply@weloveadja.bj&gt;</span>
             <input class="in" data-set="resendFrom" placeholder="WeloveAdja &lt;noreply@…&gt;">
           </div>
-          <div class="f"><label>Mot de passe admin</label><span class="desc">Pour accéder à cet espace</span>
+          <div class="f"><label>Mot de passe admin</label><span class="desc">Pour accéder à cet espace. Laisse le champ tel quel pour ne pas le changer.</span>
             <div class="ipwrap"><input class="in" data-set="adminPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          </div>
+          <div class="f"><label>Mot de passe des postes de scan</label><span class="desc">Donné aux agents à l'entrée. Il n'ouvre que l'app de scan, pas les réglages ni les clés de paiement.</span>
+            <div class="ipwrap"><input class="in" data-set="scanPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
         </div>
       </div>
@@ -603,7 +606,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
 let parts = [];
 const tbody = document.getElementById('tbody'), cards = document.getElementById('cards');
 
-function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmtDate(d) { return d || ''; }
 function statusBadge(p) {
   if (p.status === 'validated' && p.codeUsed) return '<span class="badge used">Code utilisé</span>';
@@ -715,7 +718,7 @@ const proofModal = document.getElementById('proofModal'), proofBody = document.g
 function openProof(p) {
   const src = p && (p.participant_photo_url || p.proof);
   proofBody.innerHTML = src
-    ? `<img src="${src}" alt="Photo du participant">`
+    ? `<img src="${esc(src)}" alt="Photo du participant">`
     : `<div class="none">Aucune photo enregistrée pour ce participant.</div>`;
   proofModal.classList.add('show');
 }
@@ -860,6 +863,7 @@ const SETTINGS_MAP = {
   resendKey:             'resend_api_key',
   resendFrom:            'resend_from',
   adminPassword:         'admin_password',
+  scanPassword:          'scan_password',
   paymentSecretKey:      'payment_secret_key',
   paymentEnvironment:    'payment_environment',
   fedapayWebhookSecret:  'fedapay_webhook_secret',
@@ -885,6 +889,11 @@ async function fillSettings() {
     renderChiefEditor(); renderSponsorEditor(); renderItemsEditor();
   } catch(e) {}
 }
+
+/* Le serveur ne renvoie plus les secrets en clair : il envoie ce masque. Tant
+   que l'organisateur ne retouche pas le champ, on le renvoie tel quel et le
+   serveur sait qu'il ne doit pas écraser la vraie valeur. */
+const SECRET_MASK = '********';
 
 document.getElementById('saveBtn').addEventListener('click', async () => {
   const payload = {};

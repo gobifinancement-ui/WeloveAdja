@@ -47,6 +47,9 @@ const DEFAULT_SETTINGS = {
   // Defaut de premiere installation uniquement : des qu'un mot de passe est
   // enregistre depuis l'admin, c'est lui qui fait foi. A changer sans tarder.
   admin_password: "admin",
+  // Mot de passe distinct pour les postes de scan a l'entree. Vide = les
+  // agents utilisent le mot de passe admin (ancien comportement).
+  scan_password: "",
   vendeur_email: "",
   vendeur_whatsapp: "",
   pickup_location: "",
@@ -141,6 +144,7 @@ const SETTINGS_KEY_MAP = {
   resendKey:            "resend_api_key",
   resendFrom:           "resend_from",
   adminPassword:        "admin_password",
+  scanPassword:         "scan_password",
   paymentSecretKey:     "payment_secret_key",
   paymentEnvironment:   "payment_environment",
   fedapayWebhookSecret: "fedapay_webhook_secret",
@@ -160,13 +164,78 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+// Repertoires et fichiers qui ne doivent JAMAIS sortir par le serveur de
+// fichiers. Sans cette liste, une simple requete GET /.env livrait la cle
+// secrete FedaPay, et GET /data/weloveadja.sqlite toute la base (mot de passe
+// admin, participants, codes d'entree). C'est la premiere barriere.
+const PRIVATE_PREFIXES = [
+  "data",          // base SQLite + sauvegardes
+  "node_modules",
+  ".git",
+  ".sixth",
+];
+
+// Fichiers de la racine servis a personne, meme s'ils portent une extension
+// autorisee. Tout ce qui n'est pas une page ou un asset du site public.
+const PRIVATE_FILES = new Set([
+  ".env",
+  ".gitignore",
+  "server.js",
+  "server.bat",
+  "package.json",
+  "package-lock.json",
+]);
+
+function isPrivatePath(relativePath) {
+  // Separateurs normalises : sous Windows path.normalize produit des "\\".
+  const posix = relativePath.split(path.sep).join("/");
+  const segments = posix.split("/").filter(Boolean);
+
+  if (!segments.length) return true;
+
+  // Aucun fichier ou dossier cache (.env, .git, .htaccess...).
+  if (segments.some((segment) => segment.startsWith("."))) return true;
+
+  if (PRIVATE_PREFIXES.includes(segments[0])) return true;
+  if (segments.length === 1 && PRIVATE_FILES.has(segments[0].toLowerCase())) return true;
+
+  // Les journaux ne racontent rien d'utile au public et peuvent contenir des
+  // messages d'erreur bavards.
+  if (posix.toLowerCase().endsWith(".log")) return true;
+
+  return false;
+}
+
 function resolveFilePath(urlPathname) {
-  const cleanPath = decodeURIComponent(urlPathname.split("?")[0]);
+  let cleanPath;
+  try {
+    cleanPath = decodeURIComponent(urlPathname.split("?")[0]);
+  } catch {
+    // Sequence %XX invalide : on refuse plutot que de deviner.
+    return null;
+  }
+
+  // Un octet nul tronque le nom de fichier dans certaines couches basses.
+  if (cleanPath.includes("\u0000")) return null;
+
   const relativePath = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
   const filePath = path.join(ROOT, relativePath);
   const normalized = path.normalize(filePath);
 
-  if (!normalized.startsWith(ROOT)) {
+  // `startsWith(ROOT)` seul laissait passer un dossier voisin nomme
+  // "WeloveAdja-old" : on exige le separateur, donc un vrai sous-chemin.
+  if (normalized !== ROOT && !normalized.startsWith(ROOT + path.sep)) {
+    return null;
+  }
+
+  if (isPrivatePath(path.relative(ROOT, normalized))) {
+    return null;
+  }
+
+  // Liste blanche d'extensions : seuls les types que le site sert reellement.
+  // Un fichier sans extension connue (script, archive, base) est refuse meme
+  // s'il se trouve dans un dossier public.
+  if (!MIME_TYPES[path.extname(normalized).toLowerCase()]) {
     return null;
   }
 
@@ -177,21 +246,40 @@ async function serveStaticFile(request, response, pathname) {
   const filePath = resolveFilePath(pathname);
 
   if (!filePath) {
-    sendJson(response, 403, { error: "Acces interdit." });
+    // Meme reponse qu'un fichier absent : un 403 confirmerait l'existence du
+    // fichier et guiderait la recherche.
+    sendJson(response, 404, { error: "Fichier introuvable." });
     return;
   }
 
   try {
     const stat = await fs.promises.stat(filePath);
-    const targetPath = stat.isDirectory() ? path.join(filePath, "index.html") : filePath;
+
+    if (!stat.isFile()) {
+      sendJson(response, 404, { error: "Fichier introuvable." });
+      return;
+    }
+
+    const targetPath = filePath;
     const extname = path.extname(targetPath).toLowerCase();
     const contentType = MIME_TYPES[extname] || "application/octet-stream";
     const fileContent = await fs.promises.readFile(targetPath);
 
-    response.writeHead(200, {
+    const headers = {
       "Content-Type": contentType,
       "Cache-Control": "no-store",
-    });
+    };
+
+    // Les fichiers de /uploads/ sont fournis par l'organisateur ou par les
+    // participants. Un SVG est un document actif : ouvert directement dans un
+    // onglet, il peut executer du script sur NOTRE domaine et voler la session
+    // admin. Cette politique le neutralise sans empecher son affichage en
+    // <img>, et vaut pour tout ce dossier par principe.
+    if (path.relative(ROOT, filePath).split(path.sep)[0] === "uploads") {
+      headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+    }
+
+    response.writeHead(200, headers);
     response.end(request.method === "HEAD" ? undefined : fileContent);
   } catch (error) {
     if (error.code === "ENOENT") {
@@ -289,6 +377,15 @@ function ensureParticipantColumns() {
   });
 }
 
+// Les bases creees avant l'introduction des roles n'ont pas la colonne :
+// ALTER TABLE la rajoute sans toucher aux sessions deja ouvertes.
+function ensureSessionColumns() {
+  const columns = new Set(statementAll("PRAGMA table_info(sessions)").map((column) => column.name));
+  if (!columns.has("role")) {
+    run("ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'");
+  }
+}
+
 function getSettings() {
   const rows = statementAll("SELECT key, value FROM settings");
   return rows.reduce((accumulator, row) => {
@@ -329,7 +426,8 @@ async function initDatabase() {
   db.run(`
     CREATE TABLE IF NOT EXISTS sessions (
       token TEXT PRIMARY KEY,
-      expires_at INTEGER NOT NULL
+      expires_at INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'admin'
     );
 
     CREATE TABLE IF NOT EXISTS settings (
@@ -385,9 +483,18 @@ async function initDatabase() {
   `);
 
   ensureParticipantColumns();
+  ensureSessionColumns();
 
   const settings = getSettings();
   saveSettings(settings);
+
+  // Migration du mot de passe en clair vers une empreinte scrypt. Se fait une
+  // seule fois, au premier demarrage suivant la mise a jour.
+  const storedPassword = String(settings.admin_password || "");
+  if (storedPassword && !storedPassword.startsWith(PASSWORD_PREFIX)) {
+    saveSettings({ admin_password: hashPassword(storedPassword) });
+    console.log("Mot de passe admin migre vers un stockage hache.");
+  }
 }
 
 function parseJsonBody(request) {
@@ -456,28 +563,135 @@ function parseJsonBodyWithRaw(request) {
   });
 }
 
-function createSession() {
+// ---------------------------------------------------------------------------
+// Mots de passe
+//
+// Le mot de passe etait stocke en clair dans la base : quiconque mettait la
+// main sur le fichier .sqlite (ou sur une sauvegarde) entrait dans l'admin.
+// On le stocke desormais hache avec scrypt et un sel aleatoire, au format
+// "scrypt$<sel hex>$<empreinte hex>". Une valeur qui n'a pas ce prefixe est
+// un ancien mot de passe en clair : il reste accepte une derniere fois, puis
+// il est immediatement re-enregistre hache (migration transparente).
+// ---------------------------------------------------------------------------
+const PASSWORD_PREFIX = "scrypt$";
+
+function hashPassword(plain) {
+  const salt = crypto.randomBytes(16);
+  const derived = crypto.scryptSync(String(plain), salt, 64);
+  return `${PASSWORD_PREFIX}${salt.toString("hex")}$${derived.toString("hex")}`;
+}
+
+function verifyPassword(plain, stored) {
+  const value = String(stored || "");
+
+  if (!value.startsWith(PASSWORD_PREFIX)) {
+    // Ancien format en clair. Comparaison a temps constant quand meme : sinon
+    // le temps de reponse revele la longueur du prefixe commun.
+    return { ok: timingSafeStringEqual(String(plain), value), needsRehash: true };
+  }
+
+  const [, saltHex, digestHex] = value.split("$");
+  if (!saltHex || !digestHex) return { ok: false, needsRehash: false };
+
+  let derived;
+  try {
+    derived = crypto.scryptSync(String(plain), Buffer.from(saltHex, "hex"), 64);
+  } catch {
+    return { ok: false, needsRehash: false };
+  }
+
+  const expected = Buffer.from(digestHex, "hex");
+  const ok = derived.length === expected.length && crypto.timingSafeEqual(derived, expected);
+  return { ok, needsRehash: false };
+}
+
+// ---------------------------------------------------------------------------
+// Limitation de debit
+//
+// Rien ne freinait les appels : le mot de passe admin (4 caracteres par
+// defaut) tombait en quelques minutes de force brute, et /api/payments/create,
+// non authentifie, ecrivait une photo sur le disque a chaque requete.
+// Compteur en memoire par IP : suffisant pour un serveur unique, et remis a
+// zero au redemarrage sans consequence.
+// ---------------------------------------------------------------------------
+const rateBuckets = new Map();
+
+function getClientIp(request) {
+  // Derriere un tunnel ou un reverse proxy, l'adresse de la socket est celle
+  // du proxy : on prend le premier maillon de X-Forwarded-For quand il existe.
+  const forwarded = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || request.socket.remoteAddress || "inconnu";
+}
+
+// Renvoie le nombre de secondes a attendre, ou 0 si la requete est autorisee.
+function rateLimit(request, bucket, limit, windowMs) {
+  const key = `${bucket}:${getClientIp(request)}`;
+  const now = Date.now();
+  const entry = rateBuckets.get(key);
+
+  if (!entry || now > entry.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return 0;
+  }
+
+  entry.count += 1;
+  if (entry.count > limit) {
+    return Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+  }
+
+  return 0;
+}
+
+function purgeRateBuckets() {
+  const now = Date.now();
+  rateBuckets.forEach((entry, key) => {
+    if (now > entry.resetAt) rateBuckets.delete(key);
+  });
+}
+
+function sendRateLimited(response, retryAfter, message) {
+  response.writeHead(429, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Retry-After": String(retryAfter),
+  });
+  response.end(JSON.stringify({ error: message, retry_after: retryAfter }));
+}
+
+function createSession(role = "admin") {
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = Date.now() + SESSION_TTL_MS;
-  run("INSERT INTO sessions (token, expires_at) VALUES (?, ?)", [token, expiresAt]);
+  run("INSERT INTO sessions (token, expires_at, role) VALUES (?, ?, ?)", [token, expiresAt, role]);
   persistDatabase();
   return token;
 }
 
-function requireAdmin(request) {
+// Routes ouvertes aux postes de scan. Tout le reste de /api/admin/ exige le
+// role admin : un telephone pose a l'entree ne doit pas pouvoir lire les cles
+// FedaPay ni changer les reglages de l'evenement.
+const SCAN_ALLOWED_PATHS = new Set([
+  "/api/admin/scan/snapshot",
+  "/api/admin/scan/sync",
+  "/api/admin/verify-code",
+  "/api/admin/mark-item",
+]);
+
+// Renvoie le role de la session ("admin", "scan") ou null si le jeton est
+// absent, inconnu ou expire.
+function getSessionRole(request) {
   const header = request.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
 
-  if (!token) return false;
+  if (!token) return null;
 
-  const row = statementGet("SELECT expires_at FROM sessions WHERE token = ?", [token]);
+  const row = statementGet("SELECT expires_at, role FROM sessions WHERE token = ?", [token]);
 
   if (!row || Number(row.expires_at) < Date.now()) {
     if (row) {
       run("DELETE FROM sessions WHERE token = ?", [token]);
       persistDatabase();
     }
-    return false;
+    return null;
   }
 
   // Expiration glissante. On n'ecrit sur le disque que si l'echeance a
@@ -489,7 +703,11 @@ function requireAdmin(request) {
     persistDatabase();
   }
 
-  return true;
+  return String(row.role || "admin");
+}
+
+function requireAdmin(request) {
+  return getSessionRole(request) === "admin";
 }
 
 // Nettoyage des reglages ecrits sous leur nom camelCase par l'ancien bug de
@@ -719,12 +937,24 @@ function getConfigHealth(settings = getSettings()) {
     add("ok", "date_label", `Date affichée : ${settings.event_date_label}`, null);
   }
 
+  // Le mot de passe etant desormais hache, on ne peut plus mesurer sa
+  // longueur : on teste s'il vaut encore le defaut de premiere installation.
   const adminPassword = settings.admin_password || "";
-  if (!adminPassword || adminPassword === DEFAULT_SETTINGS.admin_password || adminPassword.length < 8) {
-    add("warn", "password", "Mot de passe administrateur faible",
-      "Il protège la liste des participants et l'app de scan. Choisis-en un d'au moins 8 caractères.");
+  if (!adminPassword) {
+    add("error", "password", "Aucun mot de passe administrateur",
+      "L'admin et la liste des participants sont accessibles à tout le monde.");
+  } else if (verifyPassword(DEFAULT_SETTINGS.admin_password, adminPassword).ok) {
+    add("error", "password", "Mot de passe administrateur encore par défaut",
+      "Il vaut toujours « admin ». Change-le maintenant : il protège la liste des participants, les clés de paiement et l'app de scan.");
   } else {
     add("ok", "password", "Mot de passe administrateur personnalisé", null);
+  }
+
+  if (!settings.scan_password) {
+    add("warn", "scan_password", "Pas de mot de passe dédié au scan",
+      "Les téléphones à l'entrée se connectent avec le mot de passe administrateur : chacun peut alors lire les clés de paiement. Définis-en un séparé.");
+  } else {
+    add("ok", "scan_password", "Mot de passe de scan distinct", null);
   }
 
   let eventItems = [];
@@ -742,6 +972,39 @@ function getConfigHealth(settings = getSettings()) {
     warnings: checks.filter((check) => check.level === "warn").length,
     checks,
   };
+}
+
+// Reglages qui ne doivent jamais repartir vers le navigateur en clair. Le
+// tableau de bord admin les affichait tels quels : un poste laisse ouvert, une
+// capture d'ecran ou un cache de navigateur suffisait a livrer la cle FedaPay.
+const SECRET_SETTING_KEYS = [
+  "admin_password",
+  "scan_password",
+  "payment_secret_key",
+  "payment_public_key",
+  "fedapay_webhook_secret",
+  "resend_api_key",
+  "wachap_access_token",
+  "wachap_instance_id",
+];
+
+// Marqueur renvoye a la place du secret. L'admin le reaffiche tel quel ; s'il
+// nous revient inchange au moment d'enregistrer, on sait qu'il ne faut pas
+// ecraser la vraie valeur.
+const SECRET_MASK = "********";
+
+function maskSecretSettings(settings) {
+  const masked = { ...settings };
+  SECRET_SETTING_KEYS.forEach((name) => {
+    if (masked[name]) masked[name] = SECRET_MASK;
+  });
+  // Le tableau de bord a besoin de savoir si un secret est renseigne, sans
+  // connaitre sa valeur : c'est ce que sert cette carte de presence.
+  masked.secrets_defined = SECRET_SETTING_KEYS.reduce((accumulator, name) => {
+    accumulator[name] = Boolean(settings[name]);
+    return accumulator;
+  }, {});
+  return masked;
 }
 
 function publicSettings(settings = getSettings()) {
@@ -835,11 +1098,22 @@ function getOperatorMeta(settings, operator) {
   };
 }
 
+// L'identifiant sert de reference dans l'URL de retour de paiement, et
+// /api/payments/status renvoie le code d'entree a qui le presente. Avec les
+// 5 chiffres tires par Math.random() d'avant, il n'y avait que 100 000
+// combinaisons par jour : on pouvait toutes les essayer et recolter les codes
+// de tous les participants. On passe donc a 12 caracteres tires par le
+// generateur cryptographique, soit un espace hors d'atteinte.
 function generateParticipantId() {
   const dateKey = getDateKeyBenin().replace(/-/g, "");
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 symboles, sans O/0/I/1
 
   for (let index = 0; index < 12; index += 1) {
-    const random = Math.floor(Math.random() * 100000).toString().padStart(5, "0");
+    const bytes = crypto.randomBytes(12);
+    let random = "";
+    // 256 est un multiple de 32 : le modulo ne favorise aucun symbole.
+    bytes.forEach((value) => { random += alphabet[value % alphabet.length]; });
+
     const id = `WLA-${dateKey}-${random}`;
     if (!statementGet("SELECT id FROM participants WHERE id = ?", [id])) {
       return id;
@@ -867,6 +1141,20 @@ function generateUniqueCode() {
   throw new Error("Impossible de generer un code unique.");
 }
 
+// Supprime les fichiers deja ecrits pour ce participant dans ce dossier. Sans
+// cela, chaque nouvel enregistrement laissait l'ancienne image en place, donc
+// une accumulation sur le disque et une photo perimee toujours accessible.
+function removeStaleUploads(targetDir, filenamePrefix) {
+  try {
+    if (!fs.existsSync(targetDir)) return;
+    fs.readdirSync(targetDir)
+      .filter((name) => name.startsWith(`${filenamePrefix}-`) || name.startsWith(`${filenamePrefix}.`))
+      .forEach((name) => {
+        try { fs.unlinkSync(path.join(targetDir, name)); } catch {}
+      });
+  } catch {}
+}
+
 function saveImageUpload(dataUrl, targetDir, filenamePrefix, errorLabel) {
   const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/);
   if (!match) {
@@ -881,7 +1169,12 @@ function saveImageUpload(dataUrl, targetDir, filenamePrefix, errorLabel) {
   }
 
   fs.mkdirSync(targetDir, { recursive: true });
-  const filename = `${filenamePrefix}.${extension}`;
+  removeStaleUploads(targetDir, filenamePrefix);
+  // Un nom base sur le seul identifiant participant (WLA-20260906-00042) se
+  // devine : on pouvait parcourir /uploads/participants/ et recuperer les
+  // photos de tout le monde sans etre connecte. Le suffixe aleatoire rend
+  // l'URL impossible a trouver autrement qu'en etant admin.
+  const filename = `${filenamePrefix}-${crypto.randomBytes(12).toString("hex")}.${extension}`;
   const filePath = path.join(targetDir, filename);
   fs.writeFileSync(filePath, bytes);
   return `/uploads/${path.basename(targetDir)}/${filename}`;
@@ -935,7 +1228,10 @@ function removeBrandingLogo() {
 
 async function saveQrCode(code, participantId) {
   fs.mkdirSync(QRCODES_DIR, { recursive: true });
-  const filename = `${participantId}.png`;
+  // Meme raison que pour les photos, en plus grave : le QR encode le code
+  // d'entree. Un nom previsible laissait deviner des billets valides.
+  removeStaleUploads(QRCODES_DIR, participantId);
+  const filename = `${participantId}-${crypto.randomBytes(12).toString("hex")}.png`;
   const filePath = path.join(QRCODES_DIR, filename);
   const buffer = await QRCode.toBuffer(code, {
     errorCorrectionLevel: "M",
@@ -1213,6 +1509,25 @@ function getPublicBaseUrl(settings) {
   return process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
 }
 
+// Verifie les champs saisis par le public. Renvoie un message d'erreur en
+// francais, ou null si tout est bon.
+function validateParticipantInput({ nom, telephone, email }) {
+  if (nom.length < 2 || nom.length > 120) {
+    return "Le nom doit contenir entre 2 et 120 caracteres.";
+  }
+
+  if (email.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    return "Adresse email invalide.";
+  }
+
+  const digits = normalizePhoneNumber(telephone);
+  if (digits.length < 8 || digits.length > 15) {
+    return "Numero de telephone invalide.";
+  }
+
+  return null;
+}
+
 function buildPendingParticipant(body, settings) {
   const amount = getParticipationAmount(settings);
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
@@ -1366,17 +1681,30 @@ async function notifyOrganizer(participant, settings) {
   return true;
 }
 
+// Le nom vient du formulaire public : injecte tel quel, il permettait de
+// glisser du HTML (voire un lien de hameconnage) dans l'email envoye depuis
+// notre domaine. Tout ce qui est variable passe donc par escapeHtml.
+function escapeHtml(value) {
+  return String(value == null ? "" : value).replace(
+    /[&<>"']/g,
+    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character],
+  );
+}
+
 function buildValidationEmailHtml(participant, publicBaseUrl = "") {
-  const eventName = participant.evenement || DEFAULT_SETTINGS.event_name;
-  const qrImage = participant.qr_code_url && publicBaseUrl ? `<p><img src="${publicBaseUrl}${participant.qr_code_url}" alt="QR code ${eventName}" style="width:180px;height:180px"></p>` : "";
+  const eventName = escapeHtml(participant.evenement || DEFAULT_SETTINGS.event_name);
+  const qrImage =
+    participant.qr_code_url && publicBaseUrl
+      ? `<p><img src="${escapeHtml(publicBaseUrl + participant.qr_code_url)}" alt="QR code ${eventName}" style="width:180px;height:180px"></p>`
+      : "";
   return `
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
       <h1>Votre paiement ${eventName} est valide</h1>
-      <p>Bonjour ${participant.nom || ""},</p>
+      <p>Bonjour ${escapeHtml(participant.nom || "")},</p>
       <p>Votre paiement est confirme. Voici votre code ${eventName} :</p>
-      <p style="font-size:34px;font-weight:700;letter-spacing:6px">${participant.code_unique}</p>
+      <p style="font-size:34px;font-weight:700;letter-spacing:6px">${escapeHtml(participant.code_unique)}</p>
       ${qrImage}
-      <p>Lieu de retrait : <strong>${participant.lieu_retrait || "APPLAHOUE AZOVE"}</strong></p>
+      <p>Lieu de retrait : <strong>${escapeHtml(participant.lieu_retrait || "APPLAHOUE AZOVE")}</strong></p>
       <p>Presentez ce code ou le QR code joint le jour de l'evenement.</p>
     </div>
   `;
@@ -1601,6 +1929,14 @@ async function handleApi(request, response, url) {
     }
 
     if (url.pathname === "/api/public/verify-code" && request.method === "POST") {
+      // Le code fait 6 caracteres : sans plafond, on peut le deviner par
+      // essais successifs et decouvrir le nom du participant associe.
+      const retryAfter = rateLimit(request, "verify", 20, 5 * 60 * 1000);
+      if (retryAfter) {
+        sendRateLimited(response, retryAfter, "Trop de vérifications. Patiente quelques minutes.");
+        return;
+      }
+
       const body = await parseJsonBody(request);
       const code = String(body.code || "").trim().toUpperCase();
 
@@ -1703,6 +2039,15 @@ async function handleApi(request, response, url) {
     }
 
     if (url.pathname === "/api/payments/create" && request.method === "POST") {
+      // Chaque appel ecrit une photo sur le disque et cree un client chez
+      // FedaPay. Sans plafond, une boucle remplissait le disque du serveur et
+      // polluait le compte de paiement.
+      const retryAfter = rateLimit(request, "payment", 8, 10 * 60 * 1000);
+      if (retryAfter) {
+        sendRateLimited(response, retryAfter, "Trop d'inscriptions depuis cet appareil. Réessaie dans quelques minutes.");
+        return;
+      }
+
       const body = await parseJsonBody(request);
       const settings = getSettings();
       const nom = String(body.nom || "").trim();
@@ -1711,6 +2056,15 @@ async function handleApi(request, response, url) {
 
       if (!nom || !telephone || !email || !body.participant_photo_base64) {
         sendJson(response, 400, { error: "Nom, telephone, email et photo du participant sont obligatoires." });
+        return;
+      }
+
+      // Bornes de saisie : rien ne les verifiait, on pouvait stocker un nom de
+      // plusieurs megaoctets ou une adresse email qui n'en est pas une (et le
+      // participant ne recevait alors jamais son code).
+      const invalid = validateParticipantInput({ nom, telephone, email });
+      if (invalid) {
+        sendJson(response, 400, { error: invalid });
         return;
       }
 
@@ -1760,6 +2114,15 @@ async function handleApi(request, response, url) {
     }
 
     if (url.pathname === "/api/payments/status" && request.method === "POST") {
+      // Cette route renvoie le code d'entree du participant : sans plafond,
+      // elle permettait de moissonner les codes en essayant des identifiants.
+      // La page de retour interroge jusqu'a 10 fois, d'ou une limite large.
+      const retryAfter = rateLimit(request, "status", 60, 10 * 60 * 1000);
+      if (retryAfter) {
+        sendRateLimited(response, retryAfter, "Trop de requêtes. Patiente quelques minutes.");
+        return;
+      }
+
       const body = await parseJsonBody(request);
       const settings = getSettings();
       const participantId = String(body.participant_id || "").trim();
@@ -1818,6 +2181,12 @@ async function handleApi(request, response, url) {
     }
 
     if (url.pathname === "/api/participants" && request.method === "POST") {
+      const retryAfter = rateLimit(request, "status", 60, 10 * 60 * 1000);
+      if (retryAfter) {
+        sendRateLimited(response, retryAfter, "Trop de requêtes. Patiente quelques minutes.");
+        return;
+      }
+
       const body = await parseJsonBody(request);
       const settings = getSettings();
       const participantId = String(body.participant_id || body.id || "").trim();
@@ -1910,20 +2279,58 @@ async function handleApi(request, response, url) {
     }
 
     if (url.pathname === "/api/admin/login" && request.method === "POST") {
-      const body = await parseJsonBody(request);
-      const settings = getSettings();
-      if (String(body.password || "") !== String(settings.admin_password || DEFAULT_SETTINGS.admin_password)) {
-        sendJson(response, 401, { error: "Mot de passe incorrect." });
+      // 10 essais par quart d'heure et par adresse : un humain qui se trompe
+      // n'est pas gene, une force brute est arretee net.
+      const retryAfter = rateLimit(request, "login", 10, 15 * 60 * 1000);
+      if (retryAfter) {
+        sendRateLimited(response, retryAfter, "Trop de tentatives. Reessayez dans quelques minutes.");
         return;
       }
 
-      sendJson(response, 200, { token: createSession() });
+      const body = await parseJsonBody(request);
+      const settings = getSettings();
+      const submitted = String(body.password || "");
+
+      const adminCheck = verifyPassword(submitted, settings.admin_password || DEFAULT_SETTINGS.admin_password);
+
+      if (adminCheck.ok) {
+        if (adminCheck.needsRehash) {
+          saveSettings({ admin_password: hashPassword(submitted) });
+        }
+        sendJson(response, 200, { token: createSession("admin"), role: "admin" });
+        return;
+      }
+
+      // Mot de passe dedie aux postes de scan. Tant qu'il n'est pas defini,
+      // seul le mot de passe admin ouvre l'app de scan : le comportement
+      // d'avant, pour ne pas bloquer une installation existante.
+      const scanPassword = String(settings.scan_password || "");
+      if (scanPassword) {
+        const scanCheck = verifyPassword(submitted, scanPassword);
+        if (scanCheck.ok) {
+          if (scanCheck.needsRehash) {
+            saveSettings({ scan_password: hashPassword(submitted) });
+          }
+          sendJson(response, 200, { token: createSession("scan"), role: "scan" });
+          return;
+        }
+      }
+
+      sendJson(response, 401, { error: "Mot de passe incorrect." });
       return;
     }
 
     if (url.pathname.startsWith("/api/admin/")) {
-      if (!requireAdmin(request)) {
+      const role = getSessionRole(request);
+
+      if (!role) {
         sendJson(response, 401, { error: "Session admin invalide." });
+        return;
+      }
+
+      // Un jeton de scan ne donne acces qu'aux ecrans de controle a l'entree.
+      if (role !== "admin" && !SCAN_ALLOWED_PATHS.has(url.pathname)) {
+        sendJson(response, 403, { error: "Cette action demande le compte administrateur." });
         return;
       }
 
@@ -1935,7 +2342,7 @@ async function handleApi(request, response, url) {
       }
 
       if (url.pathname === "/api/admin/settings" && request.method === "GET") {
-        sendJson(response, 200, getSettings());
+        sendJson(response, 200, maskSecretSettings(getSettings()));
         return;
       }
 
@@ -1968,8 +2375,28 @@ async function handleApi(request, response, url) {
           console.warn("Reglages ignores (cles inconnues):", ignored.join(", "));
         }
 
+        // Les champs secrets reviennent masques du navigateur quand ils n'ont
+        // pas ete retouches : les reecrire tels quels effacerait la vraie
+        // valeur. On ignore donc toute valeur strictement egale au masque.
+        SECRET_SETTING_KEYS.forEach((name) => {
+          if (toSave[name] === SECRET_MASK) delete toSave[name];
+        });
+
+        // Un mot de passe n'est jamais stocke en clair.
+        ["admin_password", "scan_password"].forEach((name) => {
+          if (typeof toSave[name] !== "string") return;
+          const value = toSave[name];
+          if (!value) {
+            // Champ laisse vide : on ne touche pas au mot de passe existant.
+            // Seul scan_password peut etre remis a vide volontairement.
+            if (name === "admin_password") delete toSave[name];
+            return;
+          }
+          toSave[name] = hashPassword(value);
+        });
+
         saveSettings(toSave);
-        sendJson(response, 200, getSettings());
+        sendJson(response, 200, maskSecretSettings(getSettings()));
         return;
       }
 
@@ -2211,18 +2638,65 @@ async function handleApi(request, response, url) {
     sendJson(response, 404, { error: "Route API introuvable." });
   } catch (error) {
     console.error("Erreur API:", error);
+    // `error.message` peut etre absent (throw d'une valeur non-Error) : le lire
+    // directement faisait planter le gestionnaire d'erreurs lui-meme.
+    const raw = String((error && error.message) || "");
     const message =
-      !url.pathname.startsWith("/api/admin/") && String(error.message || "").includes("FedaPay")
+      !url.pathname.startsWith("/api/admin/") && raw.includes("FedaPay")
         ? "Paiement indisponible pour le moment."
-        : error.message || "Erreur serveur.";
-    sendJson(response, error.message.includes("Payload") ? 413 : 500, {
+        : raw || "Erreur serveur.";
+    sendJson(response, raw.includes("Payload") ? 413 : 500, {
       error: message,
     });
   }
 }
 
+// En-tetes envoyes sur TOUTES les reponses. Ils ne coutent rien et ferment
+// des classes entieres d'attaques : chargement du site dans une iframe pour
+// pieger un clic, reinterpretation d'un fichier televerse comme du HTML,
+// fuite de l'URL de l'admin vers un site tiers.
+function applySecurityHeaders(response, { isHtml }) {
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("Referrer-Policy", "same-origin");
+  response.setHeader("Permissions-Policy", "geolocation=(), microphone=(), payment=()");
+  response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+
+  if (!isHtml) return;
+
+  // La politique reste permissive sur 'unsafe-inline' : les pages portent
+  // encore leurs scripts et styles en ligne. Elle bloque deja l'essentiel,
+  // c'est-a-dire le chargement de code depuis un domaine tiers.
+  response.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: blob: https:",
+      "connect-src 'self'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join("; "),
+  );
+}
+
 const server = http.createServer(async (request, response) => {
-  const url = new URL(request.url, `http://${request.headers.host}`);
+  let url;
+  try {
+    url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+  } catch {
+    // Une ligne de requete malformee ne doit pas faire tomber le serveur.
+    sendJson(response, 400, { error: "Requete invalide." });
+    return;
+  }
+
+  applySecurityHeaders(response, {
+    isHtml: !url.pathname.startsWith("/api/") && /(^\/$|\.html$)/.test(url.pathname),
+  });
 
   if (url.pathname.startsWith("/api/")) {
     await handleApi(request, response, url);
@@ -2278,6 +2752,7 @@ initDatabase()
     backupDatabase();
     setInterval(backupDatabase, 60 * 60 * 1000).unref();
     setInterval(purgeExpiredSessions, 6 * 60 * 60 * 1000).unref();
+    setInterval(purgeRateBuckets, 10 * 60 * 1000).unref();
     listen(PORT);
   })
   .catch((error) => {

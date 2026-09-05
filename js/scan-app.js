@@ -37,6 +37,20 @@
       throw new Error("SESSION");
     }
 
+    // 403 : le jeton est valide mais n'a pas le droit d'appeler cette route.
+    // Ne pas effacer le jeton ici, sinon l'agent devrait se reconnecter alors
+    // que son acces au scan, lui, fonctionne toujours.
+    if (response.status === 403) {
+      throw new Error("Ce compte n'a pas l'autorisation pour cette action.");
+    }
+
+    // Trop de requetes : on remonte le delai d'attente tel quel pour que
+    // l'agent sache qu'il ne s'agit pas d'une panne.
+    if (response.status === 429) {
+      const info = await response.json().catch(() => ({}));
+      throw new Error(info.error || "Trop de requêtes. Patiente un instant.");
+    }
+
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `Erreur ${response.status}`);
     return data;

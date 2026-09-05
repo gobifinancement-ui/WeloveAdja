@@ -12,7 +12,7 @@
  *    propre instantane cote IndexedDB.
  */
 
-const VERSION = "v4";
+const VERSION = "v5";
 const SHELL_CACHE = `adja-shell-${VERSION}`;
 const RUNTIME_CACHE = `adja-runtime-${VERSION}`;
 
@@ -121,6 +121,11 @@ self.addEventListener("fetch", (event) => {
 
   // Les donnees participants ne sont jamais mises en cache HTTP.
   if (url.pathname.startsWith("/api/")) return;
+
+  // Ni les fichiers televerses : photos des participants, QR codes (qui
+  // encodent un code d'entree valide), logo. Un telephone de scan partage
+  // entre agents ne doit pas garder ces images apres la deconnexion.
+  if (url.pathname.startsWith("/uploads/")) return;
 
   event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE));
 });
