@@ -1551,32 +1551,32 @@ function buildTicketPdf(participant, settings = getSettings()) {
 
   // Bandeau du bas. La courbe PLONGE au milieu : bombee, elle recouvrait la
   // mention "Scannez pour vos infos", qui est centree.
-  doc.moveTo(0, H - 72)
-     .bezierCurveTo(W * 0.33, H - 30, W * 0.67, H - 30, W, H - 72)
+  doc.moveTo(0, H - 64)
+     .bezierCurveTo(W * 0.33, H - 24, W * 0.67, H - 24, W, H - 64)
      .lineTo(W, H).lineTo(0, H).closePath().fill(t.sombre);
 
   // -- Les deux logos, de part et d'autre du titre.
   const logoPath = getTicketLogoPath(settings);
-  const L = 76;
+  const L = 70;
   let aLogo = false;
   if (logoPath) {
     try {
-      doc.image(logoPath, 22, 14, { fit: [L, L] });
-      doc.image(logoPath, W - 22 - L, 14, { fit: [L, L] });
+      doc.image(logoPath, 22, 10, { fit: [L, L] });
+      doc.image(logoPath, W - 22 - L, 10, { fit: [L, L] });
       aLogo = true;
     } catch { /* image illisible : le billet reste valable sans logo */ }
   }
 
   // -- Cartouche du titre. Le bandeau "FESTIVAL ADJA" fourni par l'organisateur
   //    remplace le texte quand il existe ; sinon on dessine le nom.
-  const cx = aLogo ? 150 : 96;
+  const cx = aLogo ? 144 : 96;
   const cw = W - cx * 2;
   const bandeauPath = getTicketImagePath(settings, "wordmark_url", "wordmark");
   let bandeauPose = false;
 
   if (bandeauPath) {
     try {
-      const ch = 60;
+      const ch = 54;
       const dim = readPngSize(bandeauPath);
 
       // Coins arrondis : l'image fournie a des angles droits, alors que le
@@ -1591,7 +1591,7 @@ function buildTicketPdf(participant, settings = getSettings()) {
         const lg = dim.width * echelle;
         const ht = dim.height * echelle;
         const x = cx + (cw - lg) / 2;
-        const y = 18 + (ch - ht) / 2;
+        const y = 12 + (ch - ht) / 2;
         const rayon = Math.min(14, ht / 2);
 
         doc.save();
@@ -1601,20 +1601,20 @@ function buildTicketPdf(participant, settings = getSettings()) {
       } else {
         // Dimensions inconnues : on pose l'image sans arrondi plutot que de
         // risquer une decoupe fausse.
-        doc.image(bandeauPath, cx, 18, { fit: [cw, ch], align: "center", valign: "center" });
+        doc.image(bandeauPath, cx, 12, { fit: [cw, ch], align: "center", valign: "center" });
       }
       bandeauPose = true;
     } catch { /* image illisible : on retombe sur le cartouche texte */ }
   }
 
   if (!bandeauPose) {
-    doc.roundedRect(cx, 18, cw, 60, 14).fill(t.sombre);
-    doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(22)
-       .text(eventName.toUpperCase(), cx, 36, { width: cw, align: "center", characterSpacing: 1 });
+    doc.roundedRect(cx, 12, cw, 54, 13).fill(t.sombre);
+    doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(21)
+       .text(eventName.toUpperCase(), cx, 28, { width: cw, align: "center", characterSpacing: 1 });
   }
 
   // -- "Edition <annee>" entre deux filets.
-  const yEdition = 92;
+  const yEdition = 76;
   doc.fillColor(t.sombre).font("Helvetica-Bold").fontSize(11.5)
      .text(`Édition ${annee}`, 0, yEdition, { width: W, align: "center", characterSpacing: 1.2 });
   doc.lineWidth(1.6).strokeColor(t.vert);
@@ -1624,8 +1624,11 @@ function buildTicketPdf(participant, settings = getSettings()) {
   // -- QR au centre. Sombre sur blanc : c'est la seule combinaison que TOUS
   //    les lecteurs savent lire, y compris les capteurs bas de gamme.
   const qrPath = localFileFromUrl(participant.qr_code_url);
-  const qr = 116;
-  const qrX = milieu - qr / 2, qrY = 120;
+  // 150 pt au lieu de 116, soit 53 mm : le cas difficile n'est pas le billet
+  // imprime mais le PDF presente sur l'ecran d'un telephone a l'entree, ou
+  // reflets et moire mangent du contraste. Chaque millimetre compte.
+  const qr = 150;
+  const qrX = milieu - qr / 2, qrY = 98;
   doc.roundedRect(qrX - 10, qrY - 10, qr + 20, qr + 20, 12)
      .lineWidth(2.4).fillAndStroke(t.blanc, t.vert);
   if (qrPath) {
@@ -1633,16 +1636,16 @@ function buildTicketPdf(participant, settings = getSettings()) {
   }
 
   // -- Code d'acces.
-  const yCode = qrY + qr + 22;          // 258
-  const cwCode = 212, chCode = 44;
+  const yCode = qrY + qr + 20;          // 268
+  const cwCode = 220, chCode = 42;
   doc.roundedRect(milieu - cwCode / 2, yCode, cwCode, chCode, 11)
      .lineWidth(2).fillAndStroke(t.sombre, t.vert);
-  doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(25)
+  doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(24)
      .text(participant.code_unique || "------", milieu - cwCode / 2, yCode + 11,
            { width: cwCode, align: "center", characterSpacing: 4 });
 
   // -- Mention, posee AU-DESSUS du creux du bandeau.
-  const yScan = yCode + chCode + 13;    // 315
+  const yScan = yCode + chCode + 11;    // 321
   doc.fillColor(t.vertFonce).font("Helvetica-Bold").fontSize(8)
      .text("SCANNEZ POUR VOS INFOS", 0, yScan, { width: W, align: "center", characterSpacing: 2 });
   doc.lineWidth(1.2).strokeColor(t.vert);
@@ -1692,7 +1695,10 @@ async function saveQrCode(code, participantId) {
   const buffer = await QRCode.toBuffer(code, {
     errorCorrectionLevel: "M",
     margin: 2,
-    width: 360,
+    // 512 et non 360 : affiche sur 150 points dans le billet, il faut de la
+    // marge pour rester net a l'impression. Un QR compresse tres bien, le
+    // surcout en octets est negligeable.
+    width: 512,
     type: "png",
   });
   fs.writeFileSync(filePath, buffer);
