@@ -756,13 +756,33 @@ async function loadConfig() {
 }
 
 function applyConfig() {
+  // Une pastille "Date" sans date n'affiche qu'un intitule seul : on la retire
+  // tant que l'information n'existe pas.
+  const factDate=document.querySelector('[data-cfg="dateLabel"]');
+  if(factDate){
+    const fact=factDate.closest('.fact');
+    if(fact) fact.style.display=CFG.dateLabel?'':'none';
+  }
+
   document.querySelectorAll('[data-cfg]').forEach(el => {
     const k = el.dataset.cfg; if (CFG[k] != null) el.textContent = CFG[k];
   });
+  /* Liens de contact. Non renseignes, ils restaient affiches avec href="#" :
+     le visiteur cliquait sur "WhatsApp officiel" et remontait en haut de page.
+     Un lien mort est pire qu'un lien absent, on les masque donc. */
   const fw = document.getElementById('footWa');
-  if (fw && CFG.waLink) fw.href = CFG.waLink;
+  if (fw) {
+    if (CFG.waLink) { fw.href = CFG.waLink; fw.style.display = ''; }
+    else fw.style.display = 'none';
+  }
   const fm = document.getElementById('footMail');
-  if (fm && CFG.email) fm.href = 'mailto:' + CFG.email;
+  if (fm) {
+    if (CFG.email) { fm.href = 'mailto:' + CFG.email; fm.style.display = ''; }
+    else fm.style.display = 'none';
+  }
+  // Si les deux manquent, la colonne "Contact" n'a plus rien a montrer.
+  const colContact = fw && fw.closest('.foot-col');
+  if (colContact) colContact.style.display = (CFG.waLink || CFG.email) ? '' : 'none';
   document.querySelectorAll('[data-amount]').forEach(el => {
     el.innerHTML = `${Number(CFG.amount).toLocaleString('fr-FR')} <small>${CFG.currency}</small>`;
   });
@@ -774,14 +794,24 @@ function applyConfig() {
 
 function escHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function initials(n){return String(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?';}
+/* Une section vide reste une section : sans ce masquage, le titre "Les chefs
+   de la fete" et son sous-titre s'affichaient au-dessus de rien du tout, ce
+   qui donne un site inacheve tant que l'organisateur n'a rien saisi. */
+function toggleSection(element, visible){
+  const section = element && element.closest('section');
+  if (section) section.style.display = visible ? '' : 'none';
+}
+
 function renderChiefs(){
   const c=document.getElementById('chiefs');if(!c)return;
   const arr=Array.isArray(CFG.chiefs)?CFG.chiefs:[];
+  toggleSection(c, arr.length>0);
   c.innerHTML=arr.map(ch=>`<div class="chief"><div class="ring">${ch.photo?`<img class="cphoto" src="${escHtml(ch.photo)}" alt="${escHtml(ch.name)}">`:`<div class="cphoto ph">${escHtml(initials(ch.name))}</div>`}</div><div><div class="nm">${escHtml(ch.name)}</div><div class="role">${escHtml(ch.role)}</div></div></div>`).join('');
 }
 function renderSponsors(){
   const s=document.getElementById('sponsors');if(!s)return;
   const arr=Array.isArray(CFG.sponsors)?CFG.sponsors:[];
+  toggleSection(s, arr.length>0);
   s.innerHTML=arr.map(sp=>{const mark=sp.mark||(sp.name?sp.name[0]:'•');const serif=mark.length<=2&&!/\p{Emoji}/u.test(mark)?' serif':'';return `<span class="plogo"><span class="pm${serif}">${escHtml(mark)}</span> ${escHtml(sp.name)}</span>`;}).join('');
 }
 
@@ -800,6 +830,18 @@ addEventListener('scroll',()=>hdr.classList.toggle('scrolled',scrollY>20));
 let cdTimer;
 function startCountdown(){
   const target=new Date(CFG.eventDate).getTime();
+  const bloc=document.querySelector('.countdown');
+
+  /* Sans date renseignee, le compte a rebours affichait 00:00:00:00. Un
+     visiteur en deduit que la fete est passee, ou que le site est en panne.
+     Tant qu'aucune date n'est saisie dans l'admin, on masque le bloc : mieux
+     vaut ne rien annoncer qu'annoncer zero. */
+  if(!CFG.eventDate || isNaN(target)){
+    if(bloc) bloc.style.display='none';
+    clearInterval(cdTimer);
+    return;
+  }
+  if(bloc) bloc.style.display='';
   const el={d:document.getElementById('cd-d'),h:document.getElementById('cd-h'),m:document.getElementById('cd-m'),s:document.getElementById('cd-s')};
   const pad=n=>String(Math.max(0,n)).padStart(2,'0');
   function tick(){const diff=target-Date.now();if(isNaN(target)||diff<=0){el.d.textContent=el.h.textContent=el.m.textContent=el.s.textContent='00';return;}el.d.textContent=pad(Math.floor(diff/86400000));el.h.textContent=pad(Math.floor(diff%86400000/3600000));el.m.textContent=pad(Math.floor(diff%3600000/60000));el.s.textContent=pad(Math.floor(diff%60000/1000));}
