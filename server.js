@@ -1811,6 +1811,165 @@ function getStats(participants = getParticipants()) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Statistiques
+//
+// Tout est calcule ici plutot que dans le navigateur : l'admin telecharge
+// deja la liste complete, mais les agregats doivent etre les memes pour tout
+// le monde et survivre a un futur affichage ailleurs (export, email...).
+// ---------------------------------------------------------------------------
+
+// Cle de jour au format AAAA-MM-JJ pour un horodatage, en heure du Benin.
+function dayKeyFromTimestamp(ms) {
+  if (!ms) return null;
+  const d = getDatePartsBenin(new Date(Number(ms)));
+  if (!d.year) return null;
+  return `${d.year}-${d.month}-${d.day}`;
+}
+
+function buildStats(settings = getSettings()) {
+  const participants = getParticipants();
+  const montantUnitaire = getParticipationAmount(settings);
+
+  let eventItems = [];
+  try { eventItems = JSON.parse(settings.event_items_json || "[]"); } catch {}
+
+  const valides = participants.filter((p) => p.statut_paiement === "Valide");
+  const utilises = valides.filter((p) => p.statut_code === "utilise");
+  const demo = participants.filter((p) => String(p.paiement || "") === DEMO_PAYMENT_TAG);
+
+  // Compteurs par cle, tries par valeur decroissante.
+  const compter = (liste, cle) => {
+    const carte = new Map();
+    liste.forEach((p) => {
+      const k = cle(p);
+      if (!k) return;
+      carte.set(k, (carte.get(k) || 0) + 1);
+    });
+    return [...carte.entries()].sort((a, b) => b[1] - a[1]);
+  };
+
+  // Serie journaliere : on remplit TOUS les jours entre la premiere et la
+  // derniere inscription, y compris ceux a zero. Sans cela, un graphique
+  // sauterait les jours creux et laisserait croire a une activite continue.
+  const jours = new Map();
+  participants.forEach((p) => {
+    const j = dayKeyFromTimestamp(p.timestamp);
+    if (!j) return;
+    if (!jours.has(j)) jours.set(j, { date: j, inscriptions: 0, validations: 0 });
+    jours.get(j).inscriptions += 1;
+  });
+  valides.forEach((p) => {
+    const j = dayKeyFromTimestamp(p.validation_at || p.timestamp);
+    if (!j) return;
+    if (!jours.has(j)) jours.set(j, { date: j, inscriptions: 0, validations: 0 });
+    jours.get(j).validations += 1;
+  });
+
+  let parJour = [...jours.values()].sort((a, b) => a.date.localeCompare(b.date));
+  if (parJour.length > 1) {
+    const complet = [];
+    const debut = Date.parse(`${parJour[0].date}T00:00:00Z`);
+    const fin = Date.parse(`${parJour[parJour.length - 1].date}T00:00:00Z`);
+    for (let t = debut; t <= fin; t += 86400000) {
+      const j = new Date(t).toISOString().slice(0, 10);
+      complet.push(jours.get(j) || { date: j, inscriptions: 0, validations: 0 });
+    }
+    // Au-dela de 60 jours le graphique devient illisible : on garde la fin.
+    parJour = complet.slice(-60);
+  }
+
+  // Scans par heure, toutes journees confondues : sert a reperer l'affluence
+  // a l'entree et a dimensionner les postes de controle.
+  const heures = Array.from({ length: 24 }, (_, h) => ({ heure: h, scans: 0 }));
+  utilises.forEach((p) => {
+    if (!p.retrait_effectue_at) return;
+    const h = Number(getDatePartsBenin(new Date(Number(p.retrait_effectue_at))).hour);
+    if (Number.isFinite(h)) heures[h].scans += 1;
+  });
+
+  // Elements remis : on compte les cases cochees, item par item.
+  const remis = eventItems.map((item) => ({ id: item.id, name: item.name || item.id, n: 0 }));
+  valides.forEach((p) => {
+    let recus = {};
+    try { recus = JSON.parse(p.items_received || "{}"); } catch {}
+    remis.forEach((r) => { if (recus[r.id] === true) r.n += 1; });
+  });
+
+  return {
+    totaux: {
+      inscrits: participants.length,
+      valides: valides.length,
+      en_attente: participants.length - valides.length,
+      utilises: utilises.length,
+      demo: demo.length,
+    },
+    // Recette reellement encaissee : on somme le montant enregistre AVEC
+    // chaque inscription, pas le tarif du jour. Le tarif a pu changer entre
+    // deux inscriptions, et multiplier par le tarif actuel serait faux.
+    recette: valides.reduce((somme, p) => somme + (Number(p.montant_valeur) || montantUnitaire), 0),
+    devise: "FCFA",
+    taux_presence: valides.length ? Math.round((utilises.length / valides.length) * 100) : 0,
+    par_jour: parJour,
+    par_heure: heures,
+    par_operateur: compter(valides, (p) => p.operateur_paiement || "Non precise")
+      .map(([nom, n]) => ({ nom, n })),
+    par_poste: compter(utilises, (p) => p.scan_device_id).map(([nom, n]) => ({ nom, n })),
+    elements: remis,
+    genere_le: Date.now(),
+  };
+}
+
+// Champs exportes, dans l'ordre des colonnes du fichier.
+const EXPORT_COLUMNS = [
+  ["id", "Reference"],
+  ["nom", "Nom"],
+  ["telephone", "Telephone"],
+  ["email", "Email"],
+  ["statut_paiement", "Statut paiement"],
+  ["code_unique", "Code d'acces"],
+  ["statut_code", "Statut du code"],
+  ["montant", "Montant"],
+  ["operateur_paiement", "Moyen de paiement"],
+  ["fedapay_reference", "Reference transaction"],
+  ["lieu_retrait", "Lieu"],
+  ["date", "Date d'inscription"],
+  ["validation_at", "Validation"],
+  ["retrait_effectue_at", "Scanne le"],
+  ["scan_device_id", "Poste de scan"],
+];
+
+function formatExportValue(participant, cle) {
+  const brut = participant[cle];
+  if (brut === null || brut === undefined) return "";
+  // Les horodatages sont stockes en millisecondes : illisibles tels quels
+  // dans un tableur.
+  if (cle === "validation_at" || cle === "retrait_effectue_at") {
+    if (!brut) return "";
+    const d = getDatePartsBenin(new Date(Number(brut)));
+    return `${d.day}/${d.month}/${d.year} ${d.hour}:${d.minute}`;
+  }
+  return String(brut);
+}
+
+function buildParticipantsCsv() {
+  // Point-virgule et non virgule : c'est le separateur attendu par Excel en
+  // configuration francaise, ou la virgule est le separateur decimal.
+  const SEP = ";";
+  const echapper = (valeur) => {
+    const v = String(valeur);
+    return /[";\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  };
+
+  const lignes = [EXPORT_COLUMNS.map(([, titre]) => echapper(titre)).join(SEP)];
+  getParticipants().forEach((p) => {
+    lignes.push(EXPORT_COLUMNS.map(([cle]) => echapper(formatExportValue(p, cle))).join(SEP));
+  });
+
+  // BOM UTF-8 : sans lui, Excel lit le fichier en ANSI et massacre les accents.
+  return "\ufeff" + lignes.join("\r\n") + "\r\n";
+}
+
 function getPaymentApiBaseUrl(environment) {
   return environment === "live" ? "https://api.fedapay.com/v1" : "https://sandbox-api.fedapay.com/v1";
 }
@@ -3093,6 +3252,29 @@ async function handleApi(request, response, url) {
           "Cache-Control": "no-store",
         });
         response.end(pdf);
+        return;
+      }
+
+      if (url.pathname === "/api/admin/stats" && request.method === "GET") {
+        sendJson(response, 200, buildStats());
+        return;
+      }
+
+      // Export tableur de la liste des participants.
+      if (url.pathname === "/api/admin/export.csv" && request.method === "GET") {
+        const csv = buildParticipantsCsv();
+        const settings = getSettings();
+        const base = (settings.event_name || DEFAULT_SETTINGS.event_name)
+          .toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        const nom = `${base}-participants-${getDateKeyBenin()}.csv`;
+
+        response.writeHead(200, {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${nom}"`,
+          "Content-Length": Buffer.byteLength(csv, "utf8"),
+          "Cache-Control": "no-store",
+        });
+        response.end(csv);
         return;
       }
 

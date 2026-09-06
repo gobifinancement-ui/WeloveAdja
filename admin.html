@@ -207,6 +207,77 @@ button{font-family:var(--body);cursor:pointer}
 .f .ipwrap .reveal-btn{position:absolute;right:8px;background:none;border:none;color:var(--cream-52);padding:8px;border-radius:8px;display:flex}
 .f .ipwrap .reveal-btn:hover{color:var(--cream)}
 /* Editeur des artistes : l'affiche est verticale, la vignette la reflete. */
+/* ===================== STATISTIQUES =====================
+   Couleur des graphiques VOLONTAIREMENT fixe et non liee au theme du site :
+   celui-ci change de palette chaque jour, et une teinte de donnees doit
+   rester stable et validee. #199e70 passe la bande de luminosite et le
+   contraste >= 3:1 sur les cinq surfaces de theme.
+   Une seule serie par graphique, donc aucune legende n'est necessaire :
+   le titre nomme la donnee. */
+.viz-root{
+  --viz-serie:#199e70;
+  --viz-serie-fort:#22c98d;
+  --viz-grille:var(--stroke);
+  --viz-piste:rgba(255,255,255,.07);
+  display:grid;gap:14px;grid-template-columns:1fr;margin-top:16px;
+}
+@media(min-width:900px){.viz-root{grid-template-columns:1fr 1fr}}
+
+.stats-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.sec-title{font-family:var(--display);font-weight:500;font-size:1.5rem;margin:0}
+.sec-sub{color:var(--cream-52);font-size:.82rem;margin:4px 0 0}
+.stats-acts{display:flex;gap:9px;flex-wrap:wrap}
+.stats-demo{background:rgba(179,36,31,.16);border:1px solid rgba(216,67,61,.5);border-radius:11px;padding:10px 13px;font-size:.8rem;margin-bottom:14px}
+
+/* Tuiles chiffrees : un nombre unique n'est pas un graphique a une barre. */
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px}
+.kpi{background:var(--glass);border:1px solid var(--stroke);border-radius:14px;padding:14px 16px}
+.kpi .k{display:block;font-size:.7rem;letter-spacing:.13em;text-transform:uppercase;color:var(--cream-52)}
+.kpi .v{display:block;font-family:var(--display);font-weight:600;font-size:1.9rem;line-height:1.15;margin-top:6px;
+  font-variant-numeric:tabular-nums}
+.kpi .s{display:block;font-size:.74rem;color:var(--cream-52);margin-top:2px}
+
+.card-viz{background:var(--glass);border:1px solid var(--stroke);border-radius:16px;padding:16px}
+.viz-head{margin-bottom:14px}
+.viz-head b{display:block;font-size:.95rem}
+.viz-head span{display:block;font-size:.76rem;color:var(--cream-52);margin-top:2px;line-height:1.4}
+
+/* Jauge : une part par rapport a un maximum, pas un camembert a deux parts. */
+.meter{height:14px;border-radius:8px;background:var(--viz-piste);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:8px;background:var(--viz-serie);transition:width .5s var(--ease)}
+.meter-legend{display:flex;justify-content:space-between;margin-top:9px;font-size:.78rem;color:var(--cream-52)}
+.meter-legend b{color:var(--cream);font-size:1.05rem;font-variant-numeric:tabular-nums}
+
+/* Colonnes. Extremite arrondie de 4px cote donnee seulement, ancree sur la
+   ligne de base ; 2px d'ecart entre barres voisines. */
+.bars{display:flex;align-items:flex-end;gap:2px;height:132px}
+.bar-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;cursor:default;min-width:0}
+/* Largeur plafonnée : avec 5 jours, des colonnes en flex:1 pur
+   faisaient 90px de large, ce qui donne des pavés et non des barres. */
+.bar-col i{max-width:38px;margin-inline:auto}
+.bar-col i{display:block;width:100%;background:var(--viz-serie);border-radius:4px 4px 0 0;min-height:2px;transition:background .15s}
+.bar-col:hover i{background:var(--viz-serie-fort)}
+.bar-col.vide i{background:var(--viz-piste)}
+.bars-axis{display:flex;gap:2px;margin-top:7px}
+.bars-axis span{flex:1;text-align:center;font-size:.62rem;color:var(--cream-32);overflow:hidden;white-space:nowrap;min-width:0}
+
+/* Barres horizontales : format retenu des que les libelles sont longs. */
+.hbars{display:grid;gap:9px}
+.hbar{display:grid;grid-template-columns:minmax(80px,34%) 1fr auto;align-items:center;gap:10px;font-size:.82rem}
+.hbar .lb{color:var(--cream-72);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbar .tr{background:var(--viz-piste);border-radius:6px;height:12px;overflow:hidden}
+.hbar .tr i{display:block;height:100%;background:var(--viz-serie);border-radius:6px;min-width:2px;transition:background .15s}
+.hbar:hover .tr i{background:var(--viz-serie-fort)}
+/* Etiquette directe : la valeur est lisible sans survol ni legende. */
+.hbar .vl{font-variant-numeric:tabular-nums;color:var(--cream);font-weight:700;min-width:2.4em;text-align:right}
+
+.viz-empty{color:var(--cream-32);font-size:.82rem;padding:18px 0;text-align:center}
+
+/* Infobulle au survol : un graphique HTML est interactif par nature. */
+.viz-tip{position:fixed;z-index:1200;pointer-events:none;background:var(--bg-2);
+  border:1px solid var(--stroke-gd);border-radius:9px;padding:7px 10px;font-size:.78rem;
+  color:var(--cream);box-shadow:0 12px 30px -12px rgba(0,0,0,.8);white-space:nowrap}
+.viz-tip b{font-variant-numeric:tabular-nums}
 .rot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px}
 .rot-opt{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:11px;cursor:pointer;
   background:var(--glass);border:1px solid var(--stroke);color:var(--cream-72);
@@ -379,6 +450,7 @@ button{font-family:var(--body);cursor:pointer}
     <div class="tabs">
       <button class="tab sel" data-tab="participants"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg> Participants</button>
       <button class="tab" data-tab="verify"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg> Vérifier un code</button>
+      <button class="tab" data-tab="stats"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg> Statistiques</button>
       <button class="tab" data-tab="settings"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Réglages</button>
     </div>
 
@@ -443,6 +515,52 @@ button{font-family:var(--body);cursor:pointer}
     </div>
 
     <!-- ============ RÉGLAGES ============ -->
+    <div class="panel" data-panel="stats">
+      <div class="stats-head">
+        <div>
+          <h2 class="sec-title">Statistiques</h2>
+          <p class="sec-sub" id="statsMaj">—</p>
+        </div>
+        <div class="stats-acts">
+          <button class="btn btn-ghost btn-sm" id="statsReload" type="button">Actualiser</button>
+          <button class="btn btn-gold btn-sm" id="exportCsv" type="button">Exporter en tableur</button>
+        </div>
+      </div>
+
+      <div id="statsDemo" class="stats-demo" style="display:none">Le mode démonstration est actif : les chiffres ci-dessous comptent des inscriptions d'essai.</div>
+
+      <div class="kpi-row" id="kpiRow"></div>
+
+      <div class="viz-root">
+        <div class="card-viz">
+          <div class="viz-head"><b>Taux de présence</b><span>Part des billets validés effectivement scannés à l'entrée</span></div>
+          <div id="meterPresence"></div>
+        </div>
+
+        <div class="card-viz">
+          <div class="viz-head"><b>Inscriptions par jour</b><span id="jourSub"></span></div>
+          <div id="chartJours"></div>
+        </div>
+
+        <div class="card-viz" id="cardItems" style="display:none">
+          <div class="viz-head"><b>Éléments remis</b><span>Sur les participants dont le paiement est validé</span></div>
+          <div id="chartItems"></div>
+        </div>
+
+        <div class="card-viz" id="cardHeures" style="display:none">
+          <div class="viz-head"><b>Scans par heure</b><span>Affluence à l'entrée, toutes journées confondues</span></div>
+          <div id="chartHeures"></div>
+        </div>
+
+        <div class="card-viz" id="cardOper" style="display:none">
+          <div class="viz-head"><b>Moyens de paiement</b><span>Répartition des inscriptions validées</span></div>
+          <div id="chartOper"></div>
+        </div>
+      </div>
+
+      <div class="viz-tip" id="vizTip" hidden></div>
+    </div>
+
     <div class="panel settings" data-panel="settings">
       <div class="set-group" id="healthGroup">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Prêt pour le jour J ?</h3>
@@ -724,6 +842,9 @@ document.getElementById('logoutBtn').addEventListener('click', doLogout);
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('sel', x === t));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('show', p.dataset.panel === t.dataset.tab));
+  // Calcul a l'ouverture de l'onglet seulement : inutile d'agreger toute la
+  // base si l'organisateur ne regarde pas les statistiques.
+  if (t.dataset.tab === 'stats') loadStats();
 }));
 
 /* ---------- PARTICIPANTS ---------- */
@@ -998,6 +1119,158 @@ async function adminVerify() {
     res_el.innerHTML = `<div class="vh"><div class="ic">⚠</div><div><b>Erreur réseau</b><span>Réessayez dans un instant</span></div></div>`;
   }
 }
+
+/* ---------- STATISTIQUES ---------- */
+const nb = n => Number(n || 0).toLocaleString('fr-FR');
+
+/* Infobulle partagee par tous les graphiques. Positionnee pres du curseur et
+   bornee a la fenetre, pour ne jamais sortir de l'ecran. */
+const vizTip = document.getElementById('vizTip');
+function tipOn(e, html) {
+  vizTip.innerHTML = html;
+  vizTip.hidden = false;
+  const r = vizTip.getBoundingClientRect();
+  let x = e.clientX + 14, y = e.clientY - r.height - 10;
+  if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 14;
+  if (y < 8) y = e.clientY + 18;
+  vizTip.style.left = x + 'px';
+  vizTip.style.top = y + 'px';
+}
+function tipOff() { vizTip.hidden = true; }
+
+function brancherTip(hote) {
+  hote.querySelectorAll('[data-tip]').forEach(el => {
+    el.addEventListener('mouseenter', e => tipOn(e, el.dataset.tip));
+    el.addEventListener('mousemove', e => tipOn(e, el.dataset.tip));
+    el.addEventListener('mouseleave', tipOff);
+  });
+}
+
+/* Colonnes. Les jours a zero sont conserves et grises : les sauter laisserait
+   croire a une activite continue. */
+function renderColonnes(hote, points, libelle) {
+  if (!points.length) { hote.innerHTML = '<div class="viz-empty">Aucune donnée pour le moment.</div>'; return; }
+  const max = Math.max(1, ...points.map(p => p.v));
+  const pasEtiquette = Math.ceil(points.length / 8);
+
+  hote.innerHTML =
+    '<div class="bars">' + points.map(p => {
+      const h = Math.round((p.v / max) * 100);
+      return '<div class="bar-col' + (p.v ? '' : ' vide') + '" data-tip="' + esc(p.tip) + '">' +
+             '<i style="height:' + (p.v ? Math.max(h, 3) : 3) + '%"></i></div>';
+    }).join('') + '</div>' +
+    '<div class="bars-axis">' + points.map((p, i) =>
+      '<span>' + (i % pasEtiquette === 0 ? esc(p.x) : '') + '</span>').join('') + '</div>' +
+    '<div class="meter-legend"><span>' + esc(libelle) + '</span><span>maximum ' + nb(max) + '</span></div>';
+  brancherTip(hote);
+}
+
+/* Barres horizontales, avec la valeur ecrite a cote : elle reste lisible sans
+   survol, ce qui vaut aussi a l'impression et au lecteur d'ecran. */
+function renderBarres(hote, lignes, total) {
+  if (!lignes.length) { hote.innerHTML = '<div class="viz-empty">Aucune donnee pour le moment.</div>'; return; }
+  const max = Math.max(1, ...lignes.map(l => l.n));
+  hote.innerHTML = '<div class="hbars">' + lignes.map(l => {
+    const part = total ? Math.round((l.n / total) * 100) : 0;
+    const tip = esc(l.nom) + ' &mdash; <b>' + nb(l.n) + '</b>' + (total ? ' &middot; ' + part + '%' : '');
+    return '<div class="hbar" data-tip="' + tip + '">' +
+      '<span class="lb" title="' + esc(l.nom) + '">' + esc(l.nom) + '</span>' +
+      '<span class="tr"><i style="width:' + Math.max(2, Math.round((l.n / max) * 100)) + '%"></i></span>' +
+      '<span class="vl">' + nb(l.n) + '</span></div>';
+  }).join('') + '</div>';
+  brancherTip(hote);
+}
+
+function renderStats(d) {
+  document.getElementById('statsMaj').textContent =
+    'Arrêté au ' + new Date(d.genere_le).toLocaleString('fr-FR');
+  document.getElementById('statsDemo').style.display = d.totaux.demo ? '' : 'none';
+
+  const t = d.totaux;
+  const cartes = [
+    { k: 'Inscrits', v: nb(t.inscrits), s: t.demo ? nb(t.demo) + " dont essai" : '' },
+    { k: 'Paiements validés', v: nb(t.valides), s: t.inscrits ? Math.round(t.valides / t.inscrits * 100) + '% des inscrits' : '' },
+    { k: 'En attente', v: nb(t.en_attente), s: t.en_attente ? 'à valider' : 'rien à traiter' },
+    { k: 'Entrées scannées', v: nb(t.utilises), s: 'le jour J' },
+    { k: 'Recette', v: nb(d.recette), s: d.devise },
+  ];
+  document.getElementById('kpiRow').innerHTML = cartes.map(c =>
+    '<div class="kpi"><span class="k">' + c.k + '</span><span class="v">' + c.v +
+    '</span><span class="s">' + esc(c.s) + '</span></div>').join('');
+
+  // Jauge : une part rapportee a un maximum, pas un camembert a deux parts.
+  document.getElementById('meterPresence').innerHTML =
+    '<div class="meter"><i style="width:' + d.taux_presence + '%"></i></div>' +
+    '<div class="meter-legend"><span><b>' + d.taux_presence + '%</b> présents</span>' +
+    '<span>' + nb(t.utilises) + ' sur ' + nb(t.valides) + ' billets validés</span></div>';
+
+  const jours = (d.par_jour || []).map(j => ({
+    x: j.date.slice(8) + '/' + j.date.slice(5, 7),
+    v: j.inscriptions,
+    tip: new Date(j.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) +
+         ' &mdash; <b>' + nb(j.inscriptions) + '</b> inscription' + (j.inscriptions > 1 ? 's' : ''),
+  }));
+  document.getElementById('jourSub').textContent =
+    jours.length > 1 ? jours.length + ' derniers jours' : 'Depuis la première inscription';
+  renderColonnes(document.getElementById('chartJours'), jours, 'Inscriptions');
+
+  const items = (d.elements || []).filter(i => i.n > 0);
+  document.getElementById('cardItems').style.display = items.length ? '' : 'none';
+  if (items.length) {
+    renderBarres(document.getElementById('chartItems'), items.map(i => ({ nom: i.name, n: i.n })), t.valides);
+  }
+
+  const scans = (d.par_heure || []).filter(h => h.scans > 0);
+  document.getElementById('cardHeures').style.display = scans.length ? '' : 'none';
+  if (scans.length) {
+    // On borne la plage aux heures reellement utilisees : afficher 24 colonnes
+    // dont 22 vides ecraserait les deux qui portent l'information.
+    const mn = Math.min.apply(null, scans.map(h => h.heure));
+    const mx = Math.max.apply(null, scans.map(h => h.heure));
+    const plage = d.par_heure.slice(Math.max(0, mn - 1), Math.min(24, mx + 2));
+    renderColonnes(document.getElementById('chartHeures'), plage.map(h => ({
+      x: String(h.heure).padStart(2, '0') + 'h',
+      v: h.scans,
+      tip: String(h.heure).padStart(2, '0') + 'h &mdash; <b>' + nb(h.scans) + '</b> scan' + (h.scans > 1 ? 's' : ''),
+    })), 'Scans');
+  }
+
+  const oper = d.par_operateur || [];
+  document.getElementById('cardOper').style.display = oper.length ? '' : 'none';
+  if (oper.length) renderBarres(document.getElementById('chartOper'), oper, t.valides);
+}
+
+async function loadStats() {
+  try {
+    const res = await apiFetch('/api/admin/stats');
+    renderStats(await res.json());
+  } catch (e) {
+    document.getElementById('statsMaj').textContent = 'Statistiques indisponibles.';
+  }
+}
+
+document.getElementById('statsReload').addEventListener('click', loadStats);
+
+document.getElementById('exportCsv').addEventListener('click', async () => {
+  // Meme contrainte que le billet PDF : la route exige l'en-tete
+  // d'autorisation, qu'un lien simple ne peut pas envoyer.
+  const b = document.getElementById('exportCsv');
+  const libelle = b.textContent;
+  b.disabled = true; b.textContent = 'Préparation…';
+  try {
+    const res = await apiFetch('/api/admin/export.csv');
+    if (!res.ok) throw new Error('Export impossible');
+    const url = URL.createObjectURL(await res.blob());
+    const nomEntete = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nomEntete ? nomEntete[1] : 'participants.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    toast('Fichier téléchargé', 'Ouvre-le avec Excel ou Google Sheets.');
+  } catch (e) { alert(e.message || 'Export impossible.'); }
+  finally { b.disabled = false; b.textContent = libelle; }
+});
 
 /* ---------- ARTISTES INVITÉS ---------- */
 let artistsArr = [];
