@@ -8,6 +8,7 @@ const { URL } = require("url");
 const initSqlJs = require("sql.js");
 const { Resend } = require("resend");
 const QRCode = require("qrcode");
+const PDFDocument = require("pdfkit");
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
@@ -1019,6 +1020,18 @@ function getConfigHealth(settings = getSettings()) {
     add("ok", "password", "Mot de passe administrateur personnalisé", null);
   }
 
+  const logoFile = localFileFromUrl(settings.logo_url);
+  if (logoFile && /\.(png|jpe?g)$/i.test(logoFile)) {
+    let taille = 0;
+    try { taille = fs.statSync(logoFile).size; } catch {}
+    if (taille > MAX_TICKET_LOGO_BYTES) {
+      add("warn", "logo_poids", "Logo trop lourd pour le billet PDF",
+        `Il pèse ${Math.round(taille / 1024)} Ko. Il n'est donc pas placé sur le billet, qui ferait sinon plus d'un méga-octet par participant. Réimporte-le depuis Apparence : il sera réduit automatiquement.`);
+    } else {
+      add("ok", "logo_poids", "Logo utilisable sur le billet PDF", null);
+    }
+  }
+
   if (!settings.scan_password) {
     add("warn", "scan_password", "Pas de mot de passe dédié au scan",
       "Les téléphones à l'entrée se connectent avec le mot de passe administrateur : chacun peut alors lire les clés de paiement. Définis-en un séparé.");
@@ -1297,6 +1310,135 @@ function removeBrandingLogo() {
     const target = path.join(BRANDING_DIR, `logo.${ext}`);
     if (fs.existsSync(target)) {
       try { fs.unlinkSync(target); } catch {}
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Billet PDF
+//
+// Envoye en piece jointe avec l'email de validation, et telechargeable depuis
+// l'admin pour etre montre ou imprime devant le participant.
+//
+// Tout est vectoriel sauf le logo et le QR : le billet reste net a
+// l'impression quelle que soit la taille, et le fichier pese quelques dizaines
+// de kilo-octets au lieu de plusieurs mega.
+// ---------------------------------------------------------------------------
+// Au-dela, le logo n'est pas embarque dans le billet : voir buildTicketPdf.
+const MAX_TICKET_LOGO_BYTES = 400 * 1024;
+const TICKET_WIDTH = 600;   // points PDF, soit un rapport 3:2 comme la maquette
+const TICKET_HEIGHT = 400;
+
+// Chemin sur disque d'une image servie par une URL du site, ou null.
+function localFileFromUrl(url) {
+  const clean = String(url || "").split("?")[0].replace(/^\/+/, "");
+  if (!clean) return null;
+  const filePath = path.join(ROOT, clean);
+  // Ne jamais sortir de uploads/ : cette fonction recoit une valeur de reglage.
+  if (!filePath.startsWith(path.join(ROOT, "uploads"))) return null;
+  return fs.existsSync(filePath) ? filePath : null;
+}
+
+function buildTicketPdf(participant, settings = getSettings()) {
+  const theme = resolveTheme(settings);
+  const c = theme.colors;
+  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
+  const annee = getDatePartsBenin().year;
+
+  const doc = new PDFDocument({
+    size: [TICKET_WIDTH, TICKET_HEIGHT],
+    margin: 0,
+    info: {
+      Title: `Billet ${eventName} - ${participant.code_unique || ""}`,
+      Author: eventName,
+    },
+  });
+
+  // Fond
+  doc.rect(0, 0, TICKET_WIDTH, TICKET_HEIGHT).fill(c.bg);
+  doc.rect(0, 0, TICKET_WIDTH, 120).fill(c.bg2);
+
+  // Filet dore separant l'en-tete
+  doc.rect(0, 118, TICKET_WIDTH, 2).fill(c.gold);
+
+  // Logo, s'il a ete televerse dans l'admin. En SVG on ne peut pas l'embarquer
+  // ici (pdfkit ne lit que PNG et JPEG), on l'ignore alors sans casser le PDF.
+  const logoPath = localFileFromUrl(settings.logo_url);
+  let titleX = 40;
+  if (logoPath && /\.(png|jpe?g)$/i.test(logoPath)) {
+    try {
+      // pdfkit embarque l'image A SA TAILLE D'ORIGINE, meme affichee en 68pt :
+      // un logo de 1,3 Mo donnait des billets de 1,5 Mo, envoyes par email a
+      // des participants souvent en donnees mobiles. Au-dela du plafond on
+      // s'en passe plutot que d'alourdir chaque billet ; l'admin le signale
+      // et il suffit de reimporter le logo pour qu'il soit reduit.
+      if (fs.statSync(logoPath).size <= MAX_TICKET_LOGO_BYTES) {
+        doc.image(logoPath, 34, 26, { fit: [68, 68], align: "center", valign: "center" });
+        titleX = 118;
+      }
+    } catch { /* image illisible : on garde le titre a gauche */ }
+  }
+
+  doc.fillColor(c.cream).font("Helvetica-Bold").fontSize(26)
+     .text(eventName.toUpperCase(), titleX, 34, { width: TICKET_WIDTH - titleX - 40 });
+  doc.fillColor(c.goldLt).font("Helvetica").fontSize(11)
+     .text(`FESTIVAL ADJA  •  ÉDITION ${annee}`, titleX, 68,
+           { width: TICKET_WIDTH - titleX - 40, characterSpacing: 1.6 });
+
+  // QR code a gauche, sur fond blanc pour rester lisible par tous les lecteurs.
+  const qrPath = localFileFromUrl(participant.qr_code_url);
+  const qrBox = 168;
+  const qrX = 46, qrY = 158;
+  doc.roundedRect(qrX - 10, qrY - 10, qrBox + 20, qrBox + 20, 10).fill("#ffffff");
+  if (qrPath) {
+    try { doc.image(qrPath, qrX, qrY, { fit: [qrBox, qrBox] }); } catch {}
+  }
+
+  // Bloc de droite : nom, code, lieu
+  const colX = qrX + qrBox + 46;
+  const colW = TICKET_WIDTH - colX - 40;
+
+  doc.fillColor(c.cream).font("Helvetica").fontSize(9)
+     .text("PARTICIPANT", colX, 152, { characterSpacing: 1.8 });
+  doc.fillColor(c.cream).font("Helvetica-Bold").fontSize(17)
+     .text(participant.nom || "-", colX, 166, { width: colW, ellipsis: true, height: 24 });
+
+  doc.fillColor(c.goldLt).font("Helvetica").fontSize(9)
+     .text("CODE D'ACCÈS", colX, 202, { characterSpacing: 1.8 });
+  doc.roundedRect(colX, 216, Math.min(colW, 210), 46, 9)
+     .lineWidth(1.4).fillAndStroke(c.bg2, c.gold);
+  doc.fillColor(c.goldLt).font("Helvetica-Bold").fontSize(25)
+     .text(participant.code_unique || "------", colX, 228,
+           { width: Math.min(colW, 210), align: "center", characterSpacing: 3 });
+
+  doc.fillColor(c.cream).font("Helvetica").fontSize(9)
+     .text("LIEU", colX, 278, { characterSpacing: 1.8 });
+  doc.fillColor(c.cream).font("Helvetica-Bold").fontSize(11)
+     .text(participant.lieu_retrait || settings.pickup_location || "-", colX, 292,
+           { width: colW, height: 30, ellipsis: true });
+
+  // Pied de billet
+  doc.rect(0, TICKET_HEIGHT - 34, TICKET_WIDTH, 34).fill(c.bg2);
+  doc.fillColor(c.cream).font("Helvetica").fontSize(8.5)
+     .text("SCANNEZ POUR VOS INFOS  •  BILLET PERSONNEL, NON CESSIBLE",
+           0, TICKET_HEIGHT - 22, { width: TICKET_WIDTH, align: "center", characterSpacing: 1.2 });
+
+  return doc;
+}
+
+// Rend le PDF en memoire. Il pese quelques dizaines de Ko : le garder en
+// tampon evite d'ecrire un fichier temporaire par participant.
+function renderTicketPdf(participant, settings = getSettings()) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = buildTicketPdf(participant, settings);
+      const morceaux = [];
+      doc.on("data", (m) => morceaux.push(m));
+      doc.on("end", () => resolve(Buffer.concat(morceaux)));
+      doc.on("error", reject);
+      doc.end();
+    } catch (error) {
+      reject(error);
     }
   });
 }
@@ -1855,11 +1997,25 @@ async function sendValidationEmail(participant, settings) {
   const qrPath = participant.qr_code_url ? path.join(ROOT, participant.qr_code_url.replace(/^\/+/, "")) : "";
   const attachments = [];
 
+  const nomFichier = eventName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
   if (qrPath && fs.existsSync(qrPath)) {
     attachments.push({
-      filename: `code-${eventName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${participant.code_unique}.png`,
+      filename: `code-${nomFichier}-${participant.code_unique}.png`,
       content: fs.readFileSync(qrPath).toString("base64"),
     });
+  }
+
+  // Billet PDF. Un echec de generation ne doit jamais empecher l'email de
+  // partir : le code et le QR y sont deja, le PDF est un confort.
+  try {
+    const pdf = await renderTicketPdf(participant, settings);
+    attachments.push({
+      filename: `billet-${nomFichier}-${participant.code_unique}.pdf`,
+      content: pdf.toString("base64"),
+    });
+  } catch (error) {
+    console.warn("Billet PDF non genere:", error.message);
   }
 
   await resend.emails.send(
@@ -2620,6 +2776,35 @@ async function handleApi(request, response, url) {
           : `Mode demonstration desactive. ${purged} inscription(s) d'essai supprimee(s).`);
 
         sendJson(response, 200, { enabled, purged });
+        return;
+      }
+
+      // Billet PDF d'un participant, pour l'imprimer ou le montrer sur place.
+      if (url.pathname === "/api/admin/ticket.pdf" && request.method === "GET") {
+        const participantId = String(url.searchParams.get("id") || "").trim();
+        const participant = participantId ? getParticipantById(participantId) : null;
+
+        if (!participant) {
+          sendJson(response, 404, { error: "Participant introuvable." });
+          return;
+        }
+
+        if (!participant.code_unique) {
+          sendJson(response, 400, { error: "Ce participant n'a pas encore de code : valide d'abord son paiement." });
+          return;
+        }
+
+        const pdf = await renderTicketPdf(participant);
+        const nom = `billet-${participant.code_unique}.pdf`;
+        response.writeHead(200, {
+          "Content-Type": "application/pdf",
+          // inline : le billet s'ouvre dans l'onglet, donc montrable tout de
+          // suite au participant sans passer par le dossier de telechargement.
+          "Content-Disposition": `inline; filename="${nom}"`,
+          "Content-Length": pdf.length,
+          "Cache-Control": "no-store",
+        });
+        response.end(pdf);
         return;
       }
 

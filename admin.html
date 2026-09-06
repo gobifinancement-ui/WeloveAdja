@@ -747,6 +747,7 @@ async function render() {
     <td>${p.code ? `<span class="code-chip">${esc(p.code)}</span>` : '<span style="color:var(--cream-32)">—</span>'}</td>
     <td><div class="row-actions">
       <button class="mini" data-proof="${esc(p.ref)}">Voir photo</button>
+      ${p.code ? `<button class="mini" data-ticket="${esc(p.ref)}">Billet PDF</button>` : ''}
       ${validateBtn(p)}
       ${p.status === 'validated' && !p.codeUsed ? `<button class="mini" data-use="${esc(p.ref)}">Marquer utilisé</button>` : ''}
     </div></td>
@@ -766,6 +767,7 @@ async function render() {
     </div>
     <div class="row-actions" style="justify-content:flex-start">
       <button class="mini" data-proof="${esc(p.ref)}">Voir photo</button>
+      ${p.code ? `<button class="mini" data-ticket="${esc(p.ref)}">Billet PDF</button>` : ''}
       ${validateBtn(p)}
       ${p.status === 'validated' && !p.codeUsed ? `<button class="mini" data-use="${esc(p.ref)}">Marquer utilisé</button>` : ''}
     </div>
@@ -806,6 +808,34 @@ document.addEventListener('click', async e => {
   if (pr) {
     const p = parts.find(x => x.ref === pr.dataset.proof);
     openProof(p);
+  }
+
+  const tk = e.target.closest('[data-ticket]');
+  if (tk) {
+    // La route exige l'en-tete d'autorisation : un lien simple ne peut pas
+    // l'envoyer. On recupere donc le PDF puis on l'ouvre depuis la memoire.
+    // L'onglet est ouvert TOUT DE SUITE, avant l'attente reseau : ouvert
+    // apres, le navigateur le prendrait pour une fenetre surgissante et le
+    // bloquerait.
+    const onglet = window.open('', '_blank');
+    tk.disabled = true;
+    const libelle = tk.textContent;
+    tk.textContent = 'Préparation…';
+    try {
+      const res = await apiFetch('/api/admin/ticket.pdf?id=' + encodeURIComponent(tk.dataset.ticket));
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Billet indisponible');
+      const url = URL.createObjectURL(await res.blob());
+      if (onglet) onglet.location = url;
+      else window.location = url;   // onglet bloque : on ouvre sur place
+      // On libere apres coup : trop tot, l'onglet n'aurait rien a afficher.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      if (onglet) onglet.close();
+      alert(err.message || 'Impossible de générer le billet.');
+    } finally {
+      tk.disabled = false;
+      tk.textContent = libelle;
+    }
   }
 });
 
@@ -1504,21 +1534,50 @@ document.getElementById('logoFile').addEventListener('change', async e => {
 
   if (file.size > 5 * 1024 * 1024) { toast('Logo trop volumineux (5 Mo max)'); return; }
 
-  const reader = new FileReader();
-  reader.onload = async () => {
-    try {
+  /* Reduction avant envoi. Le logo n'est jamais affiche au-dela de ~200px sur
+     le site, mais il est embarque TEL QUEL dans chaque billet PDF : un fichier
+     de 1,3 Mo donnait des billets de 1,5 Mo, envoyes par email a des
+     participants souvent en donnees mobiles. On plafonne donc a 600px.
+     Le PNG est conserve (et non converti en JPEG) pour garder la
+     transparence : un logo rond sur fond blanc carre serait affreux.
+     Le SVG passe sans transformation, il est deja leger et vectoriel. */
+  const versDataUrl = async () => {
+    if (file.type === 'image/svg+xml') {
+      return new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(file); });
+    }
+    return new Promise(resolve => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const max = 600;
+        let w = img.width, h = img.height;
+        if (w > max || h > max) { const r = Math.min(max / w, max / h); w = Math.round(w * r); h = Math.round(h * r); }
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(cv.toDataURL('image/png'));
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  };
+
+  try {
+    const dataUrl = await versDataUrl();
+    if (!dataUrl) { toast("Impossible de lire cette image."); return; }
+    {
       const res = await apiFetch('/api/admin/branding/logo', {
         method: 'POST',
-        body: JSON.stringify({ logo_base64: reader.result })
+        body: JSON.stringify({ logo_base64: dataUrl })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Envoi impossible');
       paintLogo(data.logo_url);
       document.querySelectorAll('[data-brand-logo]').forEach(img => { img.src = data.logo_url; });
       toast('Logo mis à jour');
-    } catch (err) { toast(err.message); }
-  };
-  reader.readAsDataURL(file);
+    }
+  } catch (err) { toast(err.message); }
   e.target.value = '';
 });
 
