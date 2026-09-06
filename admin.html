@@ -523,7 +523,9 @@ button{font-family:var(--body);cursor:pointer}
         </div>
         <div class="stats-acts">
           <button class="btn btn-ghost btn-sm" id="statsReload" type="button">Actualiser</button>
-          <button class="btn btn-gold btn-sm" id="exportCsv" type="button">Exporter en tableur</button>
+          <button class="btn btn-ghost btn-sm" id="exportCsv" type="button">Tableur (.csv)</button>
+          <button class="btn btn-ghost btn-sm" id="exportDocx" type="button">Word (.docx)</button>
+          <button class="btn btn-gold btn-sm" id="exportPdf" type="button">Rapport PDF</button>
         </div>
       </div>
 
@@ -1251,26 +1253,49 @@ async function loadStats() {
 
 document.getElementById('statsReload').addEventListener('click', loadStats);
 
-document.getElementById('exportCsv').addEventListener('click', async () => {
-  // Meme contrainte que le billet PDF : la route exige l'en-tete
-  // d'autorisation, qu'un lien simple ne peut pas envoyer.
-  const b = document.getElementById('exportCsv');
-  const libelle = b.textContent;
-  b.disabled = true; b.textContent = 'Préparation…';
+/* Telechargement authentifie. Les trois routes exigent l'en-tete
+   d'autorisation, qu'un lien simple ne peut pas porter : on recupere donc le
+   fichier puis on le remet au navigateur depuis la memoire.
+   Le PDF s'ouvre dans un onglet pour etre montre tout de suite ; le CSV et le
+   Word n'ont aucun interet a l'ecran et partent en telechargement. */
+async function telecharger(bouton, route, ouvrirDansOnglet) {
+  const onglet = ouvrirDansOnglet ? window.open('', '_blank') : null;
+  const libelle = bouton.textContent;
+  bouton.disabled = true;
+  bouton.textContent = 'Préparation…';
   try {
-    const res = await apiFetch('/api/admin/export.csv');
-    if (!res.ok) throw new Error('Export impossible');
+    const res = await apiFetch(route);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Export impossible');
     const url = URL.createObjectURL(await res.blob());
-    const nomEntete = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = nomEntete ? nomEntete[1] : 'participants.csv';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-    toast('Fichier téléchargé', 'Ouvre-le avec Excel ou Google Sheets.');
-  } catch (e) { alert(e.message || 'Export impossible.'); }
-  finally { b.disabled = false; b.textContent = libelle; }
-});
+    const entete = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+    const nom = entete ? entete[1] : 'export';
+
+    if (onglet) {
+      onglet.location = url;
+    } else {
+      const a = document.createElement('a');
+      a.href = url; a.download = nom;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+    // Liberation differee : trop tot, l'onglet n'aurait rien a afficher.
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    toast('Fichier prêt', nom);
+  } catch (e) {
+    if (onglet) onglet.close();
+    alert(e.message || 'Export impossible.');
+  } finally {
+    bouton.disabled = false;
+    bouton.textContent = libelle;
+  }
+}
+
+document.getElementById('exportPdf').addEventListener('click', e =>
+  telecharger(e.currentTarget, '/api/admin/rapport.pdf', true));
+document.getElementById('exportDocx').addEventListener('click', e =>
+  telecharger(e.currentTarget, '/api/admin/rapport.docx', false));
+
+document.getElementById('exportCsv').addEventListener('click', e =>
+  telecharger(e.currentTarget, '/api/admin/export.csv', false));
 
 /* ---------- ARTISTES INVITÉS ---------- */
 let artistsArr = [];

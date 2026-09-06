@@ -1674,13 +1674,13 @@ function buildTicketPdf(participant, settings = getSettings()) {
   doc.fillColor(t.vert).font("Helvetica-Bold").fontSize(7)
      .text("PARTICIPANT", 28, yPied, { characterSpacing: 1.6 });
   doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(11.5)
-     .text(participant.nom || "-", 28, yPied + 10, { width: W / 2 - 44, height: 15, ellipsis: true });
+     .text(texteP(participant.nom) || "-", 28, yPied + 10, { width: W / 2 - 44, height: 15, ellipsis: true });
 
   const lieu = participant.lieu_retrait || settings.pickup_location || "-";
   doc.fillColor(t.vert).font("Helvetica-Bold").fontSize(7)
      .text("LIEU", W / 2, yPied, { width: W / 2 - 28, align: "right", characterSpacing: 1.6 });
   doc.fillColor(t.creme).font("Helvetica-Bold").fontSize(9.5)
-     .text(lieu, W / 2, yPied + 11, { width: W / 2 - 28, align: "right", height: 14, ellipsis: true });
+     .text(texteP(lieu), W / 2, yPied + 11, { width: W / 2 - 28, align: "right", height: 14, ellipsis: true });
 
   return doc;
 }
@@ -1968,6 +1968,257 @@ function buildParticipantsCsv() {
 
   // BOM UTF-8 : sans lui, Excel lit le fichier en ANSI et massacre les accents.
   return "\ufeff" + lignes.join("\r\n") + "\r\n";
+}
+
+// ---------------------------------------------------------------------------
+// Rapport exportable
+//
+// Le CSV sert a retraiter les donnees ; le rapport sert a les MONTRER : a un
+// comite, a un partenaire, ou simplement a etre imprime et archive. D'ou deux
+// formats, le PDF pour diffuser tel quel et le Word pour annoter.
+// ---------------------------------------------------------------------------
+
+// Lignes du tableau, communes aux deux formats : un seul endroit a modifier
+// pour que PDF et Word restent identiques.
+const RAPPORT_COLONNES = [
+  { titre: "Nom", largeur: 150, valeur: (p) => texteP(p.nom) || "-" },
+  { titre: "Téléphone", largeur: 92, valeur: (p) => texteP(p.telephone) || "-" },
+  { titre: "Code", largeur: 66, valeur: (p) => p.code_unique || "-" },
+  { titre: "Statut", largeur: 74, valeur: (p) => (p.statut_paiement === "Valide" ? "Validé" : "En attente") },
+  { titre: "Entrée", largeur: 62, valeur: (p) => (p.statut_code === "utilise" ? "Scanné" : "-") },
+  { titre: "Inscrit le", largeur: 76, valeur: (p) => p.date || "-" },
+];
+
+// toLocaleString("fr-FR") separe les milliers par une espace insecable ETROITE
+// (U+202F). Les polices standard du PDF sont encodees en WinAnsi, qui ne
+// connait pas ce caractere : "50 000" s'imprimait "50 /000". On repasse donc
+// tout texte destine au PDF par ce filtre.
+function texteP(valeur) {
+  return String(valeur == null ? "" : valeur)
+    .replace(/[    ]/g, " ");
+}
+
+function statsResume(stats, settings) {
+  return [
+    ["Inscrits", String(stats.totaux.inscrits)],
+    ["Paiements validés", String(stats.totaux.valides)],
+    ["En attente", String(stats.totaux.en_attente)],
+    ["Entrées scannées", String(stats.totaux.utilises)],
+    ["Taux de présence", stats.taux_presence + " %"],
+    ["Recette", texteP(formatMontant(stats.recette))],
+  ];
+}
+
+function buildRapportPdf(settings = getSettings()) {
+  const stats = buildStats(settings);
+  const participants = getParticipants();
+  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
+  const d = getDatePartsBenin();
+  const genere = `${d.day}/${d.month}/${d.year} à ${d.hour}:${d.minute}`;
+
+  const M = 40;                       // marge
+  const doc = new PDFDocument({ size: "A4", margin: M, bufferPages: true, info: { Title: `Rapport ${eventName}`, Author: eventName } });
+  const L = doc.page.width - M * 2;    // largeur utile
+
+  const VERT = "#12662c", SOMBRE = "#0c2b17", GRIS = "#6b7280", TRAIT = "#d8dfd9";
+
+  // -- En-tete de la premiere page
+  const logo = getTicketLogoPath(settings);
+  if (logo) {
+    try { doc.image(logo, M, M - 4, { fit: [46, 46] }); } catch {}
+  }
+  const titreX = logo ? M + 58 : M;
+  doc.fillColor(SOMBRE).font("Helvetica-Bold").fontSize(19).text(eventName.toUpperCase(), titreX, M);
+  doc.fillColor(GRIS).font("Helvetica").fontSize(9.5)
+     .text(`Rapport des participants — établi le ${genere}`, titreX, M + 24);
+  doc.moveTo(M, M + 52).lineTo(M + L, M + 52).lineWidth(1.4).strokeColor(VERT).stroke();
+
+  // -- Chiffres cles, en trois colonnes de deux lignes
+  let y = M + 70;
+  doc.fillColor(SOMBRE).font("Helvetica-Bold").fontSize(12).text("Chiffres clés", M, y);
+  y += 20;
+
+  const resume = statsResume(stats, settings);
+  const colL = L / 3;
+  resume.forEach((ligne, i) => {
+    const cx = M + (i % 3) * colL;
+    const cy = y + Math.floor(i / 3) * 46;
+    doc.roundedRect(cx, cy, colL - 10, 38, 7).lineWidth(1).fillAndStroke("#f4f7f2", TRAIT);
+    doc.fillColor(GRIS).font("Helvetica").fontSize(7.5)
+       .text(ligne[0].toUpperCase(), cx + 10, cy + 7, { characterSpacing: 0.8 });
+    doc.fillColor(SOMBRE).font("Helvetica-Bold").fontSize(14).text(ligne[1], cx + 10, cy + 18);
+  });
+  y += 46 * Math.ceil(resume.length / 3) + 14;
+
+  if (isDemoMode(settings)) {
+    doc.roundedRect(M, y, L, 26, 6).fillAndStroke("#fdecea", "#e0b4ae");
+    doc.fillColor("#8a2b12").font("Helvetica-Bold").fontSize(8.5)
+       .text("Mode démonstration actif : ces chiffres comptent des inscriptions d'essai.", M + 10, y + 9);
+    y += 36;
+  }
+
+  // -- Tableau des participants
+  doc.fillColor(SOMBRE).font("Helvetica-Bold").fontSize(12)
+     .text(`Participants (${participants.length})`, M, y);
+  y += 20;
+
+  const LIGNE_H = 18;
+  const BAS = doc.page.height - M - 24;
+
+  function enteteTableau(yy) {
+    doc.rect(M, yy, L, LIGNE_H).fill(SOMBRE);
+    let x = M + 8;
+    RAPPORT_COLONNES.forEach((c) => {
+      doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(8)
+         .text(c.titre.toUpperCase(), x, yy + 5.5, { width: c.largeur - 8, lineBreak: false });
+      x += c.largeur;
+    });
+    return yy + LIGNE_H;
+  }
+
+  y = enteteTableau(y);
+
+  participants.forEach((part, i) => {
+    if (y + LIGNE_H > BAS) {
+      doc.addPage();
+      y = M;
+      y = enteteTableau(y);
+    }
+    // Alternance de fond : sur un tableau long, l'oeil perd sa ligne sans elle.
+    if (i % 2 === 1) doc.rect(M, y, L, LIGNE_H).fill("#f6f8f6");
+    let x = M + 8;
+    RAPPORT_COLONNES.forEach((c) => {
+      doc.fillColor(SOMBRE).font("Helvetica").fontSize(8)
+         .text(String(c.valeur(part)), x, y + 5.5, { width: c.largeur - 8, lineBreak: false, ellipsis: true });
+      x += c.largeur;
+    });
+    doc.moveTo(M, y + LIGNE_H).lineTo(M + L, y + LIGNE_H).lineWidth(0.5).strokeColor(TRAIT).stroke();
+    y += LIGNE_H;
+  });
+
+  if (!participants.length) {
+    doc.fillColor(GRIS).font("Helvetica-Oblique").fontSize(9)
+       .text("Aucune inscription enregistrée.", M + 8, y + 6);
+  }
+
+  // -- Pieds de page, numerotes une fois toutes les pages connues
+  const pages = doc.bufferedPageRange();
+  for (let i = 0; i < pages.count; i += 1) {
+    doc.switchToPage(pages.start + i);
+    // Le pied s'ecrit SOUS la marge basse. Sans annuler cette marge, pdfkit
+    // considere que le texte deborde et ajoute une page pour l'accueillir :
+    // c'est ainsi que le rapport sortait avec deux pages vides a la fin.
+    doc.page.margins.bottom = 0;
+    doc.fillColor(GRIS).font("Helvetica").fontSize(7.5)
+       .text(`${eventName} - ${genere}`, M, doc.page.height - M + 4, { width: L / 2, lineBreak: false });
+    doc.text(`Page ${i + 1} sur ${pages.count}`, M + L / 2, doc.page.height - M + 4,
+             { width: L / 2, align: "right", lineBreak: false });
+  }
+
+  return doc;
+}
+
+function renderRapportPdf(settings = getSettings()) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = buildRapportPdf(settings);
+      const morceaux = [];
+      doc.on("data", (m) => morceaux.push(m));
+      doc.on("end", () => resolve(Buffer.concat(morceaux)));
+      doc.on("error", reject);
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+// -- Version Word du meme rapport ------------------------------------------
+async function renderRapportDocx(settings = getSettings()) {
+  const {
+    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+    HeadingLevel, WidthType, AlignmentType, BorderStyle, ShadingType,
+  } = require("docx");
+
+  const stats = buildStats(settings);
+  const participants = getParticipants();
+  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
+  const d = getDatePartsBenin();
+  const genere = `${d.day}/${d.month}/${d.year} à ${d.hour}:${d.minute}`;
+
+  const VERT = "12662C", SOMBRE = "0C2B17", GRIS = "6B7280";
+
+  const cellule = (texte, opts = {}) => new TableCell({
+    shading: opts.fond ? { type: ShadingType.CLEAR, fill: opts.fond } : undefined,
+    margins: { top: 60, bottom: 60, left: 90, right: 90 },
+    children: [new Paragraph({
+      children: [new TextRun({
+        text: String(texte),
+        bold: !!opts.gras,
+        size: opts.taille || 17,
+        color: opts.couleur || SOMBRE,
+      })],
+    })],
+  });
+
+  const enfants = [
+    new Paragraph({
+      children: [new TextRun({ text: eventName.toUpperCase(), bold: true, size: 38, color: SOMBRE })],
+    }),
+    new Paragraph({
+      spacing: { after: 240 },
+      children: [new TextRun({ text: `Rapport des participants — établi le ${genere}`, size: 19, color: GRIS })],
+    }),
+    new Paragraph({
+      spacing: { after: 120 },
+      children: [new TextRun({ text: "Chiffres clés", bold: true, size: 26, color: VERT })],
+    }),
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: statsResume(stats, settings).map((ligne) => new TableRow({
+        children: [cellule(ligne[0], { couleur: GRIS }), cellule(ligne[1], { gras: true })],
+      })),
+    }),
+  ];
+
+  if (isDemoMode(settings)) {
+    enfants.push(new Paragraph({
+      spacing: { before: 200 },
+      children: [new TextRun({
+        text: "Mode démonstration actif : ces chiffres comptent des inscriptions d'essai.",
+        bold: true, size: 18, color: "8A2B12",
+      })],
+    }));
+  }
+
+  enfants.push(new Paragraph({
+    spacing: { before: 320, after: 120 },
+    children: [new TextRun({ text: `Participants (${participants.length})`, bold: true, size: 26, color: VERT })],
+  }));
+
+  enfants.push(new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({
+        tableHeader: true,
+        children: RAPPORT_COLONNES.map((c) =>
+          cellule(c.titre.toUpperCase(), { gras: true, couleur: "FFFFFF", fond: SOMBRE, taille: 15 })),
+      }),
+      ...participants.map((part, i) => new TableRow({
+        children: RAPPORT_COLONNES.map((c) =>
+          cellule(c.valeur(part), { fond: i % 2 ? "F6F8F6" : undefined, taille: 16 })),
+      })),
+    ],
+  }));
+
+  if (!participants.length) {
+    enfants.push(new Paragraph({
+      children: [new TextRun({ text: "Aucune inscription enregistrée.", italics: true, color: GRIS, size: 18 })],
+    }));
+  }
+
+  const doc = new Document({ sections: [{ children: enfants }] });
+  return Packer.toBuffer(doc);
 }
 
 function getPaymentApiBaseUrl(environment) {
@@ -3275,6 +3526,34 @@ async function handleApi(request, response, url) {
           "Cache-Control": "no-store",
         });
         response.end(csv);
+        return;
+      }
+
+      // Rapport a montrer ou a imprimer, en PDF ou en Word. Le CSV sert a
+      // retraiter les donnees, le rapport a les presenter.
+      const rapportMatch = url.pathname.match(/^\/api\/admin\/rapport\.(pdf|docx)$/);
+      if (rapportMatch && request.method === "GET") {
+        const format = rapportMatch[1];
+        const settings = getSettings();
+        const base = (settings.event_name || DEFAULT_SETTINGS.event_name)
+          .toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        const nom = `${base}-rapport-${getDateKeyBenin()}.${format}`;
+
+        const fichier = format === "pdf"
+          ? await renderRapportPdf(settings)
+          : await renderRapportDocx(settings);
+
+        response.writeHead(200, {
+          "Content-Type": format === "pdf"
+            ? "application/pdf"
+            : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          // Le PDF s'ouvre dans l'onglet pour etre montre tout de suite ; le
+          // Word n'a aucun interet a l'ecran, il part en telechargement.
+          "Content-Disposition": `${format === "pdf" ? "inline" : "attachment"}; filename="${nom}"`,
+          "Content-Length": fichier.length,
+          "Cache-Control": "no-store",
+        });
+        response.end(fichier);
         return;
       }
 
