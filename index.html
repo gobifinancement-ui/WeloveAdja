@@ -45,6 +45,11 @@ img{display:block;max-width:100%}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;font-family:var(--body);font-weight:700;font-size:1rem;padding:15px 28px;border-radius:100px;border:none;cursor:pointer;text-decoration:none;white-space:nowrap;min-height:52px;transition:transform .25s var(--ease),box-shadow .25s,background .25s,border-color .25s}
 .btn-gold{background:linear-gradient(135deg,var(--gold-lt),var(--gold) 56%,var(--gold-dp));color:#2a1d05;box-shadow:0 14px 34px -12px color-mix(in oklab,var(--gold) 70%,transparent),inset 0 1px 0 rgba(255,255,255,.45)}
 .btn-gold:hover{transform:translateY(-3px);box-shadow:0 22px 46px -14px color-mix(in oklab,var(--gold) 85%,transparent)}
+/* Retour tactile : le bouton s'enfonce sous le doigt. La duree est ramenee a
+   .09s pendant l'appui pour que la reaction paraisse instantanee ; au relachement
+   la transition .25s du survol reprend, donc la remontee reste douce. */
+.btn:active{transform:scale(.96);transition-duration:.09s}
+.btn-gold:active{transform:translateY(-1px) scale(.96);transition-duration:.09s}
 .btn-ghost{background:var(--glass);color:var(--cream);border:1px solid var(--stroke);backdrop-filter:blur(10px)}
 .btn-ghost:hover{transform:translateY(-3px);border-color:var(--stroke-gd);background:var(--glass-2)}
 .btn-block{width:100%}
@@ -131,16 +136,19 @@ footer{border-top:1px solid var(--stroke);margin-top:clamp(40px,7vw,72px);paddin
 .mobile-cta{position:fixed;left:0;right:0;bottom:0;z-index:60;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(180deg,transparent,color-mix(in oklab,var(--bg) 88%,transparent) 32%);display:none;transform:translateY(120%);transition:transform .35s var(--ease);pointer-events:none}
 .mobile-cta.show{transform:translateY(0);pointer-events:auto}
 .mobile-cta .btn{box-shadow:0 -2px 30px -8px rgba(0,0,0,.6),0 14px 34px -12px color-mix(in oklab,var(--gold) 70%,transparent)}
-#home{transition:transform .5s var(--ease),opacity .5s var(--ease),filter .5s var(--ease)}
+/* L'accueil s'eloigne pendant que le disque grandit. Duree calee sur la phase
+   d'expansion (.42s) et courbe ease-in-out, comme demande. */
+#home{transition:transform .42s cubic-bezier(.4,0,.2,1),opacity .42s cubic-bezier(.4,0,.2,1),filter .42s cubic-bezier(.4,0,.2,1)}
 body.sheet-open{overflow:hidden}
-body.sheet-open #home{transform:scale(.96);opacity:.5;filter:blur(2px)}
+body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .sheet{position:fixed;inset:0;z-index:120;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none}
 .sheet.open{display:block}
 .sheet .mesh-layer{position:fixed;inset:0;z-index:-1;pointer-events:none}
-@keyframes slideInUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes slideOutDown{from{transform:translateY(0)}to{transform:translateY(100%)}}
-.sheet.enter{animation:slideInUp .5s var(--ease) forwards}
-.sheet.leave{animation:slideOutDown .5s var(--ease) forwards}
+/* Plus de glissement a l'ouverture : la feuille est deja en place derriere le
+   disque, c'est lui qui fait la transition. Un glissement en plus se verrait
+   au moment ou le disque s'efface. La fermeture, elle, garde le glissement. */
+.sheet.leave{animation:slideOutDown .42s var(--ease) forwards}
 .sheet-bar{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px clamp(18px,5vw,40px);background:color-mix(in oklab,var(--bg) 80%,transparent);backdrop-filter:blur(16px);border-bottom:1px solid var(--stroke)}
 .sheet-bar .grab{position:absolute;top:7px;left:50%;transform:translateX(-50%);width:42px;height:5px;border-radius:5px;background:var(--cream-32)}
 .sheet-bar b{font-family:var(--display);font-weight:600;font-size:1.05rem;display:flex;align-items:center;gap:10px}
@@ -285,24 +293,27 @@ body.sheet-open #home{transform:scale(.96);opacity:.5;filter:blur(2px)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:translateY(0)}}
 
 /* ============ ANIMATION PARTICIPER ============ */
-@keyframes slideInUp{
-  from{transform:translateY(100%)}
-  60%{transform:translateY(-2%)}
-  to{transform:translateY(0)}
+/* Disque de revelation : part du point de clic, s'etend jusqu'a couvrir tout
+   l'ecran, puis s'efface pour decouvrir le formulaire. Les anneaux creux
+   d'avant ne masquaient rien : la bascule accueil -> formulaire se voyait.
+   62% = fin de l'expansion, les 38% restants sont le fondu. */
+@keyframes disc-reveal{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:1;animation-timing-function:cubic-bezier(.4,0,.2,1)}
+  62%{transform:translate(-50%,-50%) scale(1);opacity:1;animation-timing-function:ease-out}
+  100%{transform:translate(-50%,-50%) scale(1);opacity:0}
 }
-@keyframes ring-expand{
-  from{width:0;height:0;opacity:.9;border-width:3px}
-  to{width:260vmax;height:260vmax;opacity:0;border-width:1px}
+/* Cascade des champs : chaque element du volet entre juste apres le precedent. */
+@keyframes field-in{
+  from{opacity:0;transform:translateY(14px)}
+  to{opacity:1;transform:none}
 }
-@keyframes particle-fly{
-  0%{opacity:1;transform:translate(0,0) scale(1)}
-  80%{opacity:.8}
-  100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(0)}
-}
+/* Le formulaire arrive d'un peu plus bas, un peu plus petit et flou, puis se
+   pose. Le depassement est volontairement minuscule (3px / 0,8%) : au-dela on
+   bascule dans le rebond joueur, qui ne va pas a une page de paiement. */
 @keyframes form-entrance{
-  0%{opacity:0;transform:translateY(32px) scale(.94);filter:blur(8px)}
-  60%{opacity:1;filter:blur(0)}
-  80%{transform:translateY(-4px) scale(1.01)}
+  0%{opacity:0;transform:translateY(26px) scale(.965);filter:blur(6px)}
+  55%{opacity:1;filter:blur(0)}
+  78%{transform:translateY(-3px) scale(1.008)}
   100%{transform:translateY(0) scale(1)}
 }
 @keyframes shimmer-sweep{
@@ -329,18 +340,19 @@ body.sheet-open #home{transform:scale(.96);opacity:.5;filter:blur(2px)}
   animation:confetti-fall var(--dur,2.4s) var(--delay,0s) ease-in forwards,
             confetti-sway var(--sway-dur,1.2s) var(--delay,0s) ease-in-out infinite;
 }
-.burst-ring{
+.reveal-disc{
   position:fixed;z-index:200;pointer-events:none;border-radius:50%;
-  border:3px solid var(--gold);
-  transform:translate(-50%,-50%);
-  animation:ring-expand .9s cubic-bezier(.2,.8,.2,1) forwards;
+  /* Couleur du fond du formulaire : on a l'impression que la feuille elle-meme
+     se deplie depuis le bouton, sans aplat lumineux en pleine face. */
+  background:var(--bg);
+  transform:translate(-50%,-50%) scale(0);
+  will-change:transform,opacity;
 }
-.burst-ring:nth-child(2){animation-delay:.12s;border-color:var(--gold-lt);opacity:.6}
-.burst-particle{
-  position:fixed;z-index:201;pointer-events:none;border-radius:50%;
-  background:var(--gold);
-  animation:particle-fly .8s cubic-bezier(.2,.8,.2,1) forwards;
-}
+.reveal-disc.go{animation:disc-reveal .68s forwards}
+/* Cascade : le retard de chaque element est pose en JS, pour rester juste
+   quel que soit le nombre de champs du volet. */
+.pane.stagger>*,
+.verify-shell.stagger>*{animation:field-in .46s cubic-bezier(.22,.9,.28,1) both}
 .reg-shell{animation:none}
 .reg-shell.entering{animation:form-entrance .7s .18s cubic-bezier(.2,.8,.2,1) both}
 .reg-shell.entering::after{
@@ -369,7 +381,7 @@ body.sheet-open #home{transform:scale(.96);opacity:.5;filter:blur(2px)}
   .code-big{font-size:clamp(1.5rem,6vw,2.5rem);padding:14px 16px}
   .cd-cell .n{font-size:clamp(1.4rem,6vw,2.5rem)}
 }
-@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto}.reveal{opacity:1;transform:none}.hero .anim{opacity:1!important;transform:none!important}.sheet.enter,.sheet.leave{animation:none!important}body.sheet-open #home{transform:none;opacity:1;filter:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto}.reveal{opacity:1;transform:none}.hero .anim{opacity:1!important;transform:none!important}.sheet.leave{animation:none!important}.reveal-disc{display:none!important}.pane.stagger>*,.verify-shell.stagger>*{opacity:1!important;transform:none!important}body.sheet-open #home{transform:none;opacity:1;filter:none}}
 </style>
 <!-- Thème piloté depuis l'admin. Placé après les styles inline pour les surcharger. -->
 <link rel="icon" href="/api/branding/default-icon.svg">
@@ -727,57 +739,90 @@ document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 /* Sheets */
 let activeSheet=null;
 let lastClickX=window.innerWidth/2, lastClickY=window.innerHeight/2;
-document.addEventListener('click',e=>{lastClickX=e.clientX;lastClickY=e.clientY;},{passive:true});
+/* capture:true est indispensable. En phase de bouillonnement, ce listener
+   s'executait APRES celui du bouton : openSheet lisait donc la position du clic
+   PRECEDENT, et au tout premier clic le centre de l'ecran. Le cercle ne partait
+   jamais du bouton touche. En phase de capture, la position est a jour avant
+   que le bouton ne reagisse. */
+document.addEventListener('click',e=>{
+  // Un clic au clavier (Entree/Espace) rapporte des coordonnees a 0 : on vise
+  // alors le centre du bouton, sinon le cercle partirait du coin superieur gauche.
+  if(e.clientX===0&&e.clientY===0&&e.target&&e.target.getBoundingClientRect){
+    const r=e.target.getBoundingClientRect();
+    if(r.width){lastClickX=r.left+r.width/2;lastClickY=r.top+r.height/2;return;}
+  }
+  lastClickX=e.clientX;lastClickY=e.clientY;
+},{passive:true,capture:true});
 
-function spawnBurst(x,y){
-  // Anneaux
-  for(let r=0;r<2;r++){
-    const ring=document.createElement('div');
-    ring.className='burst-ring';
-    ring.style.cssText=`left:${x}px;top:${y}px;width:0;height:0;animation-delay:${r*120}ms`;
-    document.body.appendChild(ring);
-    ring.addEventListener('animationend',()=>ring.remove(),{once:true});
-  }
-  // Particules
-  const COLORS=['#f0c64f','#ffe6a0','#fff7d6','#8a96f0','#ffffff'];
-  const COUNT=20;
-  for(let i=0;i<COUNT;i++){
-    const angle=(i/COUNT)*Math.PI*2;
-    const dist=80+Math.random()*160;
-    const dx=Math.cos(angle)*dist+'px';
-    const dy=(Math.sin(angle)*dist - 40)+'px'; // légèrement vers le haut
-    const size=3+Math.random()*6;
-    const color=COLORS[Math.floor(Math.random()*COLORS.length)];
-    const delay=Math.random()*120;
-    const p=document.createElement('div');
-    p.className='burst-particle';
-    p.style.cssText=`left:${x}px;top:${y}px;width:${size}px;height:${size}px;background:${color};--dx:${dx};--dy:${dy};animation-delay:${delay}ms;box-shadow:0 0 ${size*2}px ${color}`;
-    document.body.appendChild(p);
-    p.addEventListener('animationend',()=>p.remove(),{once:true});
-  }
+/* Chronologie de la transition, en millisecondes. Un seul endroit a regler :
+   si on touche la duree du disque en CSS (.68s), c'est ici qu'on resynchronise.
+     0    -> le bouton s'enfonce, le disque part, l'accueil commence a s'effacer
+     420  -> le disque couvre tout l'ecran
+     380  -> la feuille s'affiche DERRIERE le disque, donc invisible
+     460  -> le formulaire demarre son entree, decouverte par le fondu du disque
+     520+ -> les champs arrivent en cascade */
+const REVEAL = { sheetAt: 380, formAt: 460, fieldsAt: 520, step: 60 };
+
+/* Disque qui part du point de clic et couvre l'ecran. Le rayon vise le coin le
+   plus eloigne : sans ca, un clic pres d'un bord laisserait le coin oppose a
+   decouvert et on verrait la bascule. */
+function revealDisc(x, y){
+  const radius = Math.hypot(
+    Math.max(x, window.innerWidth  - x),
+    Math.max(y, window.innerHeight - y),
+  );
+  const disc = document.createElement('div');
+  disc.className = 'reveal-disc';
+  disc.style.cssText = `left:${x}px;top:${y}px;width:${radius*2}px;height:${radius*2}px`;
+  document.body.appendChild(disc);
+  void disc.offsetWidth;           // reflow : sans lui l'animation ne demarre pas
+  disc.classList.add('go');
+  disc.addEventListener('animationend', () => disc.remove(), { once:true });
+}
+
+/* Fait entrer les enfants d'un conteneur les uns apres les autres. Les retards
+   sont poses ici plutot qu'avec des :nth-child en CSS : le nombre de champs
+   change d'une etape a l'autre, une liste figee serait vite fausse. */
+function staggerIn(container, baseDelay){
+  if(!container) return;
+  container.classList.remove('stagger');
+  [...container.children].forEach((el, i) => {
+    el.style.animationDelay = ((baseDelay || 0) + i * REVEAL.step) + 'ms';
+  });
+  void container.offsetWidth;      // reflow : rejoue l'animation a chaque appel
+  container.classList.add('stagger');
+}
+
+/* Le conteneur dont les enfants doivent defiler, selon la feuille ouverte. */
+function staggerTarget(sheet){
+  return sheet.querySelector('.pane.show') || sheet.querySelector('.verify-shell');
 }
 
 function openSheet(name){
   const sh=document.getElementById('sheet-'+name);
-  if(!sh)return;
-  // Burst au point de clic
-  spawnBurst(lastClickX,lastClickY);
-  // Légère pause pour laisser les particules s'amorcer
-  setTimeout(()=>{
-    activeSheet=sh;
-    sh.classList.add('open','enter');
-    document.body.classList.add('sheet-open');
-    sh.scrollTop=0;
-    sh.addEventListener('animationend',()=>sh.classList.remove('enter'),{once:true});
-    // Entrée dramatique du formulaire
-    const shell=sh.querySelector('.reg-shell');
+  if(!sh || activeSheet) return;   // pas deux ouvertures superposees
+
+  revealDisc(lastClickX, lastClickY);
+  // Des maintenant : l'accueil s'eloigne et s'efface sous le disque.
+  document.body.classList.add('sheet-open');
+
+  setTimeout(() => {
+    activeSheet = sh;
+    sh.classList.add('open');
+    sh.scrollTop = 0;
+  }, REVEAL.sheetAt);
+
+  setTimeout(() => {
+    const shell = sh.querySelector('.reg-shell') || sh.querySelector('.verify-shell');
     if(shell){
       shell.classList.remove('entering');
-      void shell.offsetWidth; // reflow
+      void shell.offsetWidth;
       shell.classList.add('entering');
-      shell.addEventListener('animationend',()=>shell.classList.remove('entering'),{once:true});
+      shell.addEventListener('animationend', () => shell.classList.remove('entering'), { once:true });
     }
-  },80);
+  }, REVEAL.formAt);
+
+  setTimeout(() => staggerIn(staggerTarget(sh)), REVEAL.fieldsAt);
 }
 
 function closeSheet(){
@@ -804,6 +849,9 @@ function paint(){
   nodes.forEach(n=>{const s=+n.dataset.step;n.classList.toggle('active',s===step);n.classList.toggle('done',s<step);});
   bar1.style.width=step>1?'100%':'0';bar2.style.width=step>2?'100%':'0';
   const sb=document.querySelector('#sheet-participer');if(sb)sb.scrollTop=0;
+  // Le volet qui vient d'apparaitre fait defiler ses champs, comme a
+  // l'ouverture : sans ca, passer a l'etape 2 semblait brutal a cote.
+  staggerIn(document.querySelector('.pane.show'));
 }
 
 function valEmail(v){return/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);}
@@ -958,7 +1006,10 @@ async function resumePendingPayment(){
     const data=await res.json();
     if(data.status==='approved'&&data.participant){
       localStorage.removeItem('adja_pending_payment');
-      openSheet('sheet-participer');
+      // openSheet prefixe deja "sheet-" : passer "sheet-participer" cherchait
+      // "sheet-sheet-participer", donc la feuille ne s'ouvrait jamais et le
+      // participant de retour d'un paiement ne voyait pas son code.
+      openSheet('participer');
       showConfirm(data.participant);
     }
   }catch(e){/* silencieux : simple tentative de rattrapage */}
