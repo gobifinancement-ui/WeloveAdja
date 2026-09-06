@@ -77,6 +77,13 @@ const DEFAULT_SETTINGS = {
   chiefs_json: "[]",
   sponsors_json: "[]",
   event_items_json: "[]",
+  // Artistes invites : [{name, note, poster}] ou poster est une image
+  // compressee cote admin avant envoi (voir compressPoster dans admin.html).
+  artists_json: "[]",
+  // Disposition et animation choisies dans l'admin. Les valeurs acceptees
+  // sont validees a l'ecriture, voir ARTISTS_LAYOUTS / ARTISTS_ANIMATIONS.
+  artists_layout: "carrousel",
+  artists_animation: "cascade",
   logo_url: "",
   theme_preset: "indigo",
   theme_custom_json: "{}",
@@ -129,6 +136,12 @@ const THEME_PRESETS = {
 
 const DEFAULT_THEME_PRESET = "indigo";
 
+// Dispositions et animations proposees pour les affiches des artistes. Liste
+// fermee : une valeur inconnue arrivant de l'admin retombe sur le defaut,
+// sinon elle atterrirait telle quelle dans un nom de classe CSS.
+const ARTISTS_LAYOUTS = ["carrousel", "grille", "pleine"];
+const ARTISTS_ANIMATIONS = ["cascade", "fondu", "zoom", "glisse", "aucune"];
+
 // Traduction des champs de l'admin vers les cles reellement lues par le
 // serveur. DOIT couvrir tous les [data-set] de admin.html : une cle absente
 // ici est ignoree (et signalee), jamais ecrite telle quelle.
@@ -156,6 +169,9 @@ const SETTINGS_KEY_MAP = {
   chiefs:               "chiefs_json",
   sponsors:             "sponsors_json",
   eventItems:           "event_items_json",
+  artists:              "artists_json",
+  artistsLayout:        "artists_layout",
+  artistsAnimation:     "artists_animation",
 };
 
 let db;
@@ -1017,10 +1033,11 @@ function maskSecretSettings(settings) {
 }
 
 function publicSettings(settings = getSettings()) {
-  let chiefs = [], sponsors = [], eventItems = [];
+  let chiefs = [], sponsors = [], eventItems = [], artists = [];
   try { chiefs = JSON.parse(settings.chiefs_json || "[]"); } catch {}
   try { sponsors = JSON.parse(settings.sponsors_json || "[]"); } catch {}
   try { eventItems = JSON.parse(settings.event_items_json || "[]"); } catch {}
+  try { artists = JSON.parse(settings.artists_json || "[]"); } catch {}
   return {
     eventName:   settings.event_name     || DEFAULT_SETTINGS.event_name,
     amount:      Number(settings.participation_fee) || 10000,
@@ -1039,6 +1056,9 @@ function publicSettings(settings = getSettings()) {
     chiefs,
     sponsors,
     eventItems,
+    artists,
+    artistsLayout: ARTISTS_LAYOUTS.includes(settings.artists_layout) ? settings.artists_layout : ARTISTS_LAYOUTS[0],
+    artistsAnimation: ARTISTS_ANIMATIONS.includes(settings.artists_animation) ? settings.artists_animation : ARTISTS_ANIMATIONS[0],
   };
 }
 
@@ -1770,7 +1790,7 @@ function buildValidationEmailHtml(participant, publicBaseUrl = "") {
       <p>Votre paiement est confirme. Voici votre code ${eventName} :</p>
       <p style="font-size:34px;font-weight:700;letter-spacing:6px">${escapeHtml(participant.code_unique)}</p>
       ${qrImage}
-      <p>Lieu de retrait : <strong>${escapeHtml(participant.lieu_retrait || "APPLAHOUE AZOVE")}</strong></p>
+      <p>Lieu de retrait : <strong>${escapeHtml(participant.lieu_retrait || "Terrain Omnisports CEG2 Azovè")}</strong></p>
       <p>Presentez ce code ou le QR code joint le jour de l'evenement.</p>
     </div>
   `;
@@ -1807,7 +1827,7 @@ async function sendValidationEmail(participant, settings) {
         `Bonjour ${participant.nom || ""},\n\n` +
         `Votre paiement ${eventName} est confirme.\n` +
         `Code : ${participant.code_unique}\n` +
-        `Lieu de retrait : ${participant.lieu_retrait || "APPLAHOUE AZOVE"}\n`,
+        `Lieu de retrait : ${participant.lieu_retrait || "Terrain Omnisports CEG2 Azovè"}\n`,
       attachments,
     },
     {

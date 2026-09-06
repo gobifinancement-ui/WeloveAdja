@@ -206,6 +206,31 @@ button{font-family:var(--body);cursor:pointer}
 .f .ipwrap{position:relative;display:flex;align-items:center}
 .f .ipwrap .reveal-btn{position:absolute;right:8px;background:none;border:none;color:var(--cream-52);padding:8px;border-radius:8px;display:flex}
 .f .ipwrap .reveal-btn:hover{color:var(--cream)}
+/* Editeur des artistes : l'affiche est verticale, la vignette la reflete. */
+.artist-row{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px}
+.artist-poster{width:58px;flex:none;aspect-ratio:2/3;border-radius:9px;overflow:hidden;cursor:pointer;
+  border:1px solid var(--stroke-gd);background:var(--glass);display:grid;place-items:center;position:relative}
+.artist-poster img{width:100%;height:100%;object-fit:cover}
+.artist-poster .ph{color:var(--cream-32);font-size:.62rem;text-align:center;padding:4px;line-height:1.3}
+.artist-poster .cam{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.45);color:#fff;opacity:0;transition:.2s}
+.artist-poster:hover .cam{opacity:1}
+.artist-fields{flex:1;display:grid;gap:8px;min-width:0}
+
+/* Choix de disposition et d'animation : des vignettes, pas une liste
+   deroulante. L'organisateur doit voir ce qu'il choisit. */
+.pick-block{margin-top:18px}
+.pick-lbl{display:block;font-size:.78rem;font-weight:800;letter-spacing:.04em;margin-bottom:9px;color:var(--cream)}
+.pick-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.pick-grid.anim-grid{grid-template-columns:repeat(auto-fit,minmax(92px,1fr))}
+.pick-opt{background:var(--glass);border:1px solid var(--stroke);border-radius:12px;padding:10px 8px;
+  cursor:pointer;text-align:center;color:var(--cream-72);font-family:var(--body);transition:.2s}
+.pick-opt:hover{border-color:var(--stroke-gd);color:var(--cream)}
+.pick-opt.sel{border-color:var(--gold);background:color-mix(in oklab,var(--gold) 12%,transparent);color:var(--cream)}
+.pick-opt b{display:block;font-size:.76rem;font-weight:800;margin-top:6px}
+.pick-opt small{display:block;font-size:.66rem;color:var(--cream-52);margin-top:2px;line-height:1.35}
+.pick-fig{height:34px;display:flex;align-items:center;justify-content:center;gap:3px}
+.pick-fig i{display:block;background:var(--cream-32);border-radius:2px}
+.pick-opt.sel .pick-fig i{background:var(--gold-lt)}
 .demo-card{border:1px solid var(--stroke);border-radius:16px;padding:18px;margin-top:8px;background:var(--glass)}
 .demo-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .demo-head b{display:block;font-size:.95rem;margin-bottom:4px}
@@ -498,6 +523,25 @@ button{font-family:var(--body);cursor:pointer}
         <p class="gsub">Initiale (ou emoji) + nom. Affichés dans la bande « Avec le soutien de ».</p>
         <div id="sponsorsEditor"></div>
         <button class="rep-add" id="addSponsor"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Ajouter un sponsor</button>
+      </div>
+
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Artistes invités</h3>
+        <p class="gsub">Importe l'affiche de chaque artiste. Les images sont compressées automatiquement avant l'envoi.</p>
+        <div id="artistsEditor"></div>
+        <button class="rep-add" id="addArtist"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Ajouter un artiste</button>
+
+        <div class="pick-block">
+          <label class="pick-lbl">Disposition sur le site</label>
+          <div class="pick-grid" id="layoutGrid"></div>
+        </div>
+
+        <div class="pick-block">
+          <label class="pick-lbl">Animation à l'apparition</label>
+          <div class="pick-grid anim-grid" id="animGrid"></div>
+        </div>
+
+        <p class="gsub" style="margin-top:12px">Enregistre, puis ouvre le site et fais défiler jusqu'à « Artistes invités » pour voir le rendu.</p>
       </div>
 
       <div class="set-group">
@@ -875,6 +919,116 @@ async function adminVerify() {
   }
 }
 
+/* ---------- ARTISTES INVITÉS ---------- */
+let artistsArr = [];
+let artistsLayout = 'carrousel';
+let artistsAnim = 'cascade';
+
+const LAYOUTS = [
+  { key:'carrousel', nom:'Carrousel', desc:'On fait glisser', fig:[[18,26],[10,20],[6,14]] },
+  { key:'grille',    nom:'Grille',    desc:'2 par ligne',     fig:[[11,17],[11,17],[11,17],[11,17]] },
+  { key:'pleine',    nom:'Pleine',    desc:'Une par ligne',   fig:[[30,11],[30,11]] },
+];
+const ANIMS = [
+  { key:'cascade', nom:'Cascade', desc:"L'une après l'autre" },
+  { key:'fondu',   nom:'Fondu',   desc:'Apparition douce' },
+  { key:'zoom',    nom:'Zoom',    desc:"Grandit à l'arrivée" },
+  { key:'glisse',  nom:'Glisse',  desc:'Vient des côtés' },
+  { key:'aucune',  nom:'Aucune',  desc:'Affichage direct' },
+];
+
+/* Les affiches partent en base64 dans les réglages : sans compression, trois
+   photos de téléphone dépasseraient la limite de 5 Mo du serveur et
+   alourdiraient la base à chaque écriture. On borne donc à 900px de large. */
+function compressPoster(file, maxDim = 900, quality = 0.82) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) { const r = Math.min(maxDim / w, maxDim / h); w = Math.round(w * r); h = Math.round(h * r); }
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(cv.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+function renderArtistEditor() {
+  const c = document.getElementById('artistsEditor');
+  if (!c) return;
+  c.innerHTML = artistsArr.map((a, i) => `
+    <div class="artist-row">
+      <div class="artist-poster" data-artist-poster="${i}">
+        ${a.poster ? `<img src="${esc(a.poster)}" alt="">` : '<span class="ph">Affiche</span>'}
+        <span class="cam"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-5-5L5 21"/></svg></span>
+      </div>
+      <div class="artist-fields">
+        <input class="in" data-artist-name="${i}" placeholder="Nom de l'artiste" value="${esc(a.name || '')}">
+        <input class="in" data-artist-note="${i}" placeholder="Précision (ex. Samedi soir)" value="${esc(a.note || '')}">
+      </div>
+      <button class="rep-del" data-artist-del="${i}" title="Retirer"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+    </div>`).join('');
+}
+
+function renderPickers() {
+  const lg = document.getElementById('layoutGrid');
+  if (lg) lg.innerHTML = LAYOUTS.map(l => `
+    <button type="button" class="pick-opt${l.key === artistsLayout ? ' sel' : ''}" data-layout="${l.key}">
+      <span class="pick-fig">${l.fig.map(([w, h]) => `<i style="width:${w}px;height:${h}px"></i>`).join('')}</span>
+      <b>${l.nom}</b><small>${l.desc}</small>
+    </button>`).join('');
+
+  const ag = document.getElementById('animGrid');
+  if (ag) ag.innerHTML = ANIMS.map(a => `
+    <button type="button" class="pick-opt${a.key === artistsAnim ? ' sel' : ''}" data-anim="${a.key}">
+      <b>${a.nom}</b><small>${a.desc}</small>
+    </button>`).join('');
+}
+
+document.getElementById('addArtist').addEventListener('click', () => {
+  artistsArr.push({ name: '', note: '', poster: '' });
+  renderArtistEditor();
+});
+
+document.getElementById('artistsEditor').addEventListener('click', e => {
+  const del = e.target.closest('[data-artist-del]');
+  if (del) { artistsArr.splice(+del.dataset.artistDel, 1); renderArtistEditor(); return; }
+
+  const pick = e.target.closest('[data-artist-poster]');
+  if (!pick) return;
+  const i = +pick.dataset.artistPoster;
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = async () => {
+    const f = input.files[0];
+    if (!f) return;
+    const dataUrl = await compressPoster(f);
+    if (!dataUrl) { alert("Impossible de lire cette image."); return; }
+    artistsArr[i].poster = dataUrl;
+    renderArtistEditor();
+  };
+  input.click();
+});
+
+document.getElementById('artistsEditor').addEventListener('input', e => {
+  const n = e.target.closest('[data-artist-name]');
+  const t = e.target.closest('[data-artist-note]');
+  if (n) artistsArr[+n.dataset.artistName].name = n.value;
+  if (t) artistsArr[+t.dataset.artistNote].note = t.value;
+});
+
+document.addEventListener('click', e => {
+  const l = e.target.closest('[data-layout]');
+  if (l) { artistsLayout = l.dataset.layout; renderPickers(); }
+  const a = e.target.closest('[data-anim]');
+  if (a) { artistsAnim = a.dataset.anim; renderPickers(); }
+});
+
 /* ---------- MODE DÉMONSTRATION ---------- */
 const demoCard=document.getElementById('demoCard');
 const demoToggle=document.getElementById('demoToggle');
@@ -958,9 +1112,13 @@ async function fillSettings() {
     const tbn = document.getElementById('topbarEventName');
     if (tbn) tbn.textContent = eventName;
     try { chiefsArr = JSON.parse(raw.chiefs_json || '[]'); } catch { chiefsArr = []; }
+    try { artistsArr = JSON.parse(raw.artists_json || '[]'); } catch { artistsArr = []; }
+    artistsLayout = LAYOUTS.some(l => l.key === raw.artists_layout) ? raw.artists_layout : 'carrousel';
+    artistsAnim   = ANIMS.some(a => a.key === raw.artists_animation) ? raw.artists_animation : 'cascade';
     try { sponsorsArr = JSON.parse(raw.sponsors_json || '[]'); } catch { sponsorsArr = []; }
     try { itemsArr = JSON.parse(raw.event_items_json || '[]'); } catch { itemsArr = []; }
     renderChiefEditor(); renderSponsorEditor(); renderItemsEditor();
+    renderArtistEditor(); renderPickers();
   } catch(e) {}
 }
 
@@ -982,6 +1140,12 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     sponsorsArr.filter(s => s.name || s.mark)
                .map(s => ({ name: (s.name||'').trim(), mark: ((s.mark||'')).trim() }))
   );
+  payload.artists = JSON.stringify(
+    artistsArr.filter(a => a.poster)
+              .map(a => ({ name: (a.name||'').trim(), note: (a.note||'').trim(), poster: a.poster }))
+  );
+  payload.artistsLayout = artistsLayout;
+  payload.artistsAnimation = artistsAnim;
   payload.eventItems = JSON.stringify(
     itemsArr.filter(it => it.name || it.id)
             .map(it => ({ id: (it.id||'').trim(), name: (it.name||'').trim() }))

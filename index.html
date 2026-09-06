@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WeloveAdja 2026 – Fête de la Jeunesse d'Aplahoué</title>
+<title>FEJA – Festival Adja</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Hanken+Grotesk:wght@300..800&display=swap" rel="stylesheet">
@@ -99,14 +99,94 @@ html[data-display="bricolage"] .hero .lead{font-family:var(--body)}
 .section-head h2{font-family:var(--display);font-weight:400;font-size:clamp(2rem,5.4vw,3.2rem);line-height:1.04;letter-spacing:-.01em;margin:16px 0 12px}
 html[data-display="bricolage"] .section-head h2{font-weight:600;letter-spacing:-.02em}
 .section-head p{color:var(--cream-72);font-size:1.06rem}
-.steps{display:grid;grid-template-columns:1fr;gap:18px}
-.step{background:var(--glass);border:1px solid var(--stroke);border-radius:var(--r);padding:32px 28px;backdrop-filter:blur(10px);position:relative;overflow:hidden;text-align:center;transition:transform .35s,border-color .35s}
-.step:hover{transform:translateY(-6px);border-color:var(--stroke-gd)}
-.step .num{font-family:var(--display);font-size:3rem;font-weight:300;line-height:1;color:transparent;-webkit-text-stroke:1px var(--gold-dp);position:absolute;top:18px;right:24px;opacity:.55}
-.step .ic{width:54px;height:54px;border-radius:15px;display:grid;place-items:center;margin:0 auto 18px;background:color-mix(in oklab,var(--gold) 10%,transparent);border:1px solid var(--stroke-gd);color:var(--gold-lt)}
-.step h3{font-family:var(--display);font-weight:500;font-size:1.4rem;margin-bottom:10px}
-.step p{color:var(--cream-72);font-size:.98rem}
-.step .glow{position:absolute;right:-40px;top:-40px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,color-mix(in oklab,var(--gold) 18%,transparent),transparent 70%);pointer-events:none}
+/* Les etapes etaient trois grosses cartes centrees de 32px de rembourrage :
+   sur telephone elles empilaient trois blocs hauts pour trois phrases. Format
+   de liste desormais : numero a gauche, texte a droite. Plus court, et ca se
+   lit comme un enchainement plutot que comme trois blocs sans lien. */
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr;gap:10px}
+.step{display:flex;align-items:flex-start;gap:14px;
+  background:var(--glass);border:1px solid var(--stroke);border-radius:16px;
+  padding:16px 18px;backdrop-filter:blur(10px);text-align:left;
+  transition:border-color .3s,transform .3s}
+.step:hover{border-color:var(--stroke-gd);transform:translateY(-2px)}
+.s-num{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--display);font-weight:600;font-size:.95rem;
+  background:color-mix(in oklab,var(--gold) 14%,transparent);
+  border:1px solid var(--stroke-gd);color:var(--gold-lt)}
+.s-txt{min-width:0}
+.step h3{font-family:var(--display);font-weight:500;font-size:1.08rem;margin:2px 0 3px}
+.step p{color:var(--cream-72);font-size:.88rem;line-height:1.5;margin:0}
+
+/* Entree en cascade au defilement, reutilisable : le conteneur porte
+   .reveal-group, ses enfants entrent l'un apres l'autre quand il arrive a
+   l'ecran. Le decalage est en CSS, il n'y a donc rien a piloter en JS. */
+/* ===================== AFFICHES DES ARTISTES =====================
+   Trois dispositions et cinq animations, choisies dans l'admin. Le conteneur
+   porte les classes lay-* et anim-*, tout le reste suit en CSS : rien a
+   recalculer en JS quand l'organisateur change d'avis. */
+.artist{margin:0;display:flex;flex-direction:column}
+.a-poster{position:relative;border-radius:16px;overflow:hidden;
+  border:1px solid var(--stroke);background:var(--glass);
+  aspect-ratio:2/3;   /* format affiche : evite que des images de tailles
+                         differentes ne fassent sautiller la rangee */
+  box-shadow:0 18px 40px -22px rgba(0,0,0,.8)}
+.a-poster img{width:100%;height:100%;object-fit:cover;display:block}
+.artist figcaption{padding:10px 2px 0;text-align:left}
+.artist figcaption b{display:block;font-family:var(--display);font-weight:500;font-size:1.02rem;line-height:1.25}
+.artist figcaption span{display:block;color:var(--cream-52);font-size:.8rem;margin-top:2px}
+
+/* -- Disposition 1 : carrousel qu'on fait glisser -- */
+.artists.lay-carrousel{display:flex;gap:14px;overflow-x:auto;padding:2px 0 10px;
+  scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;scroll-padding-inline:2px}
+.artists.lay-carrousel::-webkit-scrollbar{display:none}
+.artists.lay-carrousel .artist{flex:0 0 74%;max-width:300px;scroll-snap-align:center}
+
+/* -- Disposition 2 : grille deux colonnes -- */
+.artists.lay-grille{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+
+/* -- Disposition 3 : affiches pleine largeur, nom en surimpression -- */
+.artists.lay-pleine{display:grid;grid-template-columns:1fr;gap:16px}
+.artists.lay-pleine .a-poster{aspect-ratio:4/5}
+.artists.lay-pleine figcaption{position:absolute;inset:auto 0 0 0;padding:36px 16px 14px;
+  background:linear-gradient(180deg,transparent,rgba(0,0,0,.82));text-align:left}
+.artists.lay-pleine .artist{position:relative}
+.artists.lay-pleine figcaption b{font-size:1.3rem;color:#fff}
+.artists.lay-pleine figcaption span{color:rgba(255,255,255,.72)}
+
+/* Le conseil de glissement n'a de sens que pour le carrousel. */
+.artists-hint{display:none;text-align:center;color:var(--cream-32);font-size:.76rem;margin:10px 0 0}
+.artists.lay-carrousel~.artists-hint{display:block}
+
+/* -- Animations a l'arrivee a l'ecran -- */
+.artists>*{transition:opacity .6s var(--ease),transform .6s var(--ease)}
+.artists.anim-cascade>*{opacity:0;transform:translateY(28px)}
+.artists.anim-fondu>*{opacity:0}
+.artists.anim-zoom>*{opacity:0;transform:scale(.9)}
+.artists.anim-glisse>*{opacity:0;transform:translateX(40px)}
+.artists.anim-glisse>*:nth-child(even){transform:translateX(-40px)}
+.artists.in>*{opacity:1!important;transform:none!important}
+/* Le decalage n'est pose que pour les animations qui s'egrenent. */
+.artists.anim-cascade.in>*:nth-child(1),.artists.anim-zoom.in>*:nth-child(1),.artists.anim-glisse.in>*:nth-child(1){transition-delay:.05s}
+.artists.anim-cascade.in>*:nth-child(2),.artists.anim-zoom.in>*:nth-child(2),.artists.anim-glisse.in>*:nth-child(2){transition-delay:.17s}
+.artists.anim-cascade.in>*:nth-child(3),.artists.anim-zoom.in>*:nth-child(3),.artists.anim-glisse.in>*:nth-child(3){transition-delay:.29s}
+.artists.anim-cascade.in>*:nth-child(4),.artists.anim-zoom.in>*:nth-child(4),.artists.anim-glisse.in>*:nth-child(4){transition-delay:.41s}
+.artists.anim-cascade.in>*:nth-child(n+5),.artists.anim-zoom.in>*:nth-child(n+5),.artists.anim-glisse.in>*:nth-child(n+5){transition-delay:.53s}
+@media(min-width:760px){
+  .artists.lay-grille{grid-template-columns:repeat(4,1fr)}
+  .artists.lay-pleine{grid-template-columns:repeat(2,1fr)}
+  .artists.lay-carrousel .artist{flex-basis:31%}
+}
+
+.reveal-group>*{opacity:0;transform:translateY(24px);
+  transition:opacity .6s var(--ease),transform .6s var(--ease)}
+.reveal-group.in>*{opacity:1;transform:none}
+.reveal-group.in>*:nth-child(1){transition-delay:.04s}
+.reveal-group.in>*:nth-child(2){transition-delay:.16s}
+.reveal-group.in>*:nth-child(3){transition-delay:.28s}
+.reveal-group.in>*:nth-child(4){transition-delay:.40s}
+.reveal-group.in>*:nth-child(5){transition-delay:.52s}
+.reveal-group.in>*:nth-child(6){transition-delay:.64s}
 .committee{display:grid;grid-template-columns:1fr;gap:34px;justify-items:center}
 .chiefs{display:flex;flex-wrap:wrap;justify-content:center;gap:clamp(24px,6vw,64px)}
 .chief{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;width:180px}
@@ -425,9 +505,19 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .reveal{opacity:0;transform:translateY(30px);transition:opacity .7s,transform .7s}
 .reveal.in{opacity:1;transform:none}
 .hero .anim{opacity:0;animation:fadeUp .8s both}
+/* Definition du sigle, juste sous le titre : discrete, elle explique FEJA
+   sans voler la vedette au nom lui-meme. */
+.acronym{font-size:clamp(.78rem,2.4vw,.92rem);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--gold-lt);opacity:.9;margin:0 auto 14px;max-width:34ch;line-height:1.5}
+/* Curseur du titre qui s'ecrit. inline-block pour qu'il garde sa hauteur
+   meme quand le texte est vide, sinon la ligne sursaute a chaque cycle. */
+.caret{display:inline-block;width:.06em;min-width:3px;height:.86em;margin-left:.06em;
+  background:var(--gold);vertical-align:baseline;animation:caret-blink 1s steps(1,end) infinite}
+@keyframes caret-blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.caret{display:none}}
 .hero .a1{animation-delay:.05s}.hero .a2{animation-delay:.18s}.hero .a3{animation-delay:.31s}
 .hero .a4{animation-delay:.44s}.hero .a5{animation-delay:.57s}
-@media(min-width:760px){.steps{grid-template-columns:repeat(3,1fr)}.foot-grid{grid-template-columns:1.6fr 1fr 1fr;text-align:left}.foot-brand .brand{justify-content:flex-start}.foot-brand p{margin-inline:0}.foot-col a,.foot-col p{display:flex}.foot-bottom{justify-content:space-between}}
+@media(min-width:760px){.steps{grid-template-columns:repeat(3,1fr);gap:14px}.foot-grid{grid-template-columns:1.6fr 1fr 1fr;text-align:left}.foot-brand .brand{justify-content:flex-start}.foot-brand p{margin-inline:0}.foot-col a,.foot-col p{display:flex}.foot-bottom{justify-content:space-between}}
 /* Tablette : formulaire d'inscription plus confortable */
 @media(min-width:600px){
   .reg-shell{max-width:680px}
@@ -442,7 +532,7 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
   .code-big{font-size:clamp(1.5rem,6vw,2.5rem);padding:14px 16px}
   .cd-cell .n{font-size:clamp(1.4rem,6vw,2.5rem)}
 }
-@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto}.reveal{opacity:1;transform:none}.hero .anim{opacity:1!important;transform:none!important}.sheet.leave{animation:none!important}.reveal-disc{display:none!important}.pane.stagger>*,.verify-shell.stagger>*{opacity:1!important;transform:none!important}body.sheet-open #home{transform:none;opacity:1;filter:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto}.reveal{opacity:1;transform:none}.reveal-group>*,.artists>*{opacity:1!important;transform:none!important}.hero .anim{opacity:1!important;transform:none!important}.sheet.leave{animation:none!important}.reveal-disc{display:none!important}.pane.stagger>*,.verify-shell.stagger>*{opacity:1!important;transform:none!important}body.sheet-open #home{transform:none;opacity:1;filter:none}}
 </style>
 <!-- Thème piloté depuis l'admin. Placé après les styles inline pour les surcharger. -->
 <link rel="icon" href="/api/branding/default-icon.svg">
@@ -458,7 +548,7 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
   <div class="wrap nav">
     <a href="#top" class="brand" aria-label="WeloveAdja – Accueil">
       <img class="mark" data-brand-logo src="/api/branding/default-icon.svg" alt="" style="object-fit:contain">
-      <span class="txt"><b data-cfg="eventName">WeloveAdja</b><span>Aplahoué · 2026</span></span>
+      <span class="txt"><b data-cfg="eventName">FEJA</b><span data-edition>Festival Adja</span></span>
     </a>
     <div class="nav-cta">
       <button class="btn btn-sm btn-verify" data-open="verifier"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg><span>Vérifier</span></button>
@@ -472,16 +562,17 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
     <svg class="sunburst" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g stroke="var(--gold)" stroke-width="1"><g id="rays"></g></g><circle cx="100" cy="100" r="42" fill="none" stroke="var(--gold)" stroke-width="1"/><circle cx="100" cy="100" r="30" fill="none" stroke="var(--green-br)" stroke-width="1"/></svg>
     <div class="wrap">
       <div class="inner">
-        <span class="eyebrow solo anim a1">Aplahoué • Édition 2026</span>
-        <h1 class="anim a2"><span data-cfg="eventName">WeloveAdja</span></h1>
-        <p class="lead anim a3">La grande fête de la jeunesse d'Aplahoué. Un week-end de célébration, de rencontres et d'énergie. Inscris-toi, paie en Mobile Money, et reçois ton code d'accès unique.</p>
+        <span class="eyebrow solo anim a1">Festival Adja • Édition <span data-year>2026</span></span>
+        <h1 class="anim a2"><span id="typedName" data-cfg="eventName">FEJA</span><span class="caret" aria-hidden="true"></span></h1>
+        <p class="acronym anim a3">Fraternité pour l'Épanouissement de la Jeunesse d'Aplahoué</p>
+        <p class="lead anim a3">Trois jours qui rassemblent la jeunesse d'Adja et de tout le Bénin. Tournoi de football, caravane à travers la ville, et grandes réceptions chaque soir. Ton pagne et ton maillot t'attendent.</p>
         <div class="hero-actions anim a4">
           <button class="btn btn-gold" data-open="participer">Participer →</button>
           <button class="btn btn-ghost" data-open="verifier">J'ai déjà un code</button>
         </div>
         <div class="facts anim a4">
           <div class="fact"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><div><span class="k">Date</span><span class="v" data-cfg="dateLabel">28 Déc. 2026</span></div></div>
-          <div class="fact"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg><div><span class="k">Lieu</span><span class="v" data-cfg="lieu">Aplahoué</span></div></div>
+          <div class="fact"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg><div><span class="k">Lieu</span><span class="v" data-cfg="lieu">Terrain Omnisports CEG2 Azovè</span></div></div>
           <div class="fact"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 9.5V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2.5a2 2 0 0 0 0 5V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.5a2 2 0 0 0 0-5z"/></svg><div><span class="k">Participation</span><span class="v" data-amount>5 000 <small>XOF</small></span></div></div>
         </div>
         <div class="countdown anim a5">
@@ -506,11 +597,37 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
         <h2>Simple, rapide et sécurisé</h2>
         <p>Du formulaire jusqu'au jour J, chaque étape est claire, directe et sans surprise.</p>
       </div>
-      <div class="steps">
-        <div class="step reveal"><div class="glow"></div><span class="num">01</span><div class="ic"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></div><h3>Participation</h3><p>Remplis ton nom, ton numéro de téléphone et ton email. Ajoute ta photo.</p></div>
-        <div class="step reveal"><div class="glow"></div><span class="num">02</span><div class="ic"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></div><h3>Paiement</h3><p>Choisis Moov Money ou MTN MoMo et confirme la transaction depuis ton téléphone.</p></div>
-        <div class="step reveal"><div class="glow"></div><span class="num">03</span><div class="ic"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><h3>Code d'accès</h3><p>Ton code unique est généré instantanément. Reçu par email. Présente-le le jour J.</p></div>
-      </div>
+      <ol class="steps reveal-group">
+        <li class="step">
+          <span class="s-num">1</span>
+          <div class="s-txt">
+            <h3>Inscription</h3>
+            <p>Nom, téléphone, email et ta photo.</p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="s-num">2</span>
+          <div class="s-txt">
+            <h3>Paiement</h3>
+            <p>Mobile Money ou carte bancaire, en quelques secondes.</p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="s-num">3</span>
+          <div class="s-txt">
+            <h3>Code d'accès</h3>
+            <p>Ton code et ton QR arrivent aussitôt. Présente-les à l'entrée.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" id="artistsSection" style="display:none">
+    <div class="wrap">
+      <div class="section-head reveal"><span class="eyebrow solo" style="display:inline-flex;justify-content:center">Le plateau</span><h2>Artistes invités</h2><p class="sub">Ils seront sur scène pendant les trois soirées.</p></div>
+      <div class="artists" id="artists"></div>
+      <p class="artists-hint" id="artistsHint">Fais glisser pour voir les autres →</p>
     </div>
   </section>
 
@@ -531,7 +648,7 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
     <div class="foot-grid">
       <div class="foot-brand">
         <a href="#top" class="brand"><img class="mark" data-brand-logo src="/api/branding/default-icon.svg" alt="" style="object-fit:contain"><span class="txt"><b data-cfg="eventName">WeloveAdja</b><span>2026</span></span></a>
-        <p>La Fête de la Jeunesse d'Aplahoué – un rendez-vous annuel pour célébrer, échanger et grandir ensemble.</p>
+        <p>Fraternité pour l'Épanouissement de la Jeunesse d'Aplahoué – trois jours de sport, de caravane et de retrouvailles.</p>
       </div>
       <div class="foot-col">
         <h4>Paiement</h4>
@@ -545,7 +662,7 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
       </div>
     </div>
     <div class="foot-bottom">
-      <span>© 2026 <span data-cfg="eventName">WeloveAdja</span> – Aplahoué. Tous droits réservés.</span>
+      <span>© <span data-year>2026</span> <span data-cfg="eventName">FEJA</span>. Tous droits réservés.</span>
       <span>Paiement sécurisé · Mobile Money</span>
     </div>
   </div>
@@ -739,8 +856,8 @@ const TWEAKS = /*EDITMODE-BEGIN*/{"theme":"indigo","display":"bricolage"}/*EDITM
 
 const DEFAULTS = {
   eventName:"WeloveAdja", amount:10000, currency:"XOF",
-  lieu:"À confirmer", dateLabel:"28 Déc. 2026", eventDate:"2026-12-28T09:00:00",
-  moovNumber:"", mtnNumber:"", waLink:"", email:"contact@weloveadja.bj",
+  lieu:"Terrain Omnisports CEG2 Azovè", dateLabel:"", eventDate:"",
+  moovNumber:"", mtnNumber:"", waLink:"", email:"",
   chiefs:[], sponsors:[]
 };
 let CFG = {...DEFAULTS};
@@ -753,6 +870,9 @@ async function loadConfig() {
   } catch(e) { /* use defaults */ }
   applyConfig();
   startCountdown();
+  // Apres applyConfig : le nom du titre vient des reglages, il doit etre en
+  // place avant qu'on ne commence a l'ecrire lettre par lettre.
+  startTyping();
 }
 
 function applyConfig() {
@@ -789,7 +909,44 @@ function applyConfig() {
   document.querySelectorAll('[data-cta-amount]').forEach(el => {
     el.textContent = `Participer – ${Number(CFG.amount).toLocaleString('fr-FR')} ${CFG.currency}`;
   });
-  renderChiefs(); renderSponsors();
+  renderChiefs(); renderSponsors(); renderArtists();
+  paintYear();
+}
+
+/* Affiches des artistes.
+   La disposition et l'animation viennent des reglages : on ne fait que poser
+   les classes correspondantes, le CSS s'occupe du rendu. Les valeurs sont
+   deja validees par le serveur, mais on repasse par une liste fermee ici
+   aussi - le jour ou l'API changerait, on ne veut pas injecter une valeur
+   quelconque dans un nom de classe. */
+const ARTIST_LAYOUTS = ['carrousel','grille','pleine'];
+const ARTIST_ANIMS = ['cascade','fondu','zoom','glisse','aucune'];
+
+function renderArtists(){
+  const hote = document.getElementById('artists');
+  const section = document.getElementById('artistsSection');
+  if(!hote || !section) return;
+
+  const arr = Array.isArray(CFG.artists) ? CFG.artists.filter(a => a && a.poster) : [];
+
+  // Pas d'artiste annonce : on masque, comme les autres sections vides.
+  section.style.display = arr.length ? '' : 'none';
+  if(!arr.length){ hote.innerHTML=''; return; }
+
+  const layout = ARTIST_LAYOUTS.includes(CFG.artistsLayout) ? CFG.artistsLayout : 'carrousel';
+  const anim = ARTIST_ANIMS.includes(CFG.artistsAnimation) ? CFG.artistsAnimation : 'cascade';
+  hote.className = 'artists lay-' + layout + (anim==='aucune' ? '' : ' anim-' + anim);
+
+  hote.innerHTML = arr.map(a => `
+    <figure class="artist">
+      <div class="a-poster"><img src="${escHtml(a.poster)}" alt="${escHtml(a.name||'Artiste invité')}" loading="lazy"></div>
+      <figcaption><b>${escHtml(a.name||'')}</b>${a.note?`<span>${escHtml(a.note)}</span>`:''}</figcaption>
+    </figure>`).join('');
+
+  // Le conteneur est cree apres le premier passage de l'observateur : il faut
+  // donc l'y inscrire maintenant, sinon l'animation ne se declencherait jamais.
+  if(anim!=='aucune' && window.__io) window.__io.observe(hote);
+  else hote.classList.add('in');
 }
 
 function escHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -827,6 +984,55 @@ addEventListener('scroll',()=>hdr.classList.toggle('scrolled',scrollY>20));
 
 (function(){const g=document.getElementById('rays');if(!g)return;let s='';for(let i=0;i<48;i++){const a=(i/48)*Math.PI*2;const x1=100+Math.cos(a)*46,y1=100+Math.sin(a)*46;const x2=100+Math.cos(a)*(i%2?96:80),y2=100+Math.sin(a)*(i%2?96:80);s+=`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;}g.innerHTML=s;})();
 
+/* ---- Annee courante -------------------------------------------------------
+   Ecrite a chaque chargement plutot qu'en dur : le 1er janvier 2027, le site
+   affichera "Edition 2027" tout seul, sans intervention. */
+function paintYear(){
+  const annee = String(new Date().getFullYear());
+  document.querySelectorAll('[data-year]').forEach(el => { el.textContent = annee; });
+}
+
+/* ---- Titre qui s'ecrit et s'efface en boucle ------------------------------
+   Le nom vient des reglages, donc jamais code en dur ici. On repart du texte
+   deja present, que branding.js a pu remplacer avant nous. */
+let typeTimer;
+function startTyping(){
+  const el = document.getElementById('typedName');
+  if (!el) return;
+
+  const mot = (el.textContent || 'FEJA').trim();
+  if (!mot) return;
+
+  // Mouvement reduit : on laisse le nom affiche, sans animation.
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    el.textContent = mot;
+    return;
+  }
+
+  let i = 0;
+  let efface = false;
+  clearTimeout(typeTimer);
+
+  function etape(){
+    el.textContent = mot.slice(0, i);
+
+    let pause;
+    if (!efface) {
+      i++;
+      pause = 190;
+      if (i > mot.length) { efface = true; i = mot.length; pause = 2200; } // le nom reste lisible
+    } else {
+      i--;
+      pause = 110;                    // l'effacement va plus vite que l'ecriture
+      if (i < 0) { efface = false; i = 0; pause = 500; }
+    }
+
+    typeTimer = setTimeout(etape, pause);
+  }
+
+  etape();
+}
+
 let cdTimer;
 function startCountdown(){
   const target=new Date(CFG.eventDate).getTime();
@@ -848,8 +1054,8 @@ function startCountdown(){
   tick();clearInterval(cdTimer);cdTimer=setInterval(tick,1000);
 }
 
-const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});
-document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+const io=window.__io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});
+document.querySelectorAll('.reveal,.reveal-group').forEach(el=>io.observe(el));
 
 (function(){const mcta=document.getElementById('mcta');const heroBtn=document.querySelector('.hero-actions');
   function update(){if(document.body.classList.contains('sheet-open')){mcta.classList.remove('show');return;}mcta.classList.toggle('show',heroBtn.getBoundingClientRect().bottom<0);}
