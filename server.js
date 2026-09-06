@@ -1533,15 +1533,28 @@ function buildTicketPdf(participant, settings = getSettings()) {
   // d'un voile clair : sans lui, une photo contrastee rendrait le QR et les
   // textes illisibles, et un QR illisible est un participant bloque a l'entree.
   const fondPath = getTicketImagePath(settings, "ticket_bg_url", "bg");
+  let aFond = false;
   if (fondPath) {
     try {
       doc.save();
       doc.rect(0, 0, W, H).clip();
-      // cover : l'image remplit le billet sans se deformer.
-      doc.image(fondPath, 0, 0, { cover: [W, H], align: "center", valign: "center" });
+      // valign "bottom" et non "center" : sur une photo de concert, la foule
+      // est en bas et le haut n'est que du ciel sombre. Centre, le cadrage
+      // tombait pile dans la zone vide et le billet paraissait uni.
+      doc.image(fondPath, 0, 0, { cover: [W, H], align: "center", valign: "bottom" });
       doc.restore();
-      doc.rect(0, 0, W, H).fillOpacity(0.82).fill(t.clair);
-      doc.fillOpacity(1);
+
+      // Voile en degrade plutot qu'uniforme : opaque en haut, ou se trouvent
+      // le QR et le code qui doivent rester parfaitement lisibles, puis
+      // s'effacant vers le bas pour laisser voir la foule.
+      const voile = doc.linearGradient(0, 0, 0, H);
+      voile.stop(0, t.clair, 0.95);
+      voile.stop(0.55, t.clair, 0.9);
+      voile.stop(0.78, t.clair, 0.55);
+      voile.stop(1, t.clair, 0.12);
+      doc.rect(0, 0, W, H).fill(voile);
+
+      aFond = true;
     } catch { /* photo illisible : on garde le fond uni */ }
   }
 
@@ -1551,9 +1564,13 @@ function buildTicketPdf(participant, settings = getSettings()) {
 
   // Bandeau du bas. La courbe PLONGE au milieu : bombee, elle recouvrait la
   // mention "Scannez pour vos infos", qui est centree.
+  // Avec une photo, le bandeau est translucide : la foule reste visible
+  // derriere, comme sur la maquette, tout en gardant le texte lisible.
+  if (aFond) doc.fillOpacity(0.62);
   doc.moveTo(0, H - 64)
      .bezierCurveTo(W * 0.33, H - 24, W * 0.67, H - 24, W, H - 64)
      .lineTo(W, H).lineTo(0, H).closePath().fill(t.sombre);
+  doc.fillOpacity(1);
 
   // -- Les deux logos, de part et d'autre du titre.
   const logoPath = getTicketLogoPath(settings);
