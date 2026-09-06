@@ -480,6 +480,34 @@ button{font-family:var(--body);cursor:pointer}
           </div>
         </div>
 
+        <div class="f" style="margin-bottom:22px">
+          <label>Bandeau du billet</label>
+          <span class="desc">L'image « FESTIVAL ADJA » placée entre les deux logos sur le billet PDF. Sans elle, le nom de l'événement est écrit en toutes lettres.</span>
+          <div class="logo-zone">
+            <div class="logo-pv" id="wmPv"><span class="none">Aucun bandeau</span></div>
+            <div class="logo-acts">
+              <input type="file" id="wmFile" accept="image/png,image/jpeg,image/webp" hidden>
+              <button class="btn btn-gold btn-sm" id="wmPick" type="button">Choisir une image</button>
+              <button class="btn btn-ghost btn-sm" id="wmDel" type="button" style="display:none">Retirer</button>
+              <span class="hint">Image large, réduite automatiquement.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="f" style="margin-bottom:22px">
+          <label>Photo de fond du billet</label>
+          <span class="desc">Apparaît en arrière-plan du billet PDF, sous un voile clair pour que le QR code et les textes restent lisibles. Convertie en JPEG pour ne pas alourdir l'email.</span>
+          <div class="logo-zone">
+            <div class="logo-pv" id="bgPv"><span class="none">Aucune photo</span></div>
+            <div class="logo-acts">
+              <input type="file" id="bgFile" accept="image/png,image/jpeg,image/webp" hidden>
+              <button class="btn btn-gold btn-sm" id="bgPick" type="button">Choisir une photo</button>
+              <button class="btn btn-ghost btn-sm" id="bgDel" type="button" style="display:none">Retirer</button>
+              <span class="hint">Sans photo, le billet garde son fond clair.</span>
+            </div>
+          </div>
+        </div>
+
         <div class="f" style="margin-bottom:20px">
           <label>Thème de couleurs</label>
           <span class="desc">Choisis une palette prête à l'emploi.</span>
@@ -1158,6 +1186,8 @@ async function fillSettings() {
       const dbKey = SETTINGS_MAP[el.dataset.set] || el.dataset.set;
       el.value = raw[dbKey] || '';
     });
+    peindreWordmark(raw.wordmark_url || '');
+    peindreFond(raw.ticket_bg_url || '');
     const eventName = raw.event_name || 'WeloveAdja';
     const eln = document.getElementById('loginEventName');
     if (eln) eln.textContent = eventName;
@@ -1525,6 +1555,91 @@ function paintLogo(url) {
 // branding.js charge la config en parallèle : selon qui gagne la course, on
 // peint le logo à l'ouverture de l'app ou à l'arrivée de la config.
 document.addEventListener('brand:ready', e => paintLogo(e.detail.logoUrl || ''));
+
+/* --- Images du billet : bandeau et photo de fond -------------------------
+   Meme mecanique que le logo, avec deux differences :
+   - le bandeau reste en PNG, car du JPEG sur du texte a bords nets laisse des
+     salissures bien visibles ;
+   - la photo de fond part en JPEG. En PNG, une photo de 1000px pesait
+     plusieurs centaines de Ko, envoyes par email a chaque participant. */
+async function reduireImage(file, maxDim, format, qualite) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) { const r = Math.min(maxDim / w, maxDim / h); w = Math.round(w * r); h = Math.round(h * r); }
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      // Le JPEG ne gere pas la transparence : sans ce fond, les zones
+      // transparentes ressortiraient en noir.
+      if (format === 'image/jpeg') { ctx.fillStyle = '#0c2b17'; ctx.fillRect(0, 0, w, h); }
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(cv.toDataURL(format, qualite));
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+function brandingUploader({ pick, input, del, apercu, route, maxDim, format, qualite, videTxt }) {
+  const zoneApercu = document.getElementById(apercu);
+  const boutonDel = document.getElementById(del);
+
+  const peindre = (url) => {
+    if (url) {
+      zoneApercu.innerHTML = '<img src="' + esc(url) + '" alt="">';
+      boutonDel.style.display = '';
+    } else {
+      zoneApercu.innerHTML = '<span class="none">' + videTxt + '</span>';
+      boutonDel.style.display = 'none';
+    }
+  };
+
+  document.getElementById(pick).addEventListener('click', () => document.getElementById(input).click());
+
+  document.getElementById(input).addEventListener('change', async e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { toast('Image trop volumineuse (10 Mo max)'); return; }
+    try {
+      const dataUrl = await reduireImage(file, maxDim, format, qualite);
+      if (!dataUrl) { toast("Impossible de lire cette image."); return; }
+      const res = await apiFetch(route, { method: 'POST', body: JSON.stringify({ image_base64: dataUrl }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Envoi impossible');
+      peindre(data.url);
+      toast('Image mise à jour');
+    } catch (err) { toast(err.message); }
+  });
+
+  boutonDel.addEventListener('click', async () => {
+    try {
+      await apiFetch(route, { method: 'DELETE' });
+      peindre('');
+      toast('Image retirée');
+    } catch (err) { toast(err.message); }
+  });
+
+  return peindre;
+}
+
+const peindreWordmark = brandingUploader({
+  pick: 'wmPick', input: 'wmFile', del: 'wmDel', apercu: 'wmPv',
+  route: '/api/admin/branding/wordmark',
+  maxDim: 1400, format: 'image/png', qualite: 1,
+  videTxt: 'Aucun bandeau',
+});
+
+const peindreFond = brandingUploader({
+  pick: 'bgPick', input: 'bgFile', del: 'bgDel', apercu: 'bgPv',
+  route: '/api/admin/branding/ticket-bg',
+  maxDim: 1400, format: 'image/jpeg', qualite: 0.72,
+  videTxt: 'Aucune photo',
+});
 
 document.getElementById('logoPick').addEventListener('click', () => document.getElementById('logoFile').click());
 

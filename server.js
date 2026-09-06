@@ -90,6 +90,11 @@ const DEFAULT_SETTINGS = {
   // cartes, sections). Voir SCROLL_ANIMATIONS.
   scroll_animation: "montee",
   logo_url: "",
+  // Bandeau du titre (image "FESTIVAL ADJA") place entre les deux logos ronds
+  // du billet. Vide = un cartouche avec le nom en texte est dessine a la place.
+  wordmark_url: "",
+  // Photo de fond du billet. Vide = fond clair uni.
+  ticket_bg_url: "",
   theme_preset: "indigo",
   theme_custom_json: "{}",
   // Rotation quotidienne des couleurs : liste de presets parcourue un par
@@ -1277,12 +1282,35 @@ function saveParticipantPhoto(dataUrl, participantId) {
   return saveImageUpload(dataUrl, PARTICIPANT_PHOTOS_DIR, participantId, "Photo du participant");
 }
 
+// Ressources de marque televersables depuis l'admin. La cle est le nom de
+// fichier ET le nom du reglage : une seule table evite qu'ils divergent.
+const BRANDING_ASSETS = {
+  logo:      { fichier: "logo",     reglage: "logo_url",      svg: true,  label: "Logo" },
+  wordmark:  { fichier: "wordmark", reglage: "wordmark_url",  svg: false, label: "Bandeau du titre" },
+  "ticket-bg": { fichier: "ticket-bg", reglage: "ticket_bg_url", svg: false, label: "Photo de fond du billet" },
+};
+
+// Efface les caches reduits d'une ressource : sans cela, le billet
+// continuerait d'afficher l'ancienne image apres un remplacement.
+function clearTicketCache(nom) {
+  ["logo", "wordmark", "bg"].forEach((cle) => {
+    if (nom === "logo" && cle !== "logo") return;
+    if (nom === "wordmark" && cle !== "wordmark") return;
+    if (nom === "ticket-bg" && cle !== "bg") return;
+    const f = path.join(BRANDING_DIR, `${cle}-ticket.png`);
+    try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+  });
+}
+
 // Le logo accepte aussi le SVG, contrairement aux autres uploads. Le nom de
 // fichier est stable, donc on suffixe une version pour casser les caches.
-function saveBrandingLogo(dataUrl) {
-  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|jpg|png|webp|svg\+xml));base64,(.+)$/);
+function saveBrandingLogo(dataUrl, base = "logo", autoriserSvg = true) {
+  const motif = autoriserSvg
+    ? /^data:(image\/(?:jpeg|jpg|png|webp|svg\+xml));base64,(.+)$/
+    : /^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/;
+  const match = String(dataUrl || "").match(motif);
   if (!match) {
-    throw new Error("Logo invalide. Formats acceptes : PNG, JPG, WEBP, SVG.");
+    throw new Error(`Image invalide. Formats acceptes : PNG, JPG, WEBP${autoriserSvg ? ", SVG" : ""}.`);
   }
 
   const mime = match[1];
@@ -1294,21 +1322,21 @@ function saveBrandingLogo(dataUrl) {
   }
 
   fs.mkdirSync(BRANDING_DIR, { recursive: true });
-  // On purge les anciennes extensions pour ne pas laisser de logo orphelin.
+  // On purge les anciennes extensions pour ne pas laisser d'image orpheline.
   ["png", "jpg", "webp", "svg"].forEach((ext) => {
-    const stale = path.join(BRANDING_DIR, `logo.${ext}`);
+    const stale = path.join(BRANDING_DIR, `${base}.${ext}`);
     if (ext !== extension && fs.existsSync(stale)) {
       try { fs.unlinkSync(stale); } catch {}
     }
   });
 
-  fs.writeFileSync(path.join(BRANDING_DIR, `logo.${extension}`), bytes);
-  return `/uploads/branding/logo.${extension}?v=${Date.now()}`;
+  fs.writeFileSync(path.join(BRANDING_DIR, `${base}.${extension}`), bytes);
+  return `/uploads/branding/${base}.${extension}?v=${Date.now()}`;
 }
 
-function removeBrandingLogo() {
+function removeBrandingLogo(base = "logo") {
   ["png", "jpg", "webp", "svg"].forEach((ext) => {
-    const target = path.join(BRANDING_DIR, `logo.${ext}`);
+    const target = path.join(BRANDING_DIR, `${base}.${ext}`);
     if (fs.existsSync(target)) {
       try { fs.unlinkSync(target); } catch {}
     }
@@ -1338,8 +1366,17 @@ const TICKET_HEIGHT = 400;
 // fabrique donc une version reduite, gardee en cache sur le disque et refaite
 // seulement quand le logo change.
 // ---------------------------------------------------------------------------
-const TICKET_LOGO_SIZE = 220;   // suffisant pour du 68pt a 300 points par pouce
-const TICKET_LOGO_PATH = path.join(BRANDING_DIR, "logo-ticket.png");
+// Tailles visees pour les images du billet. Chacune est largement suffisante
+// pour un rendu net a 300 points par pouce a la taille ou elle est affichee.
+// Tailles choisies sur mesure et non au juge : au-dela, le poids grimpe vite
+// sans gain visible a la taille ou l'image est affichee.
+//   bandeau 720px -> 144 Ko | 520px -> 62 Ko, pour un affichage de 300 pt
+//   logo    220px ->  64 Ko | 200px -> 55 Ko, pour un affichage de 76 pt
+const TICKET_IMAGE_SIZES = {
+  logo: 200,
+  wordmark: 520,
+  bg: 1000,
+};
 
 // Reechantillonnage par moyenne de bloc. Le voisin le plus proche donnerait
 // des bords en escalier tres visibles sur un logo circulaire.
@@ -1388,15 +1425,20 @@ function downscalePng(source, cible) {
   return sortie;
 }
 
-// Renvoie le chemin du logo reduit, ou null s'il n'y en a pas d'utilisable.
-function getTicketLogoPath(settings) {
-  const source = localFileFromUrl(settings.logo_url);
+// Renvoie le chemin d'une image de marque reduite pour le billet, ou null.
+// `nom` sert a nommer le fichier de cache et a choisir la taille visee.
+function getTicketImagePath(settings, cleReglage, nom) {
+  const source = localFileFromUrl(settings[cleReglage]);
   if (!source) return null;
 
-  // Le SVG n'est pas embarquable par pdfkit et n'a pas besoin d'etre reduit.
+  // Le SVG n'est pas embarquable par pdfkit.
   if (!/\.(png|jpe?g)$/i.test(source)) return null;
 
-  // Un JPEG est deja compresse : pdfkit le reprend tel quel, on le laisse.
+  const taille = TICKET_IMAGE_SIZES[nom] || 400;
+  const cache = path.join(BRANDING_DIR, `${nom}-ticket.png`);
+
+  // Un JPEG est deja compresse : pdfkit le reprend tel quel. On ne le reduit
+  // pas, mais on refuse ceux qui alourdiraient trop le billet.
   if (/\.jpe?g$/i.test(source)) {
     try { return fs.statSync(source).size <= MAX_TICKET_LOGO_BYTES ? source : null; } catch { return null; }
   }
@@ -1404,18 +1446,49 @@ function getTicketLogoPath(settings) {
   try {
     const infoSource = fs.statSync(source);
     // Cache encore valable : on ne refait pas le calcul a chaque billet.
-    if (fs.existsSync(TICKET_LOGO_PATH) && fs.statSync(TICKET_LOGO_PATH).mtimeMs >= infoSource.mtimeMs) {
-      return TICKET_LOGO_PATH;
+    if (fs.existsSync(cache) && fs.statSync(cache).mtimeMs >= infoSource.mtimeMs) {
+      return cache;
     }
 
-    const reduit = downscalePng(PNG.sync.read(fs.readFileSync(source)), TICKET_LOGO_SIZE);
-    fs.writeFileSync(TICKET_LOGO_PATH, PNG.sync.write(reduit, { deflateLevel: 9 }));
-    console.log(`Logo du billet regenere : ${Math.round(fs.statSync(TICKET_LOGO_PATH).size / 1024)} Ko`);
-    return TICKET_LOGO_PATH;
+    const reduit = downscalePng(PNG.sync.read(fs.readFileSync(source)), taille);
+
+    // Une image entierement opaque n'a pas besoin de son canal alpha : le
+    // retirer enleve un quart des octets avant compression. Mesure sur le
+    // bandeau FESTIVAL ADJA : 144 -> 121 Ko a taille egale.
+    let opaque = true;
+    for (let i = 3; i < reduit.data.length; i += 4) {
+      if (reduit.data[i] !== 255) { opaque = false; break; }
+    }
+
+    const options = opaque
+      ? { deflateLevel: 9, colorType: 2, inputColorType: 6 }
+      : { deflateLevel: 9 };
+    fs.writeFileSync(cache, PNG.sync.write(reduit, options));
+    console.log(`Image du billet regeneree (${nom}) : ${Math.round(fs.statSync(cache).size / 1024)} Ko`);
+    return cache;
   } catch (error) {
-    console.warn("Reduction du logo impossible:", error.message);
+    console.warn(`Reduction de l'image ${nom} impossible:`, error.message);
     return null;
   }
+}
+
+// Dimensions d'un PNG, lues dans son en-tete IHDR (octets 16 a 24). Evite de
+// decoder toute l'image juste pour connaitre son rapport largeur/hauteur.
+function readPngSize(filePath) {
+  try {
+    const fd = fs.openSync(filePath, "r");
+    const tete = Buffer.alloc(24);
+    fs.readSync(fd, tete, 0, 24, 0);
+    fs.closeSync(fd);
+    if (tete.toString("latin1", 1, 4) !== "PNG") return null;
+    return { width: tete.readUInt32BE(16), height: tete.readUInt32BE(20) };
+  } catch {
+    return null;
+  }
+}
+
+function getTicketLogoPath(settings) {
+  return getTicketImagePath(settings, "logo_url", "logo");
 }
 
 // Chemin sur disque d'une image servie par une URL du site, ou null.
@@ -1456,6 +1529,22 @@ function buildTicketPdf(participant, settings = getSettings()) {
 
   doc.rect(0, 0, W, H).fill(t.clair);
 
+  // Photo de fond, si l'organisateur en a televerse une. Elle est recouverte
+  // d'un voile clair : sans lui, une photo contrastee rendrait le QR et les
+  // textes illisibles, et un QR illisible est un participant bloque a l'entree.
+  const fondPath = getTicketImagePath(settings, "ticket_bg_url", "bg");
+  if (fondPath) {
+    try {
+      doc.save();
+      doc.rect(0, 0, W, H).clip();
+      // cover : l'image remplit le billet sans se deformer.
+      doc.image(fondPath, 0, 0, { cover: [W, H], align: "center", valign: "center" });
+      doc.restore();
+      doc.rect(0, 0, W, H).fillOpacity(0.82).fill(t.clair);
+      doc.fillOpacity(1);
+    } catch { /* photo illisible : on garde le fond uni */ }
+  }
+
   // Coins verts en biais, en haut a gauche et a droite.
   doc.moveTo(0, 0).lineTo(148, 0).lineTo(0, 94).closePath().fill(t.vert);
   doc.moveTo(W, 0).lineTo(W - 148, 0).lineTo(W, 94).closePath().fill(t.vert);
@@ -1478,12 +1567,51 @@ function buildTicketPdf(participant, settings = getSettings()) {
     } catch { /* image illisible : le billet reste valable sans logo */ }
   }
 
-  // -- Cartouche du titre.
+  // -- Cartouche du titre. Le bandeau "FESTIVAL ADJA" fourni par l'organisateur
+  //    remplace le texte quand il existe ; sinon on dessine le nom.
   const cx = aLogo ? 150 : 96;
   const cw = W - cx * 2;
-  doc.roundedRect(cx, 18, cw, 60, 14).fill(t.sombre);
-  doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(22)
-     .text(eventName.toUpperCase(), cx, 36, { width: cw, align: "center", characterSpacing: 1 });
+  const bandeauPath = getTicketImagePath(settings, "wordmark_url", "wordmark");
+  let bandeauPose = false;
+
+  if (bandeauPath) {
+    try {
+      const ch = 60;
+      const dim = readPngSize(bandeauPath);
+
+      // Coins arrondis : l'image fournie a des angles droits, alors que le
+      // reste du billet (cadre du QR, cadre du code) est arrondi.
+      //
+      // La decoupe doit porter sur les bornes REELLES de l'image, pas sur le
+      // cadre qui l'accueille : avec `fit`, une image en 3:1 posee dans un
+      // cadre en 5:1 n'occupe que le centre, et arrondir le cadre laissait
+      // les vrais angles bien carres.
+      if (dim) {
+        const echelle = Math.min(cw / dim.width, ch / dim.height);
+        const lg = dim.width * echelle;
+        const ht = dim.height * echelle;
+        const x = cx + (cw - lg) / 2;
+        const y = 18 + (ch - ht) / 2;
+        const rayon = Math.min(14, ht / 2);
+
+        doc.save();
+        doc.roundedRect(x, y, lg, ht, rayon).clip();
+        doc.image(bandeauPath, x, y, { width: lg, height: ht });
+        doc.restore();
+      } else {
+        // Dimensions inconnues : on pose l'image sans arrondi plutot que de
+        // risquer une decoupe fausse.
+        doc.image(bandeauPath, cx, 18, { fit: [cw, ch], align: "center", valign: "center" });
+      }
+      bandeauPose = true;
+    } catch { /* image illisible : on retombe sur le cartouche texte */ }
+  }
+
+  if (!bandeauPose) {
+    doc.roundedRect(cx, 18, cw, 60, 14).fill(t.sombre);
+    doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(22)
+       .text(eventName.toUpperCase(), cx, 36, { width: cw, align: "center", characterSpacing: 1 });
+  }
 
   // -- "Edition <annee>" entre deux filets.
   const yEdition = 92;
@@ -2843,9 +2971,34 @@ async function handleApi(request, response, url) {
         return;
       }
 
+      // Bandeau du titre et photo de fond du billet. Le logo garde sa route
+      // historique juste en dessous, pour ne rien casser cote admin.
+      const brandingMatch = url.pathname.match(/^\/api\/admin\/branding\/(wordmark|ticket-bg)$/);
+      if (brandingMatch) {
+        const asset = BRANDING_ASSETS[brandingMatch[1]];
+
+        if (request.method === "POST") {
+          const body = await parseJsonBody(request);
+          const imageUrl = saveBrandingLogo(body.image_base64, asset.fichier, asset.svg);
+          clearTicketCache(brandingMatch[1]);
+          saveSettings({ [asset.reglage]: imageUrl });
+          sendJson(response, 200, { url: imageUrl });
+          return;
+        }
+
+        if (request.method === "DELETE") {
+          removeBrandingLogo(asset.fichier);
+          clearTicketCache(brandingMatch[1]);
+          saveSettings({ [asset.reglage]: "" });
+          sendJson(response, 200, { url: "" });
+          return;
+        }
+      }
+
       if (url.pathname === "/api/admin/branding/logo" && request.method === "POST") {
         const body = await parseJsonBody(request);
         const logoUrl = saveBrandingLogo(body.logo_base64);
+        clearTicketCache("logo");
         saveSettings({ logo_url: logoUrl });
         sendJson(response, 200, { logo_url: logoUrl });
         return;
@@ -2853,6 +3006,7 @@ async function handleApi(request, response, url) {
 
       if (url.pathname === "/api/admin/branding/logo" && request.method === "DELETE") {
         removeBrandingLogo();
+        clearTicketCache("logo");
         saveSettings({ logo_url: "" });
         sendJson(response, 200, { logo_url: "" });
         return;
