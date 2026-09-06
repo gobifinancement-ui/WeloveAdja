@@ -299,12 +299,12 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
    62% = fin de l'expansion, les 38% restants sont le fondu. */
 @keyframes disc-reveal{
   0%{transform:translate(-50%,-50%) scale(0);opacity:1;animation-timing-function:cubic-bezier(.4,0,.2,1)}
-  62%{transform:translate(-50%,-50%) scale(1);opacity:1;animation-timing-function:ease-out}
+  65%{transform:translate(-50%,-50%) scale(1);opacity:1;animation-timing-function:ease-out}
   100%{transform:translate(-50%,-50%) scale(1);opacity:0}
 }
 /* Cascade des champs : chaque element du volet entre juste apres le precedent. */
 @keyframes field-in{
-  from{opacity:0;transform:translateY(14px)}
+  from{opacity:0;transform:translateY(18px)}
   to{opacity:1;transform:none}
 }
 /* Le formulaire arrive d'un peu plus bas, un peu plus petit et flou, puis se
@@ -312,7 +312,7 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
    bascule dans le rebond joueur, qui ne va pas a une page de paiement. */
 @keyframes form-entrance{
   0%{opacity:0;transform:translateY(26px) scale(.965);filter:blur(6px)}
-  55%{opacity:1;filter:blur(0)}
+  45%{opacity:1;filter:blur(0)}
   78%{transform:translateY(-3px) scale(1.008)}
   100%{transform:translateY(0) scale(1)}
 }
@@ -348,17 +348,17 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
   transform:translate(-50%,-50%) scale(0);
   will-change:transform,opacity;
 }
-.reveal-disc.go{animation:disc-reveal .68s forwards}
+.reveal-disc.go{animation:disc-reveal .52s forwards}
 /* Cascade : le retard de chaque element est pose en JS, pour rester juste
    quel que soit le nombre de champs du volet. */
 .pane.stagger>*,
-.verify-shell.stagger>*{animation:field-in .46s cubic-bezier(.22,.9,.28,1) both}
+.verify-shell.stagger>*{animation:field-in .42s cubic-bezier(.22,.9,.28,1) both}
 .reg-shell{animation:none}
-.reg-shell.entering{animation:form-entrance .7s .18s cubic-bezier(.2,.8,.2,1) both}
+.reg-shell.entering{animation:form-entrance .45s cubic-bezier(.2,.8,.2,1) both}
 .reg-shell.entering::after{
   content:"";position:absolute;inset:0;z-index:5;pointer-events:none;
   background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.18) 50%,transparent 60%);
-  animation:shimmer-sweep .8s .3s ease-in-out forwards;
+  animation:shimmer-sweep .7s .15s ease-in-out forwards;
   border-radius:inherit;
 }
 .reveal{opacity:0;transform:translateY(30px);transition:opacity .7s,transform .7s}
@@ -757,11 +757,16 @@ document.addEventListener('click',e=>{
 /* Chronologie de la transition, en millisecondes. Un seul endroit a regler :
    si on touche la duree du disque en CSS (.68s), c'est ici qu'on resynchronise.
      0    -> le bouton s'enfonce, le disque part, l'accueil commence a s'effacer
-     420  -> le disque couvre tout l'ecran
-     380  -> la feuille s'affiche DERRIERE le disque, donc invisible
-     460  -> le formulaire demarre son entree, decouverte par le fondu du disque
-     520+ -> les champs arrivent en cascade */
-const REVEAL = { sheetAt: 380, formAt: 460, fieldsAt: 520, step: 60 };
+     300  -> la feuille s'affiche DERRIERE le disque, donc invisible
+     340  -> le disque couvre tout l'ecran
+     380  -> le bloc du formulaire monte ; ses champs sont masques des cet
+             instant, sinon on les verrait s'afficher puis disparaitre juste
+             avant la cascade
+     520  -> le disque a fini de s'effacer, l'ecran est degage
+     620+ -> les champs entrent un a un, 70 ms d'ecart. Volontairement APRES
+             520 : demarree plus tot, la cascade se jouait derriere le disque
+             encore opaque et ne se voyait pas. */
+const REVEAL = { sheetAt: 300, formAt: 380, fieldsAt: 620, step: 70 };
 
 /* Disque qui part du point de clic et couvre l'ecran. Le rayon vise le coin le
    plus eloigne : sans ca, un clic pres d'un bord laisserait le coin oppose a
@@ -820,9 +825,12 @@ function openSheet(name){
       shell.classList.add('entering');
       shell.addEventListener('animationend', () => shell.classList.remove('entering'), { once:true });
     }
+    // La cascade est armee MAINTENANT, pas a 620 ms : la classe pose aussitot
+    // les champs a l'etat invisible, et c'est leur retard individuel qui les
+    // fait entrer un a un. Armee plus tard, les champs restaient affiches
+    // pendant l'arrivee du bloc puis disparaissaient d'un coup.
+    staggerIn(staggerTarget(sh), REVEAL.fieldsAt - REVEAL.formAt);
   }, REVEAL.formAt);
-
-  setTimeout(() => staggerIn(staggerTarget(sh)), REVEAL.fieldsAt);
 }
 
 function closeSheet(){
