@@ -304,7 +304,7 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 }
 /* Cascade des champs : chaque element du volet entre juste apres le precedent. */
 @keyframes field-in{
-  from{opacity:0;transform:translateY(18px)}
+  from{opacity:0;transform:translateY(22px)}
   to{opacity:1;transform:none}
 }
 /* Le formulaire arrive d'un peu plus bas, un peu plus petit et flou, puis se
@@ -352,7 +352,7 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 /* Cascade : le retard de chaque element est pose en JS, pour rester juste
    quel que soit le nombre de champs du volet. */
 .pane.stagger>*,
-.verify-shell.stagger>*{animation:field-in .42s cubic-bezier(.22,.9,.28,1) both}
+.verify-shell.stagger>*{animation:field-in .38s cubic-bezier(.22,.9,.28,1) both}
 .reg-shell{animation:none}
 .reg-shell.entering{animation:form-entrance .45s cubic-bezier(.2,.8,.2,1) both}
 .reg-shell.entering::after{
@@ -763,10 +763,10 @@ document.addEventListener('click',e=>{
              instant, sinon on les verrait s'afficher puis disparaitre juste
              avant la cascade
      520  -> le disque a fini de s'effacer, l'ecran est degage
-     620+ -> les champs entrent un a un, 70 ms d'ecart. Volontairement APRES
+     600+ -> les champs entrent un a un, 150 ms d'ecart. Volontairement APRES
              520 : demarree plus tot, la cascade se jouait derriere le disque
              encore opaque et ne se voyait pas. */
-const REVEAL = { sheetAt: 300, formAt: 380, fieldsAt: 620, step: 70 };
+const REVEAL = { sheetAt: 300, formAt: 380, fieldsAt: 600, step: 150 };
 
 /* Disque qui part du point de clic et couvre l'ecran. Le rayon vise le coin le
    plus eloigne : sans ca, un clic pres d'un bord laisserait le coin oppose a
