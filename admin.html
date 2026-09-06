@@ -206,6 +206,21 @@ button{font-family:var(--body);cursor:pointer}
 .f .ipwrap{position:relative;display:flex;align-items:center}
 .f .ipwrap .reveal-btn{position:absolute;right:8px;background:none;border:none;color:var(--cream-52);padding:8px;border-radius:8px;display:flex}
 .f .ipwrap .reveal-btn:hover{color:var(--cream)}
+.demo-card{border:1px solid var(--stroke);border-radius:16px;padding:18px;margin-top:8px;background:var(--glass)}
+.demo-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.demo-head b{display:block;font-size:.95rem;margin-bottom:4px}
+.demo-head .desc{display:block;font-size:.8rem;color:var(--cream-52);line-height:1.5;max-width:52ch}
+.demo-toggle{flex:0 0 auto;width:56px;height:32px;border-radius:100px;border:1px solid var(--stroke);background:rgba(0,0,0,.3);cursor:pointer;padding:0;position:relative;transition:.25s}
+.demo-toggle .knob{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--cream-52);transition:.25s}
+.demo-toggle[aria-checked="true"]{background:#b3241f;border-color:#d8433d}
+.demo-toggle[aria-checked="true"] .knob{left:27px;background:#fff}
+.demo-toggle:disabled{opacity:.5;cursor:wait}
+/* L'avertissement n'apparait que lorsque le mode tourne : affiche en
+   permanence il deviendrait du decor et ne serait plus lu. */
+.demo-warn{display:none;margin-top:14px;padding:11px 13px;border-radius:11px;background:rgba(179,36,31,.16);border:1px solid rgba(216,67,61,.5);color:var(--cream);font-size:.8rem;line-height:1.5}
+.demo-card.on .demo-warn{display:block}
+.demo-card.on{border-color:rgba(216,67,61,.55)}
+#demoCount{display:block;margin-top:6px;color:var(--cream-52)}
 .save-bar{position:sticky;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:color-mix(in oklab,var(--bg) 80%,transparent);backdrop-filter:blur(14px);border:1px solid var(--stroke);border-radius:16px;padding:14px 18px;margin-top:8px}
 .save-bar .msg{font-size:.86rem;color:var(--green-br);display:flex;align-items:center;gap:8px;opacity:0;transition:opacity .3s}
 .save-bar .msg.show{opacity:1}
@@ -519,6 +534,20 @@ button{font-family:var(--body);cursor:pointer}
         </div>
       </div>
 
+      <div class="card demo-card" id="demoCard">
+        <div class="demo-head">
+          <div>
+            <b>Mode démonstration</b>
+            <span class="desc">Permet d'essayer le parcours complet – formulaire, code, QR – sans passer par le paiement. Les inscriptions créées sont <b>effacées</b> quand tu coupes le mode.</span>
+          </div>
+          <button class="demo-toggle" id="demoToggle" role="switch" aria-checked="false" aria-label="Activer le mode démonstration"><span class="knob"></span></button>
+        </div>
+        <div class="demo-warn" id="demoWarn">
+          <b>Attention</b> – tant que ce mode est actif, n'importe qui obtient un code <b>sans payer</b>. À couper avant d'ouvrir les inscriptions.
+          <span id="demoCount"></span>
+        </div>
+      </div>
+
       <div class="save-bar">
         <span class="msg" id="saveMsg"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg> Réglages enregistrés – appliqués sur le site</span>
         <div style="display:flex;gap:10px;margin-left:auto">
@@ -569,6 +598,7 @@ async function openApp() {
   await fillSettings();
   await loadTheme();
   await loadHealth();
+  await loadDemo();
   paintLogo((window.__brand && window.__brand.logoUrl) || '');
 }
 
@@ -844,6 +874,50 @@ async function adminVerify() {
     res_el.innerHTML = `<div class="vh"><div class="ic">⚠</div><div><b>Erreur réseau</b><span>Réessayez dans un instant</span></div></div>`;
   }
 }
+
+/* ---------- MODE DÉMONSTRATION ---------- */
+const demoCard=document.getElementById('demoCard');
+const demoToggle=document.getElementById('demoToggle');
+const demoCount=document.getElementById('demoCount');
+
+function paintDemo(state){
+  const on=state.enabled===true;
+  demoToggle.setAttribute('aria-checked',String(on));
+  demoCard.classList.toggle('on',on);
+  const n=state.demo_participants||0;
+  demoCount.textContent=on&&n
+    ? `${n} inscription${n>1?'s':''} d'essai en base – elle${n>1?'s seront effacées':' sera effacée'} à l'extinction.`
+    : '';
+}
+
+async function loadDemo(){
+  try{
+    const res=await apiFetch('/api/admin/demo');
+    paintDemo(await res.json());
+  }catch(e){/* la carte reste sur son etat par defaut */}
+}
+
+demoToggle.addEventListener('click',async()=>{
+  const activer=demoToggle.getAttribute('aria-checked')!=='true';
+  // L'extinction detruit des donnees : on demande confirmation, jamais pour
+  // l'activation qui, elle, se defait.
+  if(!activer&&!confirm("Couper le mode démonstration ?\n\nToutes les inscriptions d'essai et leurs QR codes seront définitivement supprimés."))return;
+
+  demoToggle.disabled=true;
+  try{
+    const res=await apiFetch('/api/admin/demo',{method:'POST',body:JSON.stringify({enabled:activer})});
+    const data=await res.json();
+    paintDemo({enabled:data.enabled,demo_participants:0});
+    // Bandeau rouge en haut de l'admin, sans attendre un rechargement.
+    if(window.setDemoBanner)window.setDemoBanner(data.enabled===true);
+    toast(activer?'Mode démonstration activé':'Mode démonstration coupé',
+          activer?'Les inscriptions ne sont plus payées.':`${data.purged||0} inscription(s) d'essai supprimée(s).`);
+    await render();
+    await loadHealth();
+    await loadDemo();
+  }catch(e){alert('Impossible de changer le mode démonstration.');}
+  finally{demoToggle.disabled=false;}
+});
 
 /* ---------- RÉGLAGES ---------- */
 let chiefsArr = [], sponsorsArr = [];

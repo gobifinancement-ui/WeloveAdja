@@ -50,6 +50,10 @@ const DEFAULT_SETTINGS = {
   // Mot de passe distinct pour les postes de scan a l'entree. Vide = les
   // agents utilisent le mot de passe admin (ancien comportement).
   scan_password: "",
+  // Mode demonstration : court-circuite l'operateur de paiement pour pouvoir
+  // dérouler le parcours complet sans cle FedaPay. "1" = actif. Voir
+  // DEMO_PAYMENT_TAG et la purge a l'extinction.
+  demo_mode: "0",
   vendeur_email: "",
   vendeur_whatsapp: "",
   pickup_location: "",
@@ -939,6 +943,11 @@ function getConfigHealth(settings = getSettings()) {
 
   // Le mot de passe etant desormais hache, on ne peut plus mesurer sa
   // longueur : on teste s'il vaut encore le defaut de premiere installation.
+  if (isDemoMode(settings)) {
+    add("error", "demo", "MODE DÉMONSTRATION ACTIF",
+      "Les inscriptions sont validées sans aucun paiement : n'importe qui obtient un code gratuitement. À couper avant l'ouverture des inscriptions.");
+  }
+
   const adminPassword = settings.admin_password || "";
   if (!adminPassword) {
     add("error", "password", "Aucun mot de passe administrateur",
@@ -1025,6 +1034,7 @@ function publicSettings(settings = getSettings()) {
     waLink:      settings.wa_link || "",
     email:       settings.vendeur_email || "",
     logoUrl:     settings.logo_url || "",
+    demoMode:    isDemoMode(settings),
     theme:       resolveTheme(settings),
     chiefs,
     sponsors,
@@ -1507,6 +1517,62 @@ async function createPaymentToken(settings, transactionId) {
 
 function getPublicBaseUrl(settings) {
   return process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
+}
+
+// ---------------------------------------------------------------------------
+// Mode demonstration
+//
+// Permet d'essayer le parcours d'inscription de bout en bout sans cle de
+// paiement : le formulaire cree un vrai participant, le retour de paiement le
+// valide aussitot, le code et le QR sont generes pour de bon.
+//
+// Les inscriptions ainsi creees portent DEMO_PAYMENT_TAG dans la colonne
+// `paiement`, ce qui permet de les reconnaitre et de les effacer toutes quand
+// le mode s'eteint. DANGER : tant qu'il est actif, n'importe qui s'inscrit
+// sans payer. Le bandeau public, l'avertissement au demarrage et le controle
+// [BLOQUANT] de l'etat de preparation sont la pour que l'oubli se remarque.
+// ---------------------------------------------------------------------------
+const DEMO_PAYMENT_TAG = "demonstration";
+
+function isDemoMode(settings = getSettings()) {
+  return String(settings.demo_mode || "0") === "1";
+}
+
+// Fabrique la transaction que FedaPay aurait renvoyee pour un paiement
+// accepte. finalizePaidParticipant verifie le statut ET le montant : on fournit
+// donc les deux, sinon la validation echouerait.
+function buildDemoTransaction(participant, settings) {
+  return {
+    id: `demo-${participant.id}`,
+    status: "approved",
+    amount: getParticipationAmount(settings),
+    reference: `DEMO-${participant.id}`,
+  };
+}
+
+// Efface les inscriptions de demonstration et les fichiers qu'elles ont laisses
+// (photo, QR code). Sans le menage des fichiers, chaque essai laisserait une
+// image orpheline sur le disque.
+function purgeDemoParticipants() {
+  const rows = statementAll(
+    "SELECT id, participant_photo_url, qr_code_url FROM participants WHERE paiement = ?",
+    [DEMO_PAYMENT_TAG],
+  );
+
+  rows.forEach((row) => {
+    [row.participant_photo_url, row.qr_code_url].forEach((url) => {
+      if (!url) return;
+      const filePath = path.join(ROOT, String(url).split("?")[0].replace(/^\/+/, ""));
+      // Garde-fou : on ne supprime que sous uploads/, jamais ailleurs.
+      if (filePath.startsWith(path.join(ROOT, "uploads"))) {
+        try { fs.unlinkSync(filePath); } catch {}
+      }
+    });
+  });
+
+  run("DELETE FROM participants WHERE paiement = ?", [DEMO_PAYMENT_TAG]);
+  persistDatabase();
+  return rows.length;
 }
 
 // Verifie les champs saisis par le public. Renvoie un message d'erreur en
@@ -2068,6 +2134,33 @@ async function handleApi(request, response, url) {
         return;
       }
 
+      // En demonstration, on n'appelle jamais l'operateur : getPaymentCredentials
+      // leverait "Cle secrete de paiement non configuree" et bloquerait tout.
+      if (isDemoMode(settings)) {
+        const demoParticipant = buildPendingParticipant(body, settings);
+        demoParticipant.paiement = DEMO_PAYMENT_TAG;
+        demoParticipant.operateur_paiement = "Démonstration";
+        demoParticipant.fedapay_status = "demo_pending";
+        insertParticipant(demoParticipant);
+
+        sendJson(response, 201, {
+          demo: true,
+          participant: {
+            id: demoParticipant.id,
+            nom: demoParticipant.nom,
+            telephone: demoParticipant.telephone,
+            email: demoParticipant.email,
+            montant: demoParticipant.montant,
+            statut_paiement: demoParticipant.statut_paiement,
+          },
+          transaction: { id: `demo-${demoParticipant.id}`, reference: `DEMO-${demoParticipant.id}`, status: "pending" },
+          // On renvoie directement la page de retour : c'est elle qui
+          // interroge /api/payments/status, lequel validera le paiement.
+          checkout_url: `/retour-paiement.html?p=${encodeURIComponent(demoParticipant.id)}`,
+        });
+        return;
+      }
+
       getPaymentCredentials(settings);
       const participant = buildPendingParticipant(body, settings);
       const customer = await createPaymentCustomer(settings, participant);
@@ -2136,6 +2229,24 @@ async function handleApi(request, response, url) {
       const participant = getParticipantById(participantId);
       if (!participant) {
         sendJson(response, 404, { error: "Participant introuvable." });
+        return;
+      }
+
+      // Inscription de demonstration : on valide sur place. Interroger FedaPay
+      // n'aurait aucun sens, la transaction n'existe pas chez eux.
+      if (String(participant.paiement || "") === DEMO_PAYMENT_TAG) {
+        const result = await finalizePaidParticipant(
+          participant,
+          buildDemoTransaction(participant, settings),
+          settings,
+        );
+        sendJson(response, 200, {
+          status: "approved",
+          demo: true,
+          participant: result.participant,
+          email_sent: result.emailSent,
+          already_finalized: result.alreadyFinalized,
+        });
         return;
       }
 
@@ -2412,6 +2523,38 @@ async function handleApi(request, response, url) {
         removeBrandingLogo();
         saveSettings({ logo_url: "" });
         sendJson(response, 200, { logo_url: "" });
+        return;
+      }
+
+      // Mode demonstration. L'extinction efface les inscriptions d'essai :
+      // c'est le comportement demande, on previent donc dans la reponse
+      // combien de lignes ont ete supprimees.
+      if (url.pathname === "/api/admin/demo" && request.method === "GET") {
+        const current = getSettings();
+        sendJson(response, 200, {
+          enabled: isDemoMode(current),
+          demo_participants: statementGet(
+            "SELECT COUNT(*) AS n FROM participants WHERE paiement = ?", [DEMO_PAYMENT_TAG],
+          ).n,
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/demo" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const enabled = body.enabled === true || body.enabled === "1";
+        let purged = 0;
+
+        if (!enabled) {
+          purged = purgeDemoParticipants();
+        }
+
+        saveSettings({ demo_mode: enabled ? "1" : "0" });
+        console.log(enabled
+          ? "MODE DEMONSTRATION ACTIVE : les inscriptions ne sont plus payees."
+          : `Mode demonstration desactive. ${purged} inscription(s) d'essai supprimee(s).`);
+
+        sendJson(response, 200, { enabled, purged });
         return;
       }
 
@@ -2729,6 +2872,16 @@ function listen(port) {
 
     // Les erreurs de configuration sont annoncees au demarrage : sinon elles ne
     // se manifestent que le jour de l'evenement, au premier paiement reel.
+    if (isDemoMode(settings)) {
+      console.log("");
+      console.log("  ##############################################################");
+      console.log("  #  MODE DEMONSTRATION ACTIF                                  #");
+      console.log("  #  Les inscriptions sont validees SANS PAIEMENT.             #");
+      console.log("  #  A couper dans l'admin avant d'ouvrir les inscriptions.    #");
+      console.log("  ##############################################################");
+      console.log("");
+    }
+
     const health = getConfigHealth(settings);
     const problems = health.checks.filter((check) => check.level !== "ok");
 
