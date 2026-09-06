@@ -90,7 +90,20 @@
       if (running) return;
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        onError(new Error("La camera n'est pas disponible sur cet appareil."));
+        // Distinguer les deux causes est essentiel : le message "camera non
+        // disponible" envoyait chercher un probleme de materiel alors que
+        // l'appareil a bien une camera. Les navigateurs ne fournissent
+        // l'API que sur une origine sure (https, ou localhost). Sur
+        // http://192.168.x.x l'objet mediaDevices n'existe meme pas, donc
+        // aucune demande d'autorisation ne sera jamais proposee.
+        const message = !window.isSecureContext
+          ? "Le scan par camera exige une adresse securisee. Sur " +
+            location.protocol + "//" + location.host +
+            " le navigateur bloque la camera. Ouvre le site en https, ou saisis le code a la main."
+          : "La camera n'est pas disponible sur cet appareil.";
+        const error = new Error(message);
+        error.code = !window.isSecureContext ? "INSECURE_CONTEXT" : "NO_CAMERA";
+        onError(error);
         return;
       }
 

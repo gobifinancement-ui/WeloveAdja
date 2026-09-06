@@ -505,7 +505,40 @@
 
   /* ---------------- Démarrage ---------------- */
 
+  /* Avertissement d'origine non securisee.
+   *
+   * Sur http://192.168.x.x (ou toute IP locale), le navigateur ne fournit ni
+   * navigator.mediaDevices ni les service workers. Concretement : la camera
+   * ne s'ouvrira JAMAIS, et le mode hors-ligne ne peut pas s'installer. Ce
+   * n'est pas une panne de l'appareil, c'est une regle de securite du
+   * navigateur, et rien dans l'interface ne le disait.
+   *
+   * On le dit donc des l'ouverture, avant que l'agent ne cherche ailleurs.
+   */
+  function warnInsecureContext() {
+    if (window.isSecureContext) return;
+
+    const banner = document.createElement("div");
+    banner.id = "insecure-warn";
+    banner.innerHTML =
+      "<b>Caméra indisponible sur cette adresse</b>" +
+      "Le navigateur n'autorise la caméra et le mode hors-ligne que sur une adresse " +
+      "<b>https://</b>. Sur <b>" + escapeHtml(location.host) + "</b> ils sont bloqués. " +
+      "La saisie manuelle du code reste utilisable.";
+    banner.style.cssText = [
+      "position:sticky", "top:0", "z-index:900",
+      "background:#8a2b12", "color:#fff",
+      "font:400 .78rem/1.5 system-ui,sans-serif",
+      "padding:10px 14px", "text-align:left",
+    ].join(";");
+    banner.querySelectorAll("b").forEach((el) => { el.style.fontWeight = "800"; });
+    banner.firstChild.style.display = "block";
+    banner.firstChild.style.marginBottom = "3px";
+    document.body.prepend(banner);
+  }
+
   async function boot() {
+    warnInsecureContext();
     paintNetwork();
 
     const deviceId = await ScanStore.getDeviceId();
