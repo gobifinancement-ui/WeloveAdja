@@ -19,7 +19,7 @@
 }
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;font-family:var(--body);color:var(--cream);background:var(--bg);display:grid;place-items:center;padding:20px}
-.card{width:100%;max-width:460px;background:var(--bg-2);border:1px solid var(--stroke);border-radius:24px;padding:32px 24px;text-align:center;box-shadow:0 40px 90px -34px rgba(0,0,0,.78)}
+.card{width:100%;max-width:400px;background:var(--bg-2);border:1px solid var(--stroke);border-radius:24px;padding:32px 24px;text-align:center;box-shadow:0 40px 90px -34px rgba(0,0,0,.78)}
 .logo{width:56px;height:56px;object-fit:contain;margin:0 auto 18px;display:block}
 .ic{width:74px;height:74px;border-radius:50%;display:grid;place-items:center;margin:0 auto 18px;background:color-mix(in oklab,var(--x,var(--gold)) 20%,transparent);color:var(--x,var(--gold))}
 h1{font-family:var(--display);font-size:1.5rem;margin:0 0 8px;color:var(--x,var(--cream))}
@@ -30,8 +30,31 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
 .row span{color:var(--cream-52)}
 .row b{font-weight:700;text-align:right}
 .code{font-family:ui-monospace,monospace;letter-spacing:.14em;color:var(--gold-lt);font-size:1.05rem}
-.qr{width:170px;border-radius:14px;margin:16px auto 0;display:block;background:#fff;padding:8px}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:13px;padding:14px;font-weight:800;font-size:.9rem;cursor:pointer;text-decoration:none;font-family:inherit;margin-top:8px}
+.lead{margin-bottom:14px}
+/* Le billet : ce que le participant est venu chercher, groupe en un seul bloc
+   au lieu d'un code noye dans un tableau et d'un QR flottant plus bas. */
+.ticket{background:color-mix(in oklab,var(--gold) 9%,transparent);border:1px dashed var(--stroke-gd);border-radius:18px;padding:16px;margin:0 0 14px}
+.tk-lbl{display:block;font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-lt);margin-bottom:8px}
+.tk-code{display:flex;align-items:center;justify-content:center;gap:10px}
+.tk-code b{font-family:var(--display);font-size:clamp(1.8rem,9vw,2.4rem);font-weight:700;letter-spacing:.16em;color:var(--gold-lt);line-height:1.1}
+.tk-code button{flex:none;width:38px;height:38px;display:grid;place-items:center;border-radius:11px;cursor:pointer;
+  background:var(--glass);border:1px solid var(--stroke-gd);color:var(--gold-lt);transition:.18s}
+.tk-code button:hover{background:color-mix(in oklab,var(--gold) 18%,transparent)}
+.tk-code button:active{transform:scale(.92)}
+.tk-code button.done{color:var(--ok);border-color:var(--ok)}
+.qr{width:150px;border-radius:12px;margin:14px auto 0;display:block;background:#fff;padding:7px}
+/* Confettis : lances a l'apparition du code, pas au depart de la page. */
+.confetti-piece{position:fixed;top:-10vh;z-index:60;pointer-events:none;
+  width:var(--w,9px);height:var(--h,13px);background:var(--c,#e7bb46);border-radius:var(--br,2px);
+  animation:confetti-fall var(--dur,2.4s) var(--delay,0s) ease-in forwards}
+@keyframes confetti-fall{
+  0%{transform:translateY(0) rotate(0);opacity:1}
+  80%{opacity:1}
+  100%{transform:translateY(115vh) rotate(var(--rot,360deg));opacity:0}
+}
+@media(prefers-reduced-motion:reduce){.confetti-piece{display:none}}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:13px;padding:14px;font-weight:800;font-size:.9rem;cursor:pointer;text-decoration:none;font-family:inherit;margin-top:8px;transition:transform .18s}
+.btn:active{transform:scale(.97);transition-duration:.09s}
 .btn-gold{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#231a06}
 .btn-ghost{background:var(--glass);border:1px solid var(--stroke);color:var(--cream)}
 .spin{width:44px;height:44px;border:3px solid var(--stroke);border-top-color:var(--gold);border-radius:50%;margin:0 auto 18px;animation:spin .9s linear infinite}
@@ -58,16 +81,28 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
   <div id="ok" class="hidden" style="--x:var(--ok)">
     <div class="ic"><svg width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.6" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></div>
     <h1>Paiement confirmé</h1>
-    <p>Ton inscription est validée. Garde ce code, il te sera demandé à l'entrée.</p>
+    <p class="lead">Garde ce code, il te sera demandé à l'entrée.</p>
+
+    <div class="ticket">
+      <span class="tk-lbl">Ton code d'accès</span>
+      <div class="tk-code">
+        <b id="oCode">——</b>
+        <button type="button" id="copyBtn" aria-label="Copier le code">
+          <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+      </div>
+      <img class="qr hidden" id="oQr" alt="QR code d'accès">
+    </div>
+
     <div class="box">
       <div class="row"><span>Participant</span><b id="oName">—</b></div>
-      <div class="row"><span>Code d'accès</span><b class="code" id="oCode">—</b></div>
       <div class="row"><span>Montant</span><b id="oAmount">—</b></div>
       <div class="row"><span>Lieu</span><b id="oPlace">—</b></div>
     </div>
-    <img class="qr hidden" id="oQr" alt="QR code d'accès">
-    <p class="muted">Un email de confirmation t'a été envoyé avec ce QR code.</p>
-    <a class="btn btn-gold" href="/">Retour à l'accueil</a>
+
+    <p class="muted" id="mailNote">Un email de confirmation t'a été envoyé avec ce QR code.</p>
+    <a class="btn btn-gold" id="verifyLink" href="/verification.html">Vérifier mon code d'accès →</a>
+    <a class="btn btn-ghost" href="/">Retour à l'accueil</a>
   </div>
 
   <!-- Échec / en attente prolongée -->
@@ -122,12 +157,27 @@ async function check() {
 
     if (data.status === 'approved') {
       const p = data.participant || {};
+      const code = p.code_unique || '';
       $('oName').textContent = p.nom || '—';
-      $('oCode').textContent = p.code_unique || '—';
+      $('oCode').textContent = code || '——';
       $('oAmount').textContent = p.montant || '—';
       $('oPlace').textContent = p.lieu_retrait || '—';
       if (p.qr_code_url) { $('oQr').src = p.qr_code_url; $('oQr').classList.remove('hidden'); }
+
+      // Le bouton emmene sur la page de verification AVEC le code deja rempli :
+      // le participant voit son billet sans rien retaper.
+      if (code) $('verifyLink').href = '/verification.html?code=' + encodeURIComponent(code);
+
+      // L'email n'est promis que s'il est reellement parti. Le promettre a tort
+      // ferait attendre pour rien un message qui n'arrivera jamais.
+      if (data.email_sent === false) {
+        $('mailNote').textContent = "Note bien ce code : garde-le en photo ou recopie-le.";
+      }
+
       show('ok');
+      // Confettis ici, a l'instant ou le code apparait : c'est le moment de
+      // la bonne nouvelle.
+      launchConfetti();
       return;
     }
 
@@ -160,6 +210,68 @@ async function check() {
 }
 
 $('retry').addEventListener('click', () => { attempt = 0; show('pending'); check(); });
+
+/* Copie du code. navigator.clipboard exige un contexte securise : en HTTP sur
+   une adresse locale il est absent, d'ou le repli par selection. */
+$('copyBtn').addEventListener('click', async () => {
+  const code = $('oCode').textContent.trim();
+  if (!code || code === '——') return;
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(code);
+    } else {
+      const zone = document.createElement('textarea');
+      zone.value = code;
+      zone.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(zone);
+      zone.select();
+      document.execCommand('copy');
+      zone.remove();
+    }
+    const button = $('copyBtn');
+    button.classList.add('done');
+    button.innerHTML = '<svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg>';
+    setTimeout(() => {
+      button.classList.remove('done');
+      button.innerHTML = '<svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    }, 1800);
+  } catch {
+    alert('Copie impossible. Note le code : ' + code);
+  }
+});
+
+function launchConfetti() {
+  const COLORS = ['#f0c64f', '#ffe6a0', '#8a96f0', '#3fc189', '#ffffff', '#e08a6a'];
+
+  for (let i = 0; i < 90; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+
+    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    const width = 5 + Math.random() * 8;
+    const height = width * (Math.random() < 0.5 ? 1.6 : 1);
+    const round = Math.random() < 0.35 ? '50%' : '2px';
+    const delay = (Math.random() * 1.2).toFixed(2);
+    const duration = (1.9 + Math.random() * 1.2).toFixed(2);
+    const rotation = Math.round((Math.random() - 0.5) * 720);
+    const left = (Math.random() * 100).toFixed(1);
+
+    piece.style.setProperty('--c', color);
+    piece.style.setProperty('--w', width.toFixed(1) + 'px');
+    piece.style.setProperty('--h', height.toFixed(1) + 'px');
+    piece.style.setProperty('--br', round);
+    piece.style.setProperty('--delay', delay + 's');
+    piece.style.setProperty('--dur', duration + 's');
+    piece.style.setProperty('--rot', rotation + 'deg');
+    piece.style.left = left + '%';
+
+    document.body.appendChild(piece);
+    // Nettoyage : sans lui, 90 elements resteraient dans la page.
+    setTimeout(() => piece.remove(), 4500);
+  }
+}
+
 check();
 </script>
 </body>

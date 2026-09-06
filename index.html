@@ -205,6 +205,22 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .field input.bad{border-color:var(--red);box-shadow:0 0 0 4px rgba(224,138,106,.16)}
 .err{display:none;color:#f0a98c;font-size:.8rem;margin-top:7px}
 .err.show{display:block}
+/* Recapitulatif de paiement : montant en tete, informations saisies dessous,
+   dans un seul bloc. Avant, le montant flottait seul et les mentions se
+   dispersaient sous les boutons. */
+.pay-recap{background:color-mix(in oklab,var(--gold) 7%,transparent);border:1px solid var(--stroke-gd);border-radius:18px;padding:18px;margin-bottom:18px}
+.pr-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px dashed var(--stroke-gd)}
+.pr-head .lbl{font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-lt)}
+.pr-head .amt{font-family:var(--display);font-size:1.9rem;font-weight:600;line-height:1}
+.pr-head .amt small{font-size:.9rem;color:var(--cream-52);font-weight:600;font-family:var(--body)}
+.pr-rows{padding-top:6px}
+.pr-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:7px 0;font-size:.87rem}
+.pr-row span{color:var(--cream-52);flex:none}
+/* L'email peut etre long : il doit se couper plutot que d'elargir la carte. */
+.pr-row b{font-weight:700;text-align:right;min-width:0;overflow-wrap:anywhere}
+.pr-edit{display:block;width:100%;margin-top:12px;background:transparent;border:1px solid var(--stroke);border-radius:11px;color:var(--cream-72);font-family:var(--body);font-size:.82rem;font-weight:700;padding:10px;cursor:pointer;transition:.2s}
+.pr-edit:hover{border-color:var(--stroke-gd);color:var(--cream)}
+.pr-edit:active{transform:scale(.98);transition-duration:.09s}
 .amount-box{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:color-mix(in oklab,var(--gold) 8%,transparent);border:1px solid var(--stroke-gd);border-radius:16px;padding:18px 20px;margin-bottom:22px}
 .amount-box .lbl{font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-lt)}
 .amount-box .amt{font-family:var(--display);font-size:2rem;font-weight:600;line-height:1}
@@ -224,7 +240,20 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .method .mt b{font-size:.82rem;font-weight:700;display:block;line-height:1.1}
 .method .mt span{display:none}
 .note{display:flex;gap:11px;align-items:flex-start;color:var(--cream-72);font-size:.86rem;line-height:1.5;text-align:left}
+.note svg,.next-note svg{flex:none}
+.note>span,.next-note>span{min-width:0}
 .note svg{flex:none;color:var(--gold);margin-top:2px}
+.photo-pick{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:stretch}
+.photo-pick .pick{display:flex;flex-direction:column;align-items:center;gap:4px;
+  font-family:var(--body);color:var(--cream);cursor:pointer;
+  border:1.5px dashed var(--stroke-gd);border-radius:18px;padding:20px 12px;
+  background:color-mix(in oklab,var(--gold) 4%,transparent);transition:.25s}
+.photo-pick .pick:hover,.photo-pick .pick.drag{background:color-mix(in oklab,var(--gold) 10%,transparent);border-color:var(--gold)}
+.photo-pick .pick:active{transform:scale(.97);transition-duration:.09s}
+.photo-pick .di{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;margin-bottom:6px;background:color-mix(in oklab,var(--gold) 12%,transparent);border:1px solid var(--stroke-gd);color:var(--gold-lt)}
+.photo-pick b{font-family:var(--display);font-size:1rem;font-weight:500}
+.photo-pick small{color:var(--cream-52);font-size:.78rem}
+.pick-note{text-align:center;color:var(--cream-32);font-size:.76rem;margin:10px 0 0}
 .drop{border:1.5px dashed var(--stroke-gd);border-radius:18px;padding:34px 22px;text-align:center;cursor:pointer;transition:.25s;background:color-mix(in oklab,var(--gold) 4%,transparent)}
 .drop:hover,.drop.drag{background:color-mix(in oklab,var(--gold) 10%,transparent);border-color:var(--gold)}
 .drop .di{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;margin:0 auto 14px;background:color-mix(in oklab,var(--gold) 12%,transparent);border:1px solid var(--stroke-gd);color:var(--gold-lt)}
@@ -238,9 +267,19 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .preview .pm span{font-size:.78rem;color:var(--cream-52)}
 .preview .rm{background:none;border:none;color:var(--cream-52);cursor:pointer;padding:8px;border-radius:8px}
 .preview .rm:hover{color:#f0a98c;background:rgba(255,255,255,.05)}
-.reg-actions{display:flex;gap:12px;margin-top:24px}
-.reg-actions .btn{flex:1}
+/* Le libelle "Payer en toute securite" est long et .btn impose white-space:
+   nowrap. Avec flex:1 et le min-width:auto par defaut, le bouton refusait de
+   retrecir et debordait de la carte en emportant son texte hors du cadre.
+   min-width:0 l'autorise a retrecir ; en dessous de 430px les deux boutons
+   passent l'un sous l'autre, l'action principale en premier. */
+.reg-actions{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap}
+.reg-actions .btn{flex:1 1 auto;min-width:0}
 .btn-back{flex:0 0 auto!important;background:transparent;border:1px solid var(--stroke);color:var(--cream-72);padding-inline:22px}
+@media(max-width:430px){
+  .reg-actions{flex-direction:column-reverse}
+  .reg-actions .btn{width:100%}
+  .btn-back{flex:1 1 auto!important;padding-inline:16px}
+}
 .btn-back:hover{border-color:var(--stroke-gd)}
 /* --- Waiting screen --- */
 .waiting-screen{text-align:center;padding:clamp(24px,5vw,44px) clamp(22px,5vw,38px)}
@@ -575,12 +614,21 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
         <div class="pane" data-pane="2">
           <div class="field">
             <label>Photo du participant <span class="hint">– visage clair, bien éclairé</span></label>
-            <div class="drop" id="photoDrop">
-              <div class="di"><svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
-              <b>Touche pour prendre ou importer ta photo</b>
-              <small>PNG, JPG – compressée automatiquement</small>
+            <div class="photo-pick" id="photoPick">
+              <button type="button" class="pick" id="pickCamera">
+                <span class="di"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+                <b>Appareil</b>
+                <small>Prendre une photo</small>
+              </button>
+              <button type="button" class="pick" id="pickGallery">
+                <span class="di"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-5-5L5 21"/></svg></span>
+                <b>Galerie</b>
+                <small>Importer une photo</small>
+              </button>
             </div>
-            <input id="photoFile" type="file" accept="image/*" capture="user" hidden>
+            <p class="pick-note">PNG ou JPG – compressée automatiquement</p>
+            <input id="photoFile" type="file" accept="image/*" hidden>
+            <input id="photoCam" type="file" accept="image/*" capture="user" hidden>
             <div class="preview" id="photoPreview">
               <img id="photoPvImg" alt="">
               <div class="pm"><b id="photoPvName">photo.jpg</b><span id="photoPvSize">–</span></div>
@@ -588,13 +636,24 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
             </div>
             <div class="err" data-err="photo" style="margin-top:14px">Merci d'ajouter ta photo (obligatoire).</div>
           </div>
-          <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Ta photo est utilisée uniquement pour vérifier ton identité le jour J. Elle ne sera jamais publiée.</p>
+          <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Ta photo est utilisée uniquement pour vérifier ton identité le jour J. Elle ne sera jamais publiée.</span></p>
           <div class="reg-actions"><button class="btn btn-back" data-back="2">← Retour</button><button class="btn btn-gold" data-next="2">Continuer →</button></div>
         </div>
 
         <!-- ÉTAPE 3 – LANCEMENT DU PAIEMENT -->
         <div class="pane" data-pane="3">
-          <div class="amount-box"><span class="lbl">Montant à payer</span><span class="amt" data-amount>5 000 <small>XOF</small></span></div>
+          <div class="pay-recap">
+            <div class="pr-head">
+              <span class="lbl">Montant à payer</span>
+              <span class="amt" data-amount>5 000 <small>XOF</small></span>
+            </div>
+            <div class="pr-rows">
+              <div class="pr-row"><span>Nom</span><b id="s-nom">—</b></div>
+              <div class="pr-row"><span>Téléphone</span><b id="s-tel">—</b></div>
+              <div class="pr-row"><span>Email</span><b id="s-email">—</b></div>
+            </div>
+            <button type="button" class="pr-edit" data-back="2">Modifier mes informations</button>
+          </div>
 
           <div class="pay-brands">
             <span class="pb"><img src="/moov.png" alt="" onerror="this.remove()"> Moov</span>
@@ -603,7 +662,7 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
             <span class="pb"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> Carte bancaire</span>
           </div>
 
-          <p class="note" style="margin-bottom:20px"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Tu vas être redirigé vers la <b>page de paiement sécurisée</b>. Choisis-y ton moyen de paiement (Mobile Money ou carte), puis tu reviendras automatiquement ici avec ton code d'accès.</p>
+          <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Tu vas être redirigé vers la <b>page de paiement sécurisée</b>, puis ramené ici avec ton code d'accès.</span></p>
 
           <div class="reg-actions"><button class="btn btn-back" data-back="3">← Retour</button><button class="btn btn-gold" id="launchBtn">Payer en toute sécurité →</button></div>
         </div>
@@ -633,7 +692,7 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
           <div class="rrow"><span class="rk">Lieu de retrait</span><span class="rv" id="c-r-lieu">–</span></div>
           <div class="rrow"><span class="rk">Statut</span><span class="rv" style="color:var(--green-br)">Paiement validé ✓</span></div>
         </div>
-        <p class="next-note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg> Le code et le QR code ont aussi été envoyés à ton adresse email.</p>
+        <p class="next-note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg><span>Le code et le QR code ont aussi été envoyés à ton adresse email.</span></p>
         <button class="btn btn-ghost" id="againBtn">Nouvelle inscription</button>
       </div>
     </div>
@@ -879,6 +938,19 @@ function paint(){
   // Le volet qui vient d'apparaitre fait defiler ses champs, comme a
   // l'ouverture : sans ca, passer a l'etape 2 semblait brutal a cote.
   staggerIn(document.querySelector('.pane.show'));
+  if(step===3)fillPayRecap();
+}
+
+/* Recopie les informations saisies dans le recapitulatif de paiement. C'est
+   le dernier ecran avant de payer : une faute sur l'email s'y rattrape encore,
+   et c'est l'email qui portera le code d'acces. */
+function fillPayRecap(){
+  const opt=paysSel&&paysSel.selectedOptions[0];
+  const indicatif=opt?'+'+opt.dataset.dial+' ':'';
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v||'—';};
+  set('s-nom',document.getElementById('nom').value.trim());
+  set('s-tel',indicatif+document.getElementById('tel').value.trim());
+  set('s-email',document.getElementById('email').value.trim());
 }
 
 /* ---- Indicatif du pays ------------------------------------------------
@@ -950,15 +1022,25 @@ document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',(
    PHOTO DU PARTICIPANT – compression canvas
    ============================================================ */
 let photoDataURL='';
-const photoDrop=document.getElementById('photoDrop');
+const photoDrop=document.getElementById('photoPick');
 const photoFileInput=document.getElementById('photoFile');
 const photoPreview=document.getElementById('photoPreview');
 
-photoDrop.addEventListener('click',()=>photoFileInput.click());
+const photoCamInput=document.getElementById('photoCam');
+
+// Deux entrees separees : celle qui porte capture="user" ouvre l'appareil,
+// l'autre ouvre la galerie. Une seule entree avec capture n'aurait jamais
+// laisse le choix.
+document.getElementById('pickCamera').addEventListener('click',()=>photoCamInput.click());
+document.getElementById('pickGallery').addEventListener('click',()=>photoFileInput.click());
+[photoFileInput,photoCamInput].forEach(input=>{
+  input.addEventListener('change',e=>{if(e.target.files[0])handlePhoto(e.target.files[0]);});
+});
+
+// Glisser-deposer, utile sur ordinateur.
 ['dragover','dragenter'].forEach(ev=>photoDrop.addEventListener(ev,e=>{e.preventDefault();photoDrop.classList.add('drag');}));
 ['dragleave','drop'].forEach(ev=>photoDrop.addEventListener(ev,e=>{e.preventDefault();photoDrop.classList.remove('drag');}));
-photoDrop.addEventListener('drop',e=>{if(e.dataTransfer.files[0])handlePhoto(e.dataTransfer.files[0]);});
-photoFileInput.addEventListener('change',e=>{if(e.target.files[0])handlePhoto(e.target.files[0]);});
+photoDrop.addEventListener('drop',e=>{e.preventDefault();photoDrop.classList.remove('drag');if(e.dataTransfer.files[0])handlePhoto(e.dataTransfer.files[0]);});
 
 async function compressImage(file,maxDim=900,quality=0.78){
   return new Promise(resolve=>{
@@ -990,10 +1072,12 @@ async function handlePhoto(f){
   const kB=Math.round(dataUrl.length*0.75/1024);
   document.getElementById('photoPvSize').textContent=kB>1024?(kB/1024).toFixed(1)+' Mo':kB+' Ko';
   photoPreview.classList.add('show');photoDrop.style.display='none';
+  document.querySelector('.pick-note').style.display='none';
 }
 document.getElementById('photoPvRemove').addEventListener('click',()=>{
-  photoDataURL='';photoFileInput.value='';
+  photoDataURL='';photoFileInput.value='';photoCamInput.value='';
   photoPreview.classList.remove('show');photoDrop.style.display='';
+  document.querySelector('.pick-note').style.display='';
 });
 
 /* ============================================================
@@ -1173,8 +1257,9 @@ function showConfirm(p){
 function resetForm(){
   ['nom','email'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const tel=document.getElementById('tel');if(tel)tel.value='';
-  photoDataURL='';photoFileInput.value='';
+  photoDataURL='';photoFileInput.value='';photoCamInput.value='';
   photoPreview.classList.remove('show');photoDrop.style.display='';
+  document.querySelector('.pick-note').style.display='';
   if(paysSel){paysSel.value='BJ';syncTelPlaceholder();}
   document.getElementById('confirm').classList.remove('show');
   document.getElementById('waitingScreen').style.display='none';
