@@ -9,6 +9,7 @@ const initSqlJs = require("sql.js");
 const { Resend } = require("resend");
 const QRCode = require("qrcode");
 const PDFDocument = require("pdfkit");
+const { PNG } = require("pngjs");
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
@@ -1329,6 +1330,94 @@ const MAX_TICKET_LOGO_BYTES = 400 * 1024;
 const TICKET_WIDTH = 600;   // points PDF, soit un rapport 3:2 comme la maquette
 const TICKET_HEIGHT = 400;
 
+// ---------------------------------------------------------------------------
+// Reduction du logo pour le billet
+//
+// pdfkit embarque une image A SA TAILLE D'ORIGINE, meme affichee en 68 points :
+// le logo de 1254x1254 pesait 1,3 Mo et donnait des billets de 1,5 Mo. On en
+// fabrique donc une version reduite, gardee en cache sur le disque et refaite
+// seulement quand le logo change.
+// ---------------------------------------------------------------------------
+const TICKET_LOGO_SIZE = 220;   // suffisant pour du 68pt a 300 points par pouce
+const TICKET_LOGO_PATH = path.join(BRANDING_DIR, "logo-ticket.png");
+
+// Reechantillonnage par moyenne de bloc. Le voisin le plus proche donnerait
+// des bords en escalier tres visibles sur un logo circulaire.
+function downscalePng(source, cible) {
+  const ratio = Math.min(cible / source.width, cible / source.height, 1);
+  const w = Math.max(1, Math.round(source.width * ratio));
+  const h = Math.max(1, Math.round(source.height * ratio));
+  const sortie = new PNG({ width: w, height: h });
+
+  const blocX = source.width / w;
+  const blocY = source.height / h;
+
+  for (let y = 0; y < h; y += 1) {
+    const y0 = Math.floor(y * blocY);
+    const y1 = Math.max(y0 + 1, Math.floor((y + 1) * blocY));
+
+    for (let x = 0; x < w; x += 1) {
+      const x0 = Math.floor(x * blocX);
+      const x1 = Math.max(x0 + 1, Math.floor((x + 1) * blocX));
+
+      let r = 0, g = 0, b = 0, a = 0, n = 0;
+      for (let sy = y0; sy < y1 && sy < source.height; sy += 1) {
+        for (let sx = x0; sx < x1 && sx < source.width; sx += 1) {
+          const i = (source.width * sy + sx) << 2;
+          const alpha = source.data[i + 3];
+          // Moyenne ponderee par l'alpha : sans cela, les pixels totalement
+          // transparents (souvent noirs) assombriraient les bords du logo.
+          r += source.data[i] * alpha;
+          g += source.data[i + 1] * alpha;
+          b += source.data[i + 2] * alpha;
+          a += alpha;
+          n += 1;
+        }
+      }
+
+      const j = (w * y + x) << 2;
+      if (a > 0) {
+        sortie.data[j] = Math.round(r / a);
+        sortie.data[j + 1] = Math.round(g / a);
+        sortie.data[j + 2] = Math.round(b / a);
+      }
+      sortie.data[j + 3] = Math.round(a / Math.max(1, n));
+    }
+  }
+
+  return sortie;
+}
+
+// Renvoie le chemin du logo reduit, ou null s'il n'y en a pas d'utilisable.
+function getTicketLogoPath(settings) {
+  const source = localFileFromUrl(settings.logo_url);
+  if (!source) return null;
+
+  // Le SVG n'est pas embarquable par pdfkit et n'a pas besoin d'etre reduit.
+  if (!/\.(png|jpe?g)$/i.test(source)) return null;
+
+  // Un JPEG est deja compresse : pdfkit le reprend tel quel, on le laisse.
+  if (/\.jpe?g$/i.test(source)) {
+    try { return fs.statSync(source).size <= MAX_TICKET_LOGO_BYTES ? source : null; } catch { return null; }
+  }
+
+  try {
+    const infoSource = fs.statSync(source);
+    // Cache encore valable : on ne refait pas le calcul a chaque billet.
+    if (fs.existsSync(TICKET_LOGO_PATH) && fs.statSync(TICKET_LOGO_PATH).mtimeMs >= infoSource.mtimeMs) {
+      return TICKET_LOGO_PATH;
+    }
+
+    const reduit = downscalePng(PNG.sync.read(fs.readFileSync(source)), TICKET_LOGO_SIZE);
+    fs.writeFileSync(TICKET_LOGO_PATH, PNG.sync.write(reduit, { deflateLevel: 9 }));
+    console.log(`Logo du billet regenere : ${Math.round(fs.statSync(TICKET_LOGO_PATH).size / 1024)} Ko`);
+    return TICKET_LOGO_PATH;
+  } catch (error) {
+    console.warn("Reduction du logo impossible:", error.message);
+    return null;
+  }
+}
+
 // Chemin sur disque d'une image servie par une URL du site, ou null.
 function localFileFromUrl(url) {
   const clean = String(url || "").split("?")[0].replace(/^\/+/, "");
@@ -1339,89 +1428,111 @@ function localFileFromUrl(url) {
   return fs.existsSync(filePath) ? filePath : null;
 }
 
+// Palette du billet, VOLONTAIREMENT fixe et non liee au theme du site.
+// Le site change de couleur chaque jour ; un billet, lui, doit rester
+// reconnaissable et s'accorder au logo, qui est vert.
+const TICKET_COLORS = {
+  clair: "#f4f7f2",
+  vert: "#2fa84f",
+  vertFonce: "#12662c",
+  sombre: "#0c2b17",
+  blanc: "#ffffff",
+  creme: "#dceadf",
+};
+
 function buildTicketPdf(participant, settings = getSettings()) {
-  const theme = resolveTheme(settings);
-  const c = theme.colors;
+  const t = TICKET_COLORS;
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
   const annee = getDatePartsBenin().year;
 
+  const W = TICKET_WIDTH, H = TICKET_HEIGHT;
+  const milieu = W / 2;
+
   const doc = new PDFDocument({
-    size: [TICKET_WIDTH, TICKET_HEIGHT],
+    size: [W, H],
     margin: 0,
-    info: {
-      Title: `Billet ${eventName} - ${participant.code_unique || ""}`,
-      Author: eventName,
-    },
+    info: { Title: `Billet ${eventName} - ${participant.code_unique || ""}`, Author: eventName },
   });
 
-  // Fond
-  doc.rect(0, 0, TICKET_WIDTH, TICKET_HEIGHT).fill(c.bg);
-  doc.rect(0, 0, TICKET_WIDTH, 120).fill(c.bg2);
+  doc.rect(0, 0, W, H).fill(t.clair);
 
-  // Filet dore separant l'en-tete
-  doc.rect(0, 118, TICKET_WIDTH, 2).fill(c.gold);
+  // Coins verts en biais, en haut a gauche et a droite.
+  doc.moveTo(0, 0).lineTo(148, 0).lineTo(0, 94).closePath().fill(t.vert);
+  doc.moveTo(W, 0).lineTo(W - 148, 0).lineTo(W, 94).closePath().fill(t.vert);
 
-  // Logo, s'il a ete televerse dans l'admin. En SVG on ne peut pas l'embarquer
-  // ici (pdfkit ne lit que PNG et JPEG), on l'ignore alors sans casser le PDF.
-  const logoPath = localFileFromUrl(settings.logo_url);
-  let titleX = 40;
-  if (logoPath && /\.(png|jpe?g)$/i.test(logoPath)) {
+  // Bandeau du bas. La courbe PLONGE au milieu : bombee, elle recouvrait la
+  // mention "Scannez pour vos infos", qui est centree.
+  doc.moveTo(0, H - 72)
+     .bezierCurveTo(W * 0.33, H - 30, W * 0.67, H - 30, W, H - 72)
+     .lineTo(W, H).lineTo(0, H).closePath().fill(t.sombre);
+
+  // -- Les deux logos, de part et d'autre du titre.
+  const logoPath = getTicketLogoPath(settings);
+  const L = 76;
+  let aLogo = false;
+  if (logoPath) {
     try {
-      // pdfkit embarque l'image A SA TAILLE D'ORIGINE, meme affichee en 68pt :
-      // un logo de 1,3 Mo donnait des billets de 1,5 Mo, envoyes par email a
-      // des participants souvent en donnees mobiles. Au-dela du plafond on
-      // s'en passe plutot que d'alourdir chaque billet ; l'admin le signale
-      // et il suffit de reimporter le logo pour qu'il soit reduit.
-      if (fs.statSync(logoPath).size <= MAX_TICKET_LOGO_BYTES) {
-        doc.image(logoPath, 34, 26, { fit: [68, 68], align: "center", valign: "center" });
-        titleX = 118;
-      }
-    } catch { /* image illisible : on garde le titre a gauche */ }
+      doc.image(logoPath, 22, 14, { fit: [L, L] });
+      doc.image(logoPath, W - 22 - L, 14, { fit: [L, L] });
+      aLogo = true;
+    } catch { /* image illisible : le billet reste valable sans logo */ }
   }
 
-  doc.fillColor(c.cream).font("Helvetica-Bold").fontSize(26)
-     .text(eventName.toUpperCase(), titleX, 34, { width: TICKET_WIDTH - titleX - 40 });
-  doc.fillColor(c.goldLt).font("Helvetica").fontSize(11)
-     .text(`FESTIVAL ADJA  •  ÉDITION ${annee}`, titleX, 68,
-           { width: TICKET_WIDTH - titleX - 40, characterSpacing: 1.6 });
+  // -- Cartouche du titre.
+  const cx = aLogo ? 150 : 96;
+  const cw = W - cx * 2;
+  doc.roundedRect(cx, 18, cw, 60, 14).fill(t.sombre);
+  doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(22)
+     .text(eventName.toUpperCase(), cx, 36, { width: cw, align: "center", characterSpacing: 1 });
 
-  // QR code a gauche, sur fond blanc pour rester lisible par tous les lecteurs.
+  // -- "Edition <annee>" entre deux filets.
+  const yEdition = 92;
+  doc.fillColor(t.sombre).font("Helvetica-Bold").fontSize(11.5)
+     .text(`Édition ${annee}`, 0, yEdition, { width: W, align: "center", characterSpacing: 1.2 });
+  doc.lineWidth(1.6).strokeColor(t.vert);
+  doc.moveTo(milieu - 112, yEdition + 6).lineTo(milieu - 56, yEdition + 6).stroke();
+  doc.moveTo(milieu + 56, yEdition + 6).lineTo(milieu + 112, yEdition + 6).stroke();
+
+  // -- QR au centre. Sombre sur blanc : c'est la seule combinaison que TOUS
+  //    les lecteurs savent lire, y compris les capteurs bas de gamme.
   const qrPath = localFileFromUrl(participant.qr_code_url);
-  const qrBox = 168;
-  const qrX = 46, qrY = 158;
-  doc.roundedRect(qrX - 10, qrY - 10, qrBox + 20, qrBox + 20, 10).fill("#ffffff");
+  const qr = 116;
+  const qrX = milieu - qr / 2, qrY = 120;
+  doc.roundedRect(qrX - 10, qrY - 10, qr + 20, qr + 20, 12)
+     .lineWidth(2.4).fillAndStroke(t.blanc, t.vert);
   if (qrPath) {
-    try { doc.image(qrPath, qrX, qrY, { fit: [qrBox, qrBox] }); } catch {}
+    try { doc.image(qrPath, qrX, qrY, { fit: [qr, qr] }); } catch {}
   }
 
-  // Bloc de droite : nom, code, lieu
-  const colX = qrX + qrBox + 46;
-  const colW = TICKET_WIDTH - colX - 40;
+  // -- Code d'acces.
+  const yCode = qrY + qr + 22;          // 258
+  const cwCode = 212, chCode = 44;
+  doc.roundedRect(milieu - cwCode / 2, yCode, cwCode, chCode, 11)
+     .lineWidth(2).fillAndStroke(t.sombre, t.vert);
+  doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(25)
+     .text(participant.code_unique || "------", milieu - cwCode / 2, yCode + 11,
+           { width: cwCode, align: "center", characterSpacing: 4 });
 
-  doc.fillColor(c.cream).font("Helvetica").fontSize(9)
-     .text("PARTICIPANT", colX, 152, { characterSpacing: 1.8 });
-  doc.fillColor(c.cream).font("Helvetica-Bold").fontSize(17)
-     .text(participant.nom || "-", colX, 166, { width: colW, ellipsis: true, height: 24 });
+  // -- Mention, posee AU-DESSUS du creux du bandeau.
+  const yScan = yCode + chCode + 13;    // 315
+  doc.fillColor(t.vertFonce).font("Helvetica-Bold").fontSize(8)
+     .text("SCANNEZ POUR VOS INFOS", 0, yScan, { width: W, align: "center", characterSpacing: 2 });
+  doc.lineWidth(1.2).strokeColor(t.vert);
+  doc.moveTo(milieu - 148, yScan + 4).lineTo(milieu - 86, yScan + 4).stroke();
+  doc.moveTo(milieu + 86, yScan + 4).lineTo(milieu + 148, yScan + 4).stroke();
 
-  doc.fillColor(c.goldLt).font("Helvetica").fontSize(9)
-     .text("CODE D'ACCÈS", colX, 202, { characterSpacing: 1.8 });
-  doc.roundedRect(colX, 216, Math.min(colW, 210), 46, 9)
-     .lineWidth(1.4).fillAndStroke(c.bg2, c.gold);
-  doc.fillColor(c.goldLt).font("Helvetica-Bold").fontSize(25)
-     .text(participant.code_unique || "------", colX, 228,
-           { width: Math.min(colW, 210), align: "center", characterSpacing: 3 });
+  // -- Pied : les deux informations que le controleur verifie a l'entree.
+  const yPied = H - 34;
+  doc.fillColor(t.vert).font("Helvetica-Bold").fontSize(7)
+     .text("PARTICIPANT", 28, yPied, { characterSpacing: 1.6 });
+  doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(11.5)
+     .text(participant.nom || "-", 28, yPied + 10, { width: W / 2 - 44, height: 15, ellipsis: true });
 
-  doc.fillColor(c.cream).font("Helvetica").fontSize(9)
-     .text("LIEU", colX, 278, { characterSpacing: 1.8 });
-  doc.fillColor(c.cream).font("Helvetica-Bold").fontSize(11)
-     .text(participant.lieu_retrait || settings.pickup_location || "-", colX, 292,
-           { width: colW, height: 30, ellipsis: true });
-
-  // Pied de billet
-  doc.rect(0, TICKET_HEIGHT - 34, TICKET_WIDTH, 34).fill(c.bg2);
-  doc.fillColor(c.cream).font("Helvetica").fontSize(8.5)
-     .text("SCANNEZ POUR VOS INFOS  •  BILLET PERSONNEL, NON CESSIBLE",
-           0, TICKET_HEIGHT - 22, { width: TICKET_WIDTH, align: "center", characterSpacing: 1.2 });
+  const lieu = participant.lieu_retrait || settings.pickup_location || "-";
+  doc.fillColor(t.vert).font("Helvetica-Bold").fontSize(7)
+     .text("LIEU", W / 2, yPied, { width: W / 2 - 28, align: "right", characterSpacing: 1.6 });
+  doc.fillColor(t.creme).font("Helvetica-Bold").fontSize(9.5)
+     .text(lieu, W / 2, yPied + 11, { width: W / 2 - 28, align: "right", height: 14, ellipsis: true });
 
   return doc;
 }
