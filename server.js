@@ -84,9 +84,16 @@ const DEFAULT_SETTINGS = {
   // sont validees a l'ecriture, voir ARTISTS_LAYOUTS / ARTISTS_ANIMATIONS.
   artists_layout: "carrousel",
   artists_animation: "cascade",
+  // Animation appliquee a tout le contenu qui arrive a l'ecran (titres,
+  // cartes, sections). Voir SCROLL_ANIMATIONS.
+  scroll_animation: "montee",
   logo_url: "",
   theme_preset: "indigo",
   theme_custom_json: "{}",
+  // Rotation quotidienne des couleurs : liste de presets parcourue un par
+  // jour, puis on reboucle. Moins de deux entrees = pas de rotation, c'est
+  // theme_preset qui fait foi.
+  theme_rotation_json: "[]",
 };
 
 // Palettes proposees dans l'admin. Chaque preset ne definit que les couleurs
@@ -142,6 +149,10 @@ const DEFAULT_THEME_PRESET = "indigo";
 const ARTISTS_LAYOUTS = ["carrousel", "grille", "pleine"];
 const ARTISTS_ANIMATIONS = ["cascade", "fondu", "zoom", "glisse", "aucune"];
 
+// Animation d'apparition du contenu au defilement. Liste fermee : la valeur
+// finit dans un attribut data-* lu par le CSS.
+const SCROLL_ANIMATIONS = ["montee", "fondu", "zoom", "glisse", "bascule", "flou", "aucune"];
+
 // Traduction des champs de l'admin vers les cles reellement lues par le
 // serveur. DOIT couvrir tous les [data-set] de admin.html : une cle absente
 // ici est ignoree (et signalee), jamais ecrite telle quelle.
@@ -172,6 +183,7 @@ const SETTINGS_KEY_MAP = {
   artists:              "artists_json",
   artistsLayout:        "artists_layout",
   artistsAnimation:     "artists_animation",
+  scrollAnimation:      "scroll_animation",
 };
 
 let db;
@@ -789,9 +801,33 @@ function rgba(hex, alpha) {
   return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
 }
 
+// Numero du jour, base sur la date au Benin et non sur l'heure du serveur :
+// la bascule doit se faire a minuit LA-BAS, pas a minuit UTC.
+function getDayNumberBenin() {
+  return Math.floor(Date.parse(`${getDateKeyBenin()}T00:00:00Z`) / 86400000);
+}
+
+// Presets retenus pour la rotation, filtres sur ceux qui existent vraiment.
+function getRotationPresets(settings) {
+  let liste = [];
+  try {
+    const parsed = JSON.parse(settings.theme_rotation_json || "[]");
+    if (Array.isArray(parsed)) liste = parsed.filter((key) => THEME_PRESETS[key]);
+  } catch {}
+  // Doublons retires : deux fois la meme palette dans la liste ferait
+  // simplement durer cette couleur deux jours, ce qui n'est jamais voulu.
+  return [...new Set(liste)];
+}
+
 // Le theme effectif = preset choisi, surcharge par les couleurs personnalisees.
 function resolveTheme(settings = getSettings()) {
-  const presetKey = THEME_PRESETS[settings.theme_preset] ? settings.theme_preset : DEFAULT_THEME_PRESET;
+  const rotation = getRotationPresets(settings);
+
+  // Rotation active : le preset du jour l'emporte sur le preset fixe.
+  const presetKey = rotation.length >= 2
+    ? rotation[((getDayNumberBenin() % rotation.length) + rotation.length) % rotation.length]
+    : (THEME_PRESETS[settings.theme_preset] ? settings.theme_preset : DEFAULT_THEME_PRESET);
+
   const preset = THEME_PRESETS[presetKey];
 
   let custom = {};
@@ -801,13 +837,21 @@ function resolveTheme(settings = getSettings()) {
   } catch {}
 
   const colors = { ...preset.colors };
-  Object.keys(preset.colors).forEach((key) => {
-    if (hexToRgb(custom[key])) {
-      colors[key] = String(custom[key]).trim();
-    }
-  });
+  if (rotation.length < 2) {
+    Object.keys(preset.colors).forEach((key) => {
+      if (hexToRgb(custom[key])) {
+        colors[key] = String(custom[key]).trim();
+      }
+    });
+  }
 
-  return { preset: presetKey, label: preset.label, colors };
+  return {
+    preset: presetKey,
+    label: preset.label,
+    colors,
+    rotating: rotation.length >= 2,
+    rotation,
+  };
 }
 
 // Feuille servie a toutes les pages : elle surcharge les :root inline des HTML.
@@ -1059,6 +1103,7 @@ function publicSettings(settings = getSettings()) {
     artists,
     artistsLayout: ARTISTS_LAYOUTS.includes(settings.artists_layout) ? settings.artists_layout : ARTISTS_LAYOUTS[0],
     artistsAnimation: ARTISTS_ANIMATIONS.includes(settings.artists_animation) ? settings.artists_animation : ARTISTS_ANIMATIONS[0],
+    scrollAnimation: SCROLL_ANIMATIONS.includes(settings.scroll_animation) ? settings.scroll_animation : SCROLL_ANIMATIONS[0],
   };
 }
 
@@ -1790,7 +1835,7 @@ function buildValidationEmailHtml(participant, publicBaseUrl = "") {
       <p>Votre paiement est confirme. Voici votre code ${eventName} :</p>
       <p style="font-size:34px;font-weight:700;letter-spacing:6px">${escapeHtml(participant.code_unique)}</p>
       ${qrImage}
-      <p>Lieu de retrait : <strong>${escapeHtml(participant.lieu_retrait || "Terrain Omnisports CEG2 Azovè")}</strong></p>
+      <p>Lieu de retrait : <strong>${escapeHtml(participant.lieu_retrait || "Terrain Omnisports CEG2 AZOVÈ")}</strong></p>
       <p>Presentez ce code ou le QR code joint le jour de l'evenement.</p>
     </div>
   `;
@@ -1827,7 +1872,7 @@ async function sendValidationEmail(participant, settings) {
         `Bonjour ${participant.nom || ""},\n\n` +
         `Votre paiement ${eventName} est confirme.\n` +
         `Code : ${participant.code_unique}\n` +
-        `Lieu de retrait : ${participant.lieu_retrait || "Terrain Omnisports CEG2 Azovè"}\n`,
+        `Lieu de retrait : ${participant.lieu_retrait || "Terrain Omnisports CEG2 AZOVÈ"}\n`,
       attachments,
     },
     {
@@ -2610,7 +2655,17 @@ async function handleApi(request, response, url) {
           });
         }
 
-        saveSettings({ theme_preset: preset, theme_custom_json: JSON.stringify(custom) });
+        // Rotation : on ne garde que des presets connus, sans doublon.
+        let rotation = [];
+        if (Array.isArray(body.rotation)) {
+          rotation = [...new Set(body.rotation.filter((key) => THEME_PRESETS[key]))];
+        }
+
+        saveSettings({
+          theme_preset: preset,
+          theme_custom_json: JSON.stringify(custom),
+          theme_rotation_json: JSON.stringify(rotation),
+        });
         sendJson(response, 200, { current: resolveTheme() });
         return;
       }

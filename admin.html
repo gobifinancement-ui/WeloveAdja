@@ -207,6 +207,15 @@ button{font-family:var(--body);cursor:pointer}
 .f .ipwrap .reveal-btn{position:absolute;right:8px;background:none;border:none;color:var(--cream-52);padding:8px;border-radius:8px;display:flex}
 .f .ipwrap .reveal-btn:hover{color:var(--cream)}
 /* Editeur des artistes : l'affiche est verticale, la vignette la reflete. */
+.rot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px}
+.rot-opt{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:11px;cursor:pointer;
+  background:var(--glass);border:1px solid var(--stroke);color:var(--cream-72);
+  font-family:var(--body);font-size:.76rem;font-weight:700;text-align:left;transition:.2s}
+.rot-opt:hover{border-color:var(--stroke-gd);color:var(--cream)}
+.rot-opt.sel{border-color:var(--gold);background:color-mix(in oklab,var(--gold) 12%,transparent);color:var(--cream)}
+.rot-dots{display:flex;gap:2px;flex:none}
+.rot-dots i{width:9px;height:9px;border-radius:50%;display:block}
+.rot-state{font-size:.76rem;color:var(--cream-52);margin:10px 0 0;line-height:1.5}
 .artist-row{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px}
 .artist-poster{width:58px;flex:none;aspect-ratio:2/3;border-radius:9px;overflow:hidden;cursor:pointer;
   border:1px solid var(--stroke-gd);background:var(--glass);display:grid;place-items:center;position:relative}
@@ -475,6 +484,19 @@ button{font-family:var(--body);cursor:pointer}
           <label>Thème de couleurs</label>
           <span class="desc">Choisis une palette prête à l'emploi.</span>
           <div class="theme-grid" id="themeGrid"></div>
+        </div>
+
+        <div class="f" style="margin-bottom:20px">
+          <label>Couleur différente chaque jour</label>
+          <span class="desc">Coche au moins deux palettes : le site en change une par jour, puis reprend la boucle. Tant que la rotation tourne, elle l'emporte sur le thème et les couleurs personnalisées ci-dessous.</span>
+          <div class="rot-grid" id="rotGrid"></div>
+          <p class="rot-state" id="rotState"></p>
+        </div>
+
+        <div class="f" style="margin-bottom:20px">
+          <label>Animation du contenu au défilement</label>
+          <span class="desc">Comment les blocs arrivent quand on fait défiler la page. Le sens est pris en compte : en remontant, ils viennent du haut.</span>
+          <div class="pick-grid anim-grid" id="scrollAnimGrid"></div>
         </div>
 
         <div class="f">
@@ -1115,10 +1137,11 @@ async function fillSettings() {
     try { artistsArr = JSON.parse(raw.artists_json || '[]'); } catch { artistsArr = []; }
     artistsLayout = LAYOUTS.some(l => l.key === raw.artists_layout) ? raw.artists_layout : 'carrousel';
     artistsAnim   = ANIMS.some(a => a.key === raw.artists_animation) ? raw.artists_animation : 'cascade';
+    scrollAnim    = SCROLL_ANIMS_ADMIN.some(a => a.key === raw.scroll_animation) ? raw.scroll_animation : 'montee';
     try { sponsorsArr = JSON.parse(raw.sponsors_json || '[]'); } catch { sponsorsArr = []; }
     try { itemsArr = JSON.parse(raw.event_items_json || '[]'); } catch { itemsArr = []; }
     renderChiefEditor(); renderSponsorEditor(); renderItemsEditor();
-    renderArtistEditor(); renderPickers();
+    renderArtistEditor(); renderPickers(); renderScrollAnimGrid();
   } catch(e) {}
 }
 
@@ -1146,6 +1169,7 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
   );
   payload.artistsLayout = artistsLayout;
   payload.artistsAnimation = artistsAnim;
+  payload.scrollAnimation = scrollAnim;
   payload.eventItems = JSON.stringify(
     itemsArr.filter(it => it.name || it.id)
             .map(it => ({ id: (it.id||'').trim(), name: (it.name||'').trim() }))
@@ -1328,6 +1352,70 @@ function reloadThemeCss() {
   });
 }
 
+/* Rotation quotidienne des couleurs. */
+let rotation = [];
+
+function renderRotGrid() {
+  const g = document.getElementById('rotGrid');
+  if (!g) return;
+  g.innerHTML = themeState.presets.map(p => `
+    <button type="button" class="rot-opt${rotation.includes(p.key) ? ' sel' : ''}" data-rot="${p.key}">
+      <span class="rot-dots">
+        <i style="background:${esc(p.colors.bg2)}"></i>
+        <i style="background:${esc(p.colors.green)}"></i>
+        <i style="background:${esc(p.colors.gold)}"></i>
+      </span>${esc(p.label)}
+    </button>`).join('');
+
+  const etat = document.getElementById('rotState');
+  if (!etat) return;
+  if (rotation.length < 2) {
+    etat.textContent = "Rotation inactive : il faut au moins deux palettes cochées.";
+  } else {
+    const noms = rotation.map(k => (themeState.presets.find(p => p.key === k) || {}).label || k);
+    etat.textContent = `${rotation.length} palettes : ${noms.join(' → ')} → (retour au début). Aujourd'hui : ${themeState.label || '—'}.`;
+  }
+}
+
+document.getElementById('rotGrid').addEventListener('click', e => {
+  const b = e.target.closest('[data-rot]');
+  if (!b) return;
+  const key = b.dataset.rot;
+  const i = rotation.indexOf(key);
+  // L'ordre de selection est l'ordre de passage : on ajoute a la fin.
+  if (i >= 0) rotation.splice(i, 1); else rotation.push(key);
+  renderRotGrid();
+  saveTheme();
+});
+
+/* Animation du contenu au defilement. */
+let scrollAnim = 'montee';
+const SCROLL_ANIMS_ADMIN = [
+  { key:'montee',  nom:'Montée',  desc:'Vient du bas' },
+  { key:'fondu',   nom:'Fondu',   desc:'Apparition douce' },
+  { key:'zoom',    nom:'Zoom',    desc:'Grandit' },
+  { key:'glisse',  nom:'Glisse',  desc:'Vient des côtés' },
+  { key:'bascule', nom:'Bascule', desc:'Léger pivot 3D' },
+  { key:'flou',    nom:'Flou',    desc:'Se précise' },
+  { key:'aucune',  nom:'Aucune',  desc:'Affichage direct' },
+];
+
+function renderScrollAnimGrid() {
+  const g = document.getElementById('scrollAnimGrid');
+  if (!g) return;
+  g.innerHTML = SCROLL_ANIMS_ADMIN.map(a => `
+    <button type="button" class="pick-opt${a.key === scrollAnim ? ' sel' : ''}" data-scrollanim="${a.key}">
+      <b>${a.nom}</b><small>${a.desc}</small>
+    </button>`).join('');
+}
+
+document.getElementById('scrollAnimGrid').addEventListener('click', e => {
+  const b = e.target.closest('[data-scrollanim]');
+  if (!b) return;
+  scrollAnim = b.dataset.scrollanim;
+  renderScrollAnimGrid();
+});
+
 async function loadTheme() {
   try {
     const res = await apiFetch('/api/admin/theme');
@@ -1335,8 +1423,11 @@ async function loadTheme() {
     themeState.presets = data.presets;
     themeState.preset = data.current.preset;
     themeState.colors = { ...data.current.colors };
+    themeState.label = data.current.label;
+    rotation = Array.isArray(data.current.rotation) ? data.current.rotation.slice() : [];
     renderThemeGrid();
     renderColorGrid();
+    renderRotGrid();
   } catch (e) { /* l'onglet reste utilisable sans l'apparence */ }
 }
 
@@ -1344,12 +1435,14 @@ async function saveTheme() {
   try {
     const res = await apiFetch('/api/admin/theme', {
       method: 'PUT',
-      body: JSON.stringify({ preset: themeState.preset, custom: customDiff() })
+      body: JSON.stringify({ preset: themeState.preset, custom: customDiff(), rotation })
     });
     const data = await res.json();
     themeState.colors = { ...data.current.colors };
+    themeState.label = data.current.label;
     reloadThemeCss();
     renderColorGrid();
+    renderRotGrid();
     toast('Apparence enregistrée');
   } catch (e) { toast(e.message || 'Enregistrement impossible'); }
 }
