@@ -385,6 +385,30 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .recap .rrow .rv{font-weight:700;text-align:right}
 .next-note{display:flex;gap:11px;align-items:flex-start;text-align:left;max-width:450px;margin:0 auto 26px;color:var(--cream-72);font-size:.9rem}
 .next-note svg{flex:none;color:var(--green-br);margin-top:2px}
+/* ---- Récupération du billet ---- */
+.tk-sep{display:flex;align-items:center;gap:12px;margin:22px 0 14px;color:var(--cream-32);font-size:.78rem}
+.tk-sep::before,.tk-sep::after{content:"";flex:1;height:1px;background:var(--stroke)}
+.btn-block{width:100%}
+.tk-hint{color:var(--cream-52);font-size:.8rem;margin:10px 0 0;line-height:1.5}
+.tk-shell{max-width:520px;margin-inline:auto;text-align:center}
+.tk-back{background:none;border:0;color:var(--cream-52);font-family:var(--body);font-size:.84rem;font-weight:700;cursor:pointer;padding:6px 0;margin-bottom:12px}
+.tk-back:hover{color:var(--cream)}
+.tk-step .field{margin:18px 0 14px;text-align:left}
+.tk-step input{padding-left:16px;text-align:center;font-size:1.1rem}
+#tkCode{letter-spacing:.5em;font-family:var(--display);font-weight:600;font-size:1.6rem;padding-left:.5em}
+.tk-msg{margin-top:14px;font-size:.85rem;line-height:1.5;min-height:1.2em}
+.tk-msg.ok{color:var(--green-br)}
+.tk-msg.ko{color:var(--red)}
+/* Billet : aperçu dessiné sur une toile, donc téléchargeable en image. */
+.tk-carte{background:var(--glass);border:1px solid var(--stroke);border-radius:18px;padding:14px;margin-bottom:14px}
+.tk-carte canvas{width:100%;height:auto;display:block;border-radius:12px;background:#f4f7f2}
+.tk-nom{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:12px 2px 10px;text-align:left}
+.tk-nom b{font-family:var(--display);font-weight:500;font-size:1.05rem}
+.tk-nom span{color:var(--cream-52);font-size:.8rem;font-variant-numeric:tabular-nums}
+.tk-actions{display:flex;gap:10px}
+.tk-actions .btn{flex:1;min-width:0}
+.tk-utilise{margin:8px 2px 0;font-size:.78rem;color:var(--gold-lt);text-align:left}
+
 /* Verify sheet */
 .verify-shell{max-width:520px;margin-inline:auto;text-align:center}
 .verify-shell .vi{width:74px;height:74px;border-radius:20px;margin:0 auto 20px;display:grid;place-items:center;background:color-mix(in oklab,var(--gold) 12%,transparent);border:1px solid var(--stroke-gd);color:var(--gold-lt)}
@@ -863,6 +887,45 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <button class="btn btn-gold" id="codeBtn">Vérifier</button>
       </div>
       <div class="verify-result" id="vResult"></div>
+
+      <div class="tk-sep"><span>ou</span></div>
+      <button class="btn btn-ghost btn-block" id="tkStart" type="button">🎟️ Télécharger mon ticket</button>
+      <p class="tk-hint">Tu as perdu ton code ? Récupère ton billet avec ton adresse email.</p>
+    </div>
+
+    <!-- Récupération du billet : e-mail, puis code à 6 chiffres, puis billet -->
+    <div class="tk-shell" id="tkShell" hidden>
+      <button class="tk-back" id="tkBack" type="button">← Retour</button>
+
+      <div class="tk-step" id="tkStep1">
+        <div class="vi"><svg width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg></div>
+        <h2>Ton adresse email</h2>
+        <p class="sub">Celle utilisée lors de l'inscription. Un code à 6 chiffres y sera envoyé.</p>
+        <div class="field"><div class="input-wrap">
+          <input id="tkEmail" type="email" placeholder="Ex. kossi@email.com" autocomplete="email" inputmode="email">
+        </div></div>
+        <button class="btn btn-gold btn-block" id="tkSend" type="button">Recevoir mon code</button>
+        <div class="tk-msg" id="tkMsg1"></div>
+      </div>
+
+      <div class="tk-step" id="tkStep2" hidden>
+        <div class="vi"><svg width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <h2>Ton code de vérification</h2>
+        <p class="sub">Nous l'avons envoyé à <b id="tkEmailEcho"></b>. Il expire dans <span id="tkTimer">10:00</span>.</p>
+        <div class="field"><div class="input-wrap">
+          <input id="tkCode" type="text" placeholder="000000" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+        </div></div>
+        <button class="btn btn-gold btn-block" id="tkCheck" type="button">Voir mon billet</button>
+        <button class="btn btn-ghost btn-block" id="tkResend" type="button" style="margin-top:10px">Renvoyer le code</button>
+        <div class="tk-msg" id="tkMsg2"></div>
+      </div>
+
+      <div class="tk-step" id="tkStep3" hidden>
+        <h2 id="tkTitre">Ton billet</h2>
+        <p class="sub" id="tkSousTitre"></p>
+        <div id="tkListe"></div>
+        <div class="tk-msg" id="tkMsg3"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1591,6 +1654,324 @@ function resetForm(){
   step=1;paint();
 }
 document.getElementById('againBtn').addEventListener('click',resetForm);
+
+
+/* ============================================================
+   RÉCUPÉRATION DU BILLET
+   Email -> code à 6 chiffres -> billet téléchargeable.
+   Le serveur porte toute la sécurité ; ici on ne fait que guider.
+   ============================================================ */
+(function(){
+  const $$ = id => document.getElementById(id);
+  const shell = $$('tkShell'), coque = document.querySelector('#sheet-verifier .verify-shell');
+  if(!shell || !coque) return;
+
+  let jeton = '', emailCourant = '', minuteur = null, finCode = 0;
+
+  const etape = n => {
+    [1,2,3].forEach(i => { $$('tkStep'+i).hidden = (i !== n); });
+    if(n === 2) setTimeout(() => $$('tkCode').focus(), 60);
+    if(n === 1) setTimeout(() => $$('tkEmail').focus(), 60);
+  };
+
+  const dire = (id, texte, type) => {
+    const el = $$(id);
+    el.textContent = texte || '';
+    el.className = 'tk-msg' + (type ? ' ' + type : '');
+  };
+
+  function ouvrir(){
+    coque.hidden = true; shell.hidden = false;
+    jeton = ''; emailCourant = '';
+    dire('tkMsg1',''); dire('tkMsg2',''); dire('tkMsg3','');
+    $$('tkCode').value = '';
+    etape(1);
+  }
+  function fermer(){
+    shell.hidden = true; coque.hidden = false;
+    clearInterval(minuteur);
+  }
+
+  $$('tkStart').addEventListener('click', ouvrir);
+  $$('tkBack').addEventListener('click', fermer);
+
+  /* Compte a rebours de validite du code : sans lui, l'utilisateur ne sait pas
+     pourquoi son code cesse soudainement de marcher. */
+  function lancerMinuteur(secondes){
+    clearInterval(minuteur);
+    finCode = Date.now() + secondes * 1000;
+    const peindre = () => {
+      const reste = Math.max(0, Math.round((finCode - Date.now()) / 1000));
+      const m = String(Math.floor(reste / 60)).padStart(2,'0');
+      const s = String(reste % 60).padStart(2,'0');
+      $$('tkTimer').textContent = m + ':' + s;
+      if(reste <= 0){
+        clearInterval(minuteur);
+        dire('tkMsg2', "Ce code a expiré. Demande-en un nouveau.", 'ko');
+      }
+    };
+    peindre();
+    minuteur = setInterval(peindre, 1000);
+  }
+
+  async function demanderCode(bouton, msgId){
+    const email = $$('tkEmail').value.trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){
+      dire(msgId, "Adresse email invalide.", 'ko'); return;
+    }
+    const libelle = bouton.textContent;
+    bouton.disabled = true; bouton.textContent = 'Envoi…';
+    try{
+      const res = await fetch('/api/public/ticket/request', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Envoi impossible');
+
+      emailCourant = email;
+      $$('tkEmailEcho').textContent = email;
+      lancerMinuteur(data.expires_in || 600);
+      etape(2);
+      // Le message reste volontairement vague : il ne dit pas si l'adresse
+      // est connue, sinon il suffirait d'essayer des adresses pour savoir
+      // qui participe.
+      dire('tkMsg2', data.message || '', 'ok');
+    }catch(e){
+      dire(msgId, e.message || 'Envoi impossible.', 'ko');
+    }finally{
+      bouton.disabled = false; bouton.textContent = libelle;
+    }
+  }
+
+  $$('tkSend').addEventListener('click', e => demanderCode(e.currentTarget, 'tkMsg1'));
+  $$('tkResend').addEventListener('click', e => demanderCode(e.currentTarget, 'tkMsg2'));
+  $$('tkEmail').addEventListener('keydown', e => { if(e.key === 'Enter') $$('tkSend').click(); });
+  $$('tkCode').addEventListener('input', e => {
+    e.target.value = e.target.value.replace(/\D/g,'').slice(0,6);
+  });
+  $$('tkCode').addEventListener('keydown', e => { if(e.key === 'Enter') $$('tkCheck').click(); });
+
+  $$('tkCheck').addEventListener('click', async e => {
+    const code = $$('tkCode').value.trim();
+    if(!/^\d{6}$/.test(code)){ dire('tkMsg2', "Saisis les 6 chiffres du code.", 'ko'); return; }
+
+    const b = e.currentTarget, libelle = b.textContent;
+    b.disabled = true; b.textContent = 'Vérification…';
+    try{
+      const res = await fetch('/api/public/ticket/verify', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ email: emailCourant, code })
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Code incorrect.');
+
+      jeton = data.token;
+      clearInterval(minuteur);
+      await afficherBillets(data.billets || []);
+      etape(3);
+    }catch(err){
+      dire('tkMsg2', err.message || 'Code incorrect.', 'ko');
+      $$('tkCode').select();
+    }finally{
+      b.disabled = false; b.textContent = libelle;
+    }
+  });
+
+  /* ---- Dessin du billet sur une toile -------------------------------------
+     Le PDF vient du serveur ; l'image, elle, est dessinee ici. Cela evite
+     d'embarquer un moteur de rendu PDF cote serveur, et la toile sert aussi
+     d'apercu a l'ecran. La mise en page suit celle du PDF. */
+  const T = { clair:'#f4f7f2', vert:'#2fa84f', vertFonce:'#12662c', sombre:'#0c2b17', blanc:'#ffffff' };
+
+  const charger = src => new Promise(res => {
+    if(!src) return res(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => res(img);
+    img.onerror = () => res(null);   // image manquante : le billet reste valable
+    img.src = src;
+  });
+
+  function coinsArrondis(ctx, x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  async function dessiner(canvas, billet, actifs){
+    // 1200x800 : deux fois la taille du PDF, pour rester net une fois
+    // enregistre puis rouvert ou imprime.
+    const W = 1200, H = 800, k = 2;   // k = echelle par rapport au PDF
+    canvas.width = W; canvas.height = H;
+    const c = canvas.getContext('2d');
+    const mid = W / 2;
+
+    c.fillStyle = T.clair; c.fillRect(0,0,W,H);
+
+    if(actifs.fond){
+      // "cover" ancre en bas : sur une photo de concert, la foule est en bas.
+      const r = Math.max(W / actifs.fond.width, H / actifs.fond.height);
+      const lw = actifs.fond.width * r, lh = actifs.fond.height * r;
+      c.drawImage(actifs.fond, (W - lw) / 2, H - lh, lw, lh);
+      const g = c.createLinearGradient(0,0,0,H);
+      g.addColorStop(0,   'rgba(244,247,242,.95)');
+      g.addColorStop(0.55,'rgba(244,247,242,.90)');
+      g.addColorStop(0.78,'rgba(244,247,242,.55)');
+      g.addColorStop(1,   'rgba(244,247,242,.12)');
+      c.fillStyle = g; c.fillRect(0,0,W,H);
+    }
+
+    c.fillStyle = T.vert;
+    c.beginPath(); c.moveTo(0,0); c.lineTo(148*k,0); c.lineTo(0,94*k); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(W,0); c.lineTo(W-148*k,0); c.lineTo(W,94*k); c.closePath(); c.fill();
+
+    c.save();
+    c.globalAlpha = actifs.fond ? 0.62 : 1;
+    c.fillStyle = T.sombre;
+    c.beginPath();
+    c.moveTo(0, H-64*k);
+    c.bezierCurveTo(W*0.33, H-24*k, W*0.67, H-24*k, W, H-64*k);
+    c.lineTo(W,H); c.lineTo(0,H); c.closePath(); c.fill();
+    c.restore();
+
+    const L = 70*k;
+    if(actifs.logo){
+      c.drawImage(actifs.logo, 22*k, 10*k, L, L);
+      c.drawImage(actifs.logo, W - 22*k - L, 10*k, L, L);
+    }
+
+    const cx = (actifs.logo ? 144 : 96) * k, cw = W - cx*2, ch = 54*k;
+    if(actifs.bandeau){
+      const e = Math.min(cw / actifs.bandeau.width, ch / actifs.bandeau.height);
+      const lw = actifs.bandeau.width * e, lh = actifs.bandeau.height * e;
+      const x = cx + (cw - lw)/2, y = 12*k + (ch - lh)/2;
+      c.save(); coinsArrondis(c, x, y, lw, lh, Math.min(14*k, lh/2)); c.clip();
+      c.drawImage(actifs.bandeau, x, y, lw, lh); c.restore();
+    }else{
+      c.fillStyle = T.sombre; coinsArrondis(c, cx, 12*k, cw, ch, 13*k); c.fill();
+      c.fillStyle = T.blanc; c.font = '700 ' + (21*k) + 'px system-ui,sans-serif';
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText((CFG.eventName||'FEJA').toUpperCase(), mid, 12*k + ch/2);
+    }
+
+    c.textAlign = 'center'; c.textBaseline = 'top';
+    c.fillStyle = T.sombre; c.font = '700 ' + (11.5*k) + 'px system-ui,sans-serif';
+    const annee = new Date().getFullYear();
+    c.fillText('Édition ' + annee, mid, 92*k);
+    c.strokeStyle = T.vert; c.lineWidth = 1.6*k;
+    c.beginPath(); c.moveTo(mid-112*k, 98*k); c.lineTo(mid-56*k, 98*k); c.stroke();
+    c.beginPath(); c.moveTo(mid+56*k, 98*k); c.lineTo(mid+112*k, 98*k); c.stroke();
+
+    const qr = 150*k, qrX = mid - qr/2, qrY = 98*k;
+    c.fillStyle = T.blanc; c.strokeStyle = T.vert; c.lineWidth = 2.4*k;
+    coinsArrondis(c, qrX-10*k, qrY-10*k, qr+20*k, qr+20*k, 12*k); c.fill(); c.stroke();
+    if(actifs.qr) c.drawImage(actifs.qr, qrX, qrY, qr, qr);
+
+    const yCode = qrY + qr + 20*k, cwc = 220*k, chc = 42*k;
+    c.fillStyle = T.sombre; c.strokeStyle = T.vert; c.lineWidth = 2*k;
+    coinsArrondis(c, mid - cwc/2, yCode, cwc, chc, 11*k); c.fill(); c.stroke();
+    c.fillStyle = T.blanc; c.font = '700 ' + (24*k) + 'px system-ui,sans-serif';
+    c.textBaseline = 'middle';
+    c.save(); c.letterSpacing = (4*k) + 'px';
+    c.fillText(billet.code || '------', mid, yCode + chc/2);
+    c.restore();
+
+    const yScan = yCode + chc + 11*k;
+    c.textBaseline = 'top';
+    c.fillStyle = T.vertFonce; c.font = '700 ' + (8*k) + 'px system-ui,sans-serif';
+    c.save(); c.letterSpacing = (2*k) + 'px';
+    c.fillText('SCANNEZ POUR VOS INFOS', mid, yScan);
+    c.restore();
+    c.strokeStyle = T.vert; c.lineWidth = 1.2*k;
+    c.beginPath(); c.moveTo(mid-148*k, yScan+4*k); c.lineTo(mid-86*k, yScan+4*k); c.stroke();
+    c.beginPath(); c.moveTo(mid+86*k, yScan+4*k); c.lineTo(mid+148*k, yScan+4*k); c.stroke();
+
+    const yPied = H - 34*k;
+    c.textAlign = 'left';
+    c.fillStyle = T.vert; c.font = '700 ' + (7*k) + 'px system-ui,sans-serif';
+    c.fillText('PARTICIPANT', 28*k, yPied);
+    c.fillStyle = T.blanc; c.font = '700 ' + (11.5*k) + 'px system-ui,sans-serif';
+    c.fillText(billet.nom || '-', 28*k, yPied + 10*k);
+
+    c.textAlign = 'right';
+    c.fillStyle = T.vert; c.font = '700 ' + (7*k) + 'px system-ui,sans-serif';
+    c.fillText('LIEU', W - 28*k, yPied);
+    c.fillStyle = '#dceadf'; c.font = '700 ' + (9.5*k) + 'px system-ui,sans-serif';
+    c.fillText(billet.lieu || '-', W - 28*k, yPied + 11*k);
+  }
+
+  async function afficherBillets(billets){
+    const hote = $$('tkListe');
+    if(!billets.length){
+      hote.innerHTML = '';
+      dire('tkMsg3', "Aucun billet validé n'est rattaché à cette adresse.", 'ko');
+      return;
+    }
+    dire('tkMsg3','');
+    $$('tkTitre').textContent = billets.length > 1 ? 'Tes billets' : 'Ton billet';
+    $$('tkSousTitre').textContent = billets.length > 1
+      ? billets.length + ' inscriptions sont rattachées à cette adresse.'
+      : 'Garde-le : il te sera demandé à l\u2019entrée.';
+
+    // Les images de marque sont chargées une seule fois pour tous les billets.
+    const marque = (window.__brand || {});
+    const actifs = {
+      logo:    await charger(marque.logoUrl || ''),
+      bandeau: await charger('/uploads/branding/wordmark.png'),
+      fond:    await charger('/uploads/branding/ticket-bg.jpg'),
+    };
+
+    hote.innerHTML = billets.map((b,i) => `
+      <div class="tk-carte">
+        <canvas id="tkCv${i}"></canvas>
+        <div class="tk-nom"><b>${escHtml(b.nom||'')}</b><span>${escHtml(b.code||'')}</span></div>
+        ${b.utilise ? '<p class="tk-utilise">Ce billet a déjà été scanné à l\u2019entrée.</p>' : ''}
+        <div class="tk-actions">
+          <button class="btn btn-gold btn-sm" data-pdf="${escHtml(b.id)}">PDF</button>
+          <button class="btn btn-ghost btn-sm" data-img="${i}">Image</button>
+        </div>
+      </div>`).join('');
+
+    for(let i = 0; i < billets.length; i++){
+      const qr = await charger(billets[i].qr || '');
+      await dessiner($$('tkCv'+i), billets[i], Object.assign({ qr }, actifs));
+    }
+
+    hote.querySelectorAll('[data-pdf]').forEach(b => b.addEventListener('click', async e => {
+      const bt = e.currentTarget, lib = bt.textContent;
+      bt.disabled = true; bt.textContent = '…';
+      try{
+        // Le jeton voyage en paramètre : la route le revérifie et contrôle que
+        // le billet appartient bien à l'adresse de la session.
+        const res = await fetch('/api/public/ticket/pdf?token=' + encodeURIComponent(jeton)
+          + '&id=' + encodeURIComponent(bt.dataset.pdf));
+        if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error || 'Téléchargement impossible');
+        const url = URL.createObjectURL(await res.blob());
+        const a = document.createElement('a');
+        a.href = url; a.download = 'billet-feja.pdf';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+      }catch(err){ dire('tkMsg3', err.message, 'ko'); }
+      finally{ bt.disabled = false; bt.textContent = lib; }
+    }));
+
+    hote.querySelectorAll('[data-img]').forEach(b => b.addEventListener('click', e => {
+      const i = e.currentTarget.dataset.img;
+      $$('tkCv'+i).toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'billet-' + (billets[i].code || 'feja') + '.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+      }, 'image/png');
+    }));
+  }
+})();
 
 /* ============================================================
    VÉRIFIER LE CODE – appel API

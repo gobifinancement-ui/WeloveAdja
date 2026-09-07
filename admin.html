@@ -278,6 +278,9 @@ button{font-family:var(--body);cursor:pointer}
   border:1px solid var(--stroke-gd);border-radius:9px;padding:7px 10px;font-size:.78rem;
   color:var(--cream);box-shadow:0 12px 30px -12px rgba(0,0,0,.8);white-space:nowrap}
 .viz-tip b{font-variant-numeric:tabular-nums}
+.chk{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.85rem;color:var(--cream-72);margin-top:4px}
+.chk input{width:18px;height:18px;accent-color:var(--gold);cursor:pointer;flex:none}
+.chk:hover{color:var(--cream)}
 .rot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px}
 .rot-opt{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:11px;cursor:pointer;
   background:var(--glass);border:1px solid var(--stroke);color:var(--cream-72);
@@ -579,6 +582,9 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Lieu</label><input class="in" data-set="lieu"></div>
           <div class="f"><label>Date (texte affiché)</label><span class="desc">Ex. « 28 Déc. 2026 »</span><input class="in" data-set="dateLabel"></div>
           <div class="f"><label>Date & heure (compte à rebours)</label><span class="desc">Format : 2026-12-28T09:00:00</span><input class="in" data-set="eventDate"></div>
+          <div class="f"><label>Rendez-vous annuel</label><span class="desc">Coché, seuls le jour et le mois comptent : le compte à rebours vise la prochaine occurrence et bascule tout seul sur l'année suivante une fois la fête passée.</span>
+            <label class="chk"><input type="checkbox" id="eventAnnual"> <span>La fête revient chaque année à la même date</span></label>
+          </div>
         </div>
       </div>
 
@@ -1484,6 +1490,7 @@ async function fillSettings() {
       const dbKey = SETTINGS_MAP[el.dataset.set] || el.dataset.set;
       el.value = raw[dbKey] || '';
     });
+    document.getElementById('eventAnnual').checked = String(raw.event_annual || '0') === '1';
     peindreWordmark(raw.wordmark_url || '');
     peindreFond(raw.ticket_bg_url || '');
     const eventName = raw.event_name || 'WeloveAdja';
@@ -1521,6 +1528,8 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     sponsorsArr.filter(s => s.name || s.mark)
                .map(s => ({ name: (s.name||'').trim(), mark: ((s.mark||'')).trim() }))
   );
+  // La case n'est pas un [data-set] : on l'ajoute a la main.
+  payload.eventAnnual = document.getElementById('eventAnnual').checked ? '1' : '0';
   payload.artists = JSON.stringify(
     artistsArr.filter(a => a.poster)
               .map(a => ({ name: (a.name||'').trim(), note: (a.note||'').trim(), poster: a.poster }))

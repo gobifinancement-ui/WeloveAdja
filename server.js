@@ -75,6 +75,10 @@ const DEFAULT_SETTINGS = {
   resend_from: "",
   event_date_label: "",
   event_date: "",
+  // "1" = la fete revient chaque annee a la meme date. Le compte a rebours
+  // vise alors la prochaine occurrence : passe le jour J, il bascule sur
+  // l'annee suivante sans qu'on ait rien a ressaisir.
+  event_annual: "0",
   wa_link: "",
   chiefs_json: "[]",
   sponsors_json: "[]",
@@ -170,6 +174,7 @@ const SETTINGS_KEY_MAP = {
   lieu:                 "pickup_location",
   dateLabel:            "event_date_label",
   eventDate:            "event_date",
+  eventAnnual:          "event_annual",
   accountName:          ["moov_nom", "mtn_nom"], // un seul champ dans l'admin, deux operateurs
   moovNumber:           "moov_numero",
   mtnNumber:            "mtn_numero",
@@ -512,6 +517,26 @@ async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_participants_code_unique ON participants(code_unique);
     CREATE INDEX IF NOT EXISTS idx_participants_fedapay_transaction ON participants(fedapay_transaction_id);
 
+    -- Codes a 6 chiffres envoyes par email pour recuperer son billet.
+    -- L'email est la CLE : une nouvelle demande remplace la precedente, si
+    -- bien qu'un seul code est valable a la fois par adresse.
+    CREATE TABLE IF NOT EXISTS ticket_codes (
+      email TEXT PRIMARY KEY,
+      code_hash TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+
+    -- Sessions courtes ouvertes apres verification du code. On ne stocke que
+    -- l'empreinte du jeton : une fuite de la base ne donnerait aucun acces.
+    CREATE TABLE IF NOT EXISTS ticket_sessions (
+      token_hash TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS webhook_events (
       id TEXT PRIMARY KEY,
       type TEXT,
@@ -660,6 +685,25 @@ function getClientIp(request) {
   // du proxy : on prend le premier maillon de X-Forwarded-For quand il existe.
   const forwarded = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
   return forwarded || request.socket.remoteAddress || "inconnu";
+}
+
+// Limiteur sur une cle quelconque : sert a compter par ADRESSE EMAIL et pas
+// seulement par IP. Sans cela, changer de reseau suffirait a relancer autant
+// de codes qu'on veut vers la boite de quelqu'un d'autre.
+function rateLimitKey(key, limit, windowMs) {
+  const now = Date.now();
+  const entry = rateBuckets.get(key);
+
+  if (!entry || now > entry.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return 0;
+  }
+
+  entry.count += 1;
+  if (entry.count > limit) {
+    return Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+  }
+  return 0;
 }
 
 // Renvoie le nombre de secondes a attendre, ou 0 si la requete est autorisee.
@@ -987,7 +1031,7 @@ function getConfigHealth(settings = getSettings()) {
 
   // Sans date, le compte à rebours de la page d'accueil reste bloqué sur
   // 00:00:00:00, ce qui donne l'impression d'un site en panne.
-  const eventDate = settings.event_date || "";
+  const eventDate = resolveEventDate(settings);
   const parsedDate = eventDate ? new Date(eventDate) : null;
   if (!eventDate) {
     add("warn", "date", "Date de l'événement non renseignée",
@@ -1095,6 +1139,44 @@ function maskSecretSettings(settings) {
   return masked;
 }
 
+// Date effective de l'evenement.
+//
+// Pour une fete annuelle, la date saisie ne sert que de MOIS et JOUR : on
+// renvoie la prochaine occurrence a venir. Sans cela, le compte a rebours
+// passerait a zero le 16 aout et y resterait onze mois, ce qui donne un site
+// a l'abandon.
+function resolveEventDate(settings = getSettings()) {
+  const brut = String(settings.event_date || "").trim();
+  if (!brut) return "";
+
+  const base = new Date(brut);
+  if (Number.isNaN(base.getTime())) return brut;
+
+  if (String(settings.event_annual || "0") !== "1") return brut;
+
+  // Comparaison a la date du Benin, pas a l'heure du serveur : c'est la-bas
+  // que la fete a lieu.
+  const aujourdHui = getDatePartsBenin();
+  const anneeCourante = Number(aujourdHui.year);
+
+  const mois = String(base.getMonth() + 1).padStart(2, "0");
+  const jour = String(base.getDate()).padStart(2, "0");
+  const heure = brut.includes("T") ? brut.slice(brut.indexOf("T")) : "T09:00:00";
+
+  const candidat = `${anneeCourante}-${mois}-${jour}${heure}`;
+
+  // Une occurrence deja passee bascule sur l'annee suivante. On compare des
+  // dates seules : le jour meme de la fete, le compte a rebours doit encore
+  // viser aujourd'hui et non l'an prochain.
+  const cleJour = `${anneeCourante}-${mois}-${jour}`;
+  const cleAujourdHui = `${aujourdHui.year}-${aujourdHui.month}-${aujourdHui.day}`;
+
+  if (cleJour < cleAujourdHui) {
+    return `${anneeCourante + 1}-${mois}-${jour}${heure}`;
+  }
+  return candidat;
+}
+
 function publicSettings(settings = getSettings()) {
   let chiefs = [], sponsors = [], eventItems = [], artists = [];
   try { chiefs = JSON.parse(settings.chiefs_json || "[]"); } catch {}
@@ -1108,7 +1190,7 @@ function publicSettings(settings = getSettings()) {
     accountName: settings.moov_nom || settings.mtn_nom || "",
     lieu:        settings.pickup_location || "À confirmer",
     dateLabel:   settings.event_date_label || "",
-    eventDate:   settings.event_date || "",
+    eventDate:   resolveEventDate(settings),
     moovNumber:  settings.moov_numero || "",
     mtnNumber:   settings.mtn_numero || "",
     waLink:      settings.wa_link || "",
@@ -2221,6 +2303,129 @@ async function renderRapportDocx(settings = getSettings()) {
   return Packer.toBuffer(doc);
 }
 
+// ---------------------------------------------------------------------------
+// Recuperation de billet par email
+//
+// Le billet porte le QR d'entree : le remettre a la mauvaise personne, c'est
+// laisser entrer un inconnu. Tout ce bloc part donc du principe que le
+// demandeur ment jusqu'a preuve du contraire, et la seule preuve acceptee est
+// qu'il recoive un code sur l'adresse email utilisee a l'inscription.
+// ---------------------------------------------------------------------------
+const TICKET_CODE_TTL_MS = 10 * 60 * 1000;      // duree de vie du code
+const TICKET_CODE_MAX_ATTEMPTS = 5;             // essais avant destruction
+const TICKET_SESSION_TTL_MS = 15 * 60 * 1000;   // duree de la session ouverte
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+// Empreinte du jeton de session. SHA-256 suffit ici : le jeton fait deja
+// 32 octets aleatoires, il n'y a rien a deviner, on protege seulement contre
+// une lecture de la base.
+function hashToken(token) {
+  return crypto.createHash("sha256").update(String(token)).digest("hex");
+}
+
+function generateTicketCode() {
+  // randomInt et non Math.random : ce code garde une entree d'evenement.
+  return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+}
+
+// Inscriptions validees rattachees a une adresse. Une meme adresse peut avoir
+// servi a plusieurs inscriptions (une famille, un groupe d'amis) : on les
+// renvoie toutes plutot que d'en choisir une au hasard.
+function getValidatedParticipantsByEmail(email) {
+  const cible = normalizeEmail(email);
+  if (!cible) return [];
+  return getParticipants().filter(
+    (p) => normalizeEmail(p.email) === cible && p.statut_paiement === "Valide" && p.code_unique,
+  );
+}
+
+function purgeTicketAccess() {
+  const maintenant = Date.now();
+  run("DELETE FROM ticket_codes WHERE expires_at < ?", [maintenant]);
+  run("DELETE FROM ticket_sessions WHERE expires_at < ?", [maintenant]);
+  persistDatabase();
+}
+
+function createTicketSession(email) {
+  const token = crypto.randomBytes(32).toString("hex");
+  run(
+    "INSERT INTO ticket_sessions (token_hash, email, expires_at, created_at) VALUES (?, ?, ?, ?)",
+    [hashToken(token), normalizeEmail(email), Date.now() + TICKET_SESSION_TTL_MS, Date.now()],
+  );
+  persistDatabase();
+  return token;
+}
+
+// Renvoie l'email de la session, ou null. Ne prolonge JAMAIS la session :
+// quinze minutes suffisent a telecharger un billet, et une session qui se
+// renouvelle toute seule finit par ne plus expirer du tout.
+function getTicketSessionEmail(token) {
+  const brut = String(token || "").trim();
+  if (!/^[a-f0-9]{64}$/.test(brut)) return null;
+
+  const ligne = statementGet(
+    "SELECT email, expires_at FROM ticket_sessions WHERE token_hash = ?",
+    [hashToken(brut)],
+  );
+  if (!ligne) return null;
+
+  if (Number(ligne.expires_at) < Date.now()) {
+    run("DELETE FROM ticket_sessions WHERE token_hash = ?", [hashToken(brut)]);
+    persistDatabase();
+    return null;
+  }
+  return String(ligne.email || "");
+}
+
+// Retrouve un participant a partir d'une session ET d'un identifiant. Les deux
+// sont verifies : un jeton valide ne doit pas permettre de telecharger le
+// billet d'une AUTRE adresse en changeant simplement l'identifiant dans l'URL.
+function getParticipantForTicketSession(token, participantId) {
+  const email = getTicketSessionEmail(token);
+  if (!email) return { erreur: "session" };
+
+  const participant = getParticipantById(String(participantId || "").trim());
+  if (!participant) return { erreur: "introuvable" };
+
+  if (normalizeEmail(participant.email) !== email) return { erreur: "interdit" };
+  if (participant.statut_paiement !== "Valide" || !participant.code_unique) {
+    return { erreur: "non_valide" };
+  }
+  return { participant };
+}
+
+async function sendTicketCodeEmail(email, code, settings) {
+  const apiKey = process.env.RESEND_API_KEY || settings.resend_api_key;
+  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
+  const from = process.env.RESEND_FROM || settings.resend_from || `${eventName} <onboarding@resend.dev>`;
+
+  if (!apiKey) throw new Error("Envoi d'email non configure.");
+
+  const resend = new Resend(apiKey);
+  const envoi = await resend.emails.send({
+    from,
+    to: email,
+    subject: `${code} — ton code pour récupérer ton billet ${eventName}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+        <p>Voici ton code de vérification pour récupérer ton billet ${escapeHtml(eventName)} :</p>
+        <p style="font-size:34px;font-weight:700;letter-spacing:8px">${escapeHtml(code)}</p>
+        <p>Il est valable <strong>10 minutes</strong> et ne sert qu'une fois.</p>
+        <p style="color:#666;font-size:13px">Si tu n'as pas demandé ce code, ignore ce message : personne ne peut accéder à ton billet sans lui.</p>
+      </div>`,
+    text:
+      `Ton code de verification ${eventName} : ${code}\n\n` +
+      `Valable 10 minutes, utilisable une seule fois.\n` +
+      `Si tu n'as pas demande ce code, ignore ce message.\n`,
+  });
+
+  assertResendOk(envoi, "Code de billet");
+  return true;
+}
+
 function getPaymentApiBaseUrl(environment) {
   return environment === "live" ? "https://api.fedapay.com/v1" : "https://sandbox-api.fedapay.com/v1";
 }
@@ -2636,6 +2841,19 @@ function escapeHtml(value) {
   );
 }
 
+// Le SDK Resend ne leve JAMAIS d'exception sur une erreur d'API : il resout
+// avec { data: null, error: {...} }. Sans cette verification, une cle invalide
+// passait pour un envoi reussi et le participant se voyait annoncer un email
+// qui n'arriverait jamais.
+function assertResendOk(reponse, contexte) {
+  const erreur = reponse && reponse.error;
+  if (erreur) {
+    const message = erreur.message || erreur.name || "erreur inconnue";
+    throw new Error(`${contexte} : ${message}`);
+  }
+  return true;
+}
+
 function buildValidationEmailHtml(participant, publicBaseUrl = "") {
   const eventName = escapeHtml(participant.evenement || DEFAULT_SETTINGS.event_name);
   const qrImage =
@@ -2690,7 +2908,7 @@ async function sendValidationEmail(participant, settings) {
     console.warn("Billet PDF non genere:", error.message);
   }
 
-  await resend.emails.send(
+  const envoi = await resend.emails.send(
     {
       from,
       to: participant.email,
@@ -2710,6 +2928,7 @@ async function sendValidationEmail(participant, settings) {
     },
   );
 
+  assertResendOk(envoi, "Email de validation");
   return true;
 }
 
@@ -2994,6 +3213,187 @@ async function handleApi(request, response, url) {
       });
 
       sendJson(response, 201, { ref: id, nom: participant.nom });
+      return;
+    }
+
+    // ---------------------------------------------------------------------
+    // Recuperation de billet : demande du code
+    //
+    // La reponse est VOLONTAIREMENT identique que l'adresse existe ou non.
+    // Repondre "inconnue" transformerait cette route en annuaire : on pourrait
+    // tester des milliers d'adresses et apprendre qui participe.
+    // ---------------------------------------------------------------------
+    if (url.pathname === "/api/public/ticket/request" && request.method === "POST") {
+      const attenteIp = rateLimit(request, "ticket-req", 10, 60 * 60 * 1000);
+      if (attenteIp) {
+        sendRateLimited(response, attenteIp, "Trop de demandes. Réessaie dans un moment.");
+        return;
+      }
+
+      const body = await parseJsonBody(request);
+      const email = normalizeEmail(body.email);
+      const settings = getSettings();
+
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 200) {
+        sendJson(response, 400, { error: "Adresse email invalide." });
+        return;
+      }
+
+      // Plafond par ADRESSE : protege la boite de la personne visee, meme si
+      // l'attaquant change d'IP entre chaque demande.
+      const attenteEmail = rateLimitKey(`ticket-req-mail:${email}`, 3, 15 * 60 * 1000);
+      if (attenteEmail) {
+        sendRateLimited(response, attenteEmail, "Un code a déjà été envoyé récemment. Vérifie ta boîte mail.");
+        return;
+      }
+
+      const trouves = getValidatedParticipantsByEmail(email);
+
+      if (trouves.length) {
+        const code = generateTicketCode();
+        // Le code est stocke HACHE : une lecture de la base ne donne pas
+        // acces aux billets. Une nouvelle demande ecrase la precedente.
+        run(
+          `INSERT INTO ticket_codes (email, code_hash, expires_at, attempts, created_at)
+           VALUES (?, ?, ?, 0, ?)
+           ON CONFLICT(email) DO UPDATE SET
+             code_hash = excluded.code_hash,
+             expires_at = excluded.expires_at,
+             attempts = 0,
+             created_at = excluded.created_at`,
+          [email, hashPassword(code), Date.now() + TICKET_CODE_TTL_MS, Date.now()],
+        );
+        persistDatabase();
+
+        try {
+          await sendTicketCodeEmail(email, code, settings);
+        } catch (error) {
+          console.warn("Code de billet non envoye:", error.message);
+          // En demonstration seulement, et dans la CONSOLE DU SERVEUR
+          // uniquement : jamais dans la reponse au navigateur, sinon
+          // n'importe qui recupererait le code sans acceder a la boite.
+          if (isDemoMode(settings)) {
+            console.log(`[DEMO] Code de billet pour ${email} : ${code}`);
+          }
+        }
+      }
+
+      // Meme reponse dans tous les cas, y compris si l'adresse est inconnue.
+      sendJson(response, 200, {
+        sent: true,
+        message: "Si une inscription existe avec cette adresse, un code vient d'être envoyé.",
+        expires_in: Math.round(TICKET_CODE_TTL_MS / 1000),
+      });
+      return;
+    }
+
+    // ---------------------------------------------------------------------
+    // Recuperation de billet : verification du code
+    // ---------------------------------------------------------------------
+    if (url.pathname === "/api/public/ticket/verify" && request.method === "POST") {
+      const attenteIp = rateLimit(request, "ticket-verify", 20, 15 * 60 * 1000);
+      if (attenteIp) {
+        sendRateLimited(response, attenteIp, "Trop d'essais. Réessaie dans quelques minutes.");
+        return;
+      }
+
+      const body = await parseJsonBody(request);
+      const email = normalizeEmail(body.email);
+      const code = String(body.code || "").trim();
+
+      // Message unique pour tous les echecs : un message different selon que
+      // l'adresse est inconnue, le code expire ou le code faux renseignerait
+      // l'attaquant a chaque tentative.
+      const echec = () => sendJson(response, 401, { error: "Code incorrect ou expiré." });
+
+      if (!email || !/^\d{6}$/.test(code)) { echec(); return; }
+
+      const ligne = statementGet(
+        "SELECT code_hash, expires_at, attempts FROM ticket_codes WHERE email = ?",
+        [email],
+      );
+      if (!ligne) { echec(); return; }
+
+      if (Number(ligne.expires_at) < Date.now()) {
+        run("DELETE FROM ticket_codes WHERE email = ?", [email]);
+        persistDatabase();
+        echec();
+        return;
+      }
+
+      const essais = Number(ligne.attempts) + 1;
+      if (essais > TICKET_CODE_MAX_ATTEMPTS) {
+        // Le code est detruit : la force brute sur six chiffres s'arrete a
+        // cinq essais, il faut redemander un code et donc acceder a la boite.
+        run("DELETE FROM ticket_codes WHERE email = ?", [email]);
+        persistDatabase();
+        sendJson(response, 429, { error: "Trop d'essais. Demande un nouveau code." });
+        return;
+      }
+
+      run("UPDATE ticket_codes SET attempts = ? WHERE email = ?", [essais, email]);
+      persistDatabase();
+
+      // Comparaison a temps constant, assuree par verifyPassword.
+      if (!verifyPassword(code, ligne.code_hash).ok) { echec(); return; }
+
+      // Code juste : usage unique, il disparait immediatement.
+      run("DELETE FROM ticket_codes WHERE email = ?", [email]);
+      const token = createTicketSession(email);
+
+      const billets = getValidatedParticipantsByEmail(email).map((p) => ({
+        id: p.id,
+        nom: p.nom,
+        code: p.code_unique,
+        montant: p.montant,
+        lieu: p.lieu_retrait,
+        date: p.date,
+        qr: p.qr_code_url,
+        utilise: p.statut_code === "utilise",
+      }));
+
+      sendJson(response, 200, {
+        token,
+        expires_in: Math.round(TICKET_SESSION_TTL_MS / 1000),
+        billets,
+      });
+      return;
+    }
+
+    // ---------------------------------------------------------------------
+    // Recuperation de billet : telechargement du PDF
+    // ---------------------------------------------------------------------
+    if (url.pathname === "/api/public/ticket/pdf" && request.method === "GET") {
+      const attenteIp = rateLimit(request, "ticket-pdf", 40, 15 * 60 * 1000);
+      if (attenteIp) {
+        sendRateLimited(response, attenteIp, "Trop de téléchargements. Patiente un instant.");
+        return;
+      }
+
+      const resultat = getParticipantForTicketSession(
+        url.searchParams.get("token"),
+        url.searchParams.get("id"),
+      );
+
+      if (resultat.erreur === "session") {
+        sendJson(response, 401, { error: "Session expirée. Redemande un code." });
+        return;
+      }
+      if (resultat.erreur) {
+        // Meme reponse pour "introuvable", "interdit" et "non valide" : dire
+        // que le billet existe mais appartient a un autre serait deja trop.
+        sendJson(response, 404, { error: "Billet introuvable." });
+        return;
+      }
+
+      const pdf = await renderTicketPdf(resultat.participant);
+      response.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="billet-${resultat.participant.code_unique}.pdf"`,
+        "Content-Length": pdf.length,
+        "Cache-Control": "no-store",
+      });
+      response.end(pdf);
       return;
     }
 
@@ -3915,6 +4315,10 @@ initDatabase()
     setInterval(backupDatabase, 60 * 60 * 1000).unref();
     setInterval(purgeExpiredSessions, 6 * 60 * 60 * 1000).unref();
     setInterval(purgeRateBuckets, 10 * 60 * 1000).unref();
+    // Codes et sessions de billet expires : ils ne servent qu'a faire
+    // grossir la base, et un code perime ne doit pas trainer.
+    purgeTicketAccess();
+    setInterval(purgeTicketAccess, 15 * 60 * 1000).unref();
     listen(PORT);
   })
   .catch((error) => {
