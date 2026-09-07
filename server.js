@@ -966,6 +966,25 @@ body{background:
   linear-gradient(180deg, ${c.bg} 0%, ${c.bg2} 45%, ${c.bg} 100%);
   background-attachment:fixed;
 }
+
+/* Trois points d'attente, poses par js/chargement.js. La couleur suit celle du
+   bouton (currentColor) : ils restent lisibles aussi bien sur un bouton dore a
+   texte sombre que sur un bouton fantome a texte clair. */
+.pts{display:inline-flex;align-items:center;gap:.4em;height:1em;vertical-align:middle}
+.pts i{display:block;width:.44em;height:.44em;border-radius:50%;background:currentColor;
+  animation:pts-saut 1.05s ease-in-out infinite}
+.pts i:nth-child(2){animation-delay:.14s}
+.pts i:nth-child(3){animation-delay:.28s}
+/* Saut volontairement court : le mouvement doit signaler l'attente, pas
+   attirer l'oeil au point de faire oublier ce qu'on attend. */
+@keyframes pts-saut{
+  0%,72%,100%{transform:translateY(0);opacity:.42}
+  32%{transform:translateY(-.32em);opacity:1}
+}
+@media (prefers-reduced-motion:reduce){
+  .pts i{animation:pts-fondu 1.2s ease-in-out infinite}
+  @keyframes pts-fondu{0%,100%{opacity:.32}50%{opacity:1}}
+}
 `;
 }
 

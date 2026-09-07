@@ -105,6 +105,7 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
 <link rel="icon" href="/api/branding/default-icon.svg">
 <link rel="stylesheet" href="/api/theme.css">
 <script src="/js/ticket-canvas.js" defer></script>
+<script src="/js/chargement.js"></script>
 </head>
 <body>
 <div class="card">
@@ -308,8 +309,7 @@ $('dlOpen').addEventListener('click', () => {
 
 $('dlPdf').addEventListener('click', async (e) => {
   if (!jetonBillet || !billetCourant) return;
-  const b = e.currentTarget, libelle = b.textContent;
-  b.disabled = true; b.textContent = 'Préparation…';
+  const b = e.currentTarget, fin = Chargement(b);
   try {
     const res = await fetch('/api/public/ticket/pdf?token=' + encodeURIComponent(jetonBillet) +
       '&id=' + encodeURIComponent(billetCourant.id));
@@ -323,14 +323,13 @@ $('dlPdf').addEventListener('click', async (e) => {
   } catch (err) {
     direDl(err.message || 'Téléchargement impossible.', 'ko');
   } finally {
-    b.disabled = false; b.textContent = libelle;
+    fin();
   }
 });
 
 $('dlImg').addEventListener('click', async (e) => {
   if (!billetCourant || !window.TicketCanvas) return;
-  const b = e.currentTarget, libelle = b.textContent;
-  b.disabled = true; b.textContent = 'Préparation…';
+  const b = e.currentTarget, fin = Chargement(b);
   try {
     const marque = window.__brandConfig || {};
     const actifs = await TicketCanvas.chargerActifs(marque);
@@ -351,7 +350,7 @@ $('dlImg').addEventListener('click', async (e) => {
   } catch (err) {
     direDl(err.message || 'Téléchargement impossible.', 'ko');
   } finally {
-    b.disabled = false; b.textContent = libelle;
+    fin();
   }
 });
 

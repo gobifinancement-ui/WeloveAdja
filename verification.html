@@ -113,6 +113,7 @@ footer.mini{border-top:1px solid var(--stroke);padding:16px 26px;text-align:cent
 <link rel="icon" href="/api/branding/default-icon.svg">
 <link rel="stylesheet" href="/api/theme.css">
 <script src="/js/branding.js" defer></script>
+<script src="/js/chargement.js"></script>
 </head>
 <body>
 <div class="page">
@@ -209,7 +210,7 @@ async function verifyCode(code) {
   document.getElementById('loading').style.display = 'block';
   document.getElementById('result').classList.remove('show');
   document.getElementById('errorMsg').classList.remove('show');
-  document.getElementById('checkBtn').disabled = true;
+  const fin = Chargement(document.getElementById('checkBtn'));
 
   try {
     const res = await fetch('/api/public/verify-code', {
@@ -231,7 +232,7 @@ async function verifyCode(code) {
     em.textContent = 'Erreur réseau. Vérifie ta connexion et réessaie.';
     em.classList.add('show');
   }
-  document.getElementById('checkBtn').disabled = false;
+  fin();
 }
 
 function showSuccess(data) {

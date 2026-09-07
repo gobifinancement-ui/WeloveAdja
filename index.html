@@ -627,6 +627,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
 <link rel="icon" href="/api/branding/default-icon.svg">
 <link rel="stylesheet" href="/api/theme.css">
 <script src="/js/branding.js" defer></script>
+<script src="/js/chargement.js"></script>
 <script src="/js/ticket-canvas.js"></script>
 </head>
 <body>
@@ -1482,10 +1483,15 @@ function validateStep2(){
   document.querySelector('[data-err="photo"]').classList.remove('show');return true;
 }
 
-document.querySelectorAll('[data-next]').forEach(b=>b.addEventListener('click',()=>{
+document.querySelectorAll('[data-next]').forEach(b=>b.addEventListener('click',async()=>{
   const from=+b.dataset.next;
   if(from===1&&!validateStep1())return;
-  if(from===2&&!validateStep2())return;
+  if(from===2){
+    // Seuil de 120 ms : une petite photo est compressee avant meme que les
+    // points aient a paraitre, une grosse photo les affiche le temps qu'il faut.
+    if(photoEnCours){const fin=Chargement(b,120);try{await photoEnCours;}finally{fin();}}
+    if(!validateStep2())return;
+  }
   step=from+1;paint();
 }));
 document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>{step=+b.dataset.back-1;paint();}));
@@ -1506,13 +1512,13 @@ const photoCamInput=document.getElementById('photoCam');
 document.getElementById('pickCamera').addEventListener('click',()=>photoCamInput.click());
 document.getElementById('pickGallery').addEventListener('click',()=>photoFileInput.click());
 [photoFileInput,photoCamInput].forEach(input=>{
-  input.addEventListener('change',e=>{if(e.target.files[0])handlePhoto(e.target.files[0]);});
+  input.addEventListener('change',e=>{if(e.target.files[0])lancerPhoto(e.target.files[0]);});
 });
 
 // Glisser-deposer, utile sur ordinateur.
 ['dragover','dragenter'].forEach(ev=>photoDrop.addEventListener(ev,e=>{e.preventDefault();photoDrop.classList.add('drag');}));
 ['dragleave','drop'].forEach(ev=>photoDrop.addEventListener(ev,e=>{e.preventDefault();photoDrop.classList.remove('drag');}));
-photoDrop.addEventListener('drop',e=>{e.preventDefault();photoDrop.classList.remove('drag');if(e.dataTransfer.files[0])handlePhoto(e.dataTransfer.files[0]);});
+photoDrop.addEventListener('drop',e=>{e.preventDefault();photoDrop.classList.remove('drag');if(e.dataTransfer.files[0])lancerPhoto(e.dataTransfer.files[0]);});
 
 async function compressImage(file,maxDim=900,quality=0.78){
   return new Promise(resolve=>{
@@ -1531,6 +1537,11 @@ async function compressImage(file,maxDim=900,quality=0.78){
     img.src=url;
   });
 }
+
+// Compression en cours, retenue pour que « Continuer » puisse l'attendre au
+// lieu de reclamer une photo que le participant vient de choisir.
+let photoEnCours=null;
+function lancerPhoto(f){photoEnCours=handlePhoto(f).finally(()=>{photoEnCours=null;});}
 
 async function handlePhoto(f){
   if(!f.type.startsWith('image/'))return;
@@ -1579,7 +1590,7 @@ async function launchPayment(){
   const email=document.getElementById('email').value.trim();
   const pays=document.getElementById('pays').value;
   const launchBtn=document.getElementById('launchBtn');
-  launchBtn.disabled=true;launchBtn.textContent='Redirection…';
+  const finLaunch=Chargement(launchBtn);
 
   try{
     // Le serveur crée la transaction et renvoie l'URL de la page de paiement
@@ -1605,7 +1616,7 @@ async function launchPayment(){
 
     window.location.href=createData.checkout_url;
   }catch(e){
-    launchBtn.disabled=false;launchBtn.textContent='Payer en toute sécurité →';
+    finLaunch();
     alert(e.message);
   }
 }
@@ -1808,8 +1819,7 @@ document.getElementById('againBtn').addEventListener('click',resetForm);
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){
       dire(msgId, "Adresse email invalide.", 'ko'); return;
     }
-    const libelle = bouton.textContent;
-    bouton.disabled = true; bouton.textContent = 'Envoi…';
+    const fin = Chargement(bouton);
     try{
       const res = await fetch('/api/public/ticket/request', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -1829,7 +1839,7 @@ document.getElementById('againBtn').addEventListener('click',resetForm);
     }catch(e){
       dire(msgId, e.message || 'Envoi impossible.', 'ko');
     }finally{
-      bouton.disabled = false; bouton.textContent = libelle;
+      fin();
     }
   }
 
@@ -1845,8 +1855,7 @@ document.getElementById('againBtn').addEventListener('click',resetForm);
     const code = $$('tkCode').value.trim();
     if(!/^\d{6}$/.test(code)){ dire('tkMsg2', "Saisis les 6 chiffres du code.", 'ko'); return; }
 
-    const b = e.currentTarget, libelle = b.textContent;
-    b.disabled = true; b.textContent = 'Vérification…';
+    const b = e.currentTarget, fin = Chargement(b);
     try{
       const res = await fetch('/api/public/ticket/verify', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -1863,7 +1872,7 @@ document.getElementById('againBtn').addEventListener('click',resetForm);
       dire('tkMsg2', err.message || 'Code incorrect.', 'ko');
       $$('tkCode').select();
     }finally{
-      b.disabled = false; b.textContent = libelle;
+      fin();
     }
   });
 
@@ -1915,8 +1924,7 @@ document.getElementById('againBtn').addEventListener('click',resetForm);
     }
 
     hote.querySelectorAll('[data-pdf]').forEach(b => b.addEventListener('click', async e => {
-      const bt = e.currentTarget, lib = bt.textContent;
-      bt.disabled = true; bt.textContent = '…';
+      const bt = e.currentTarget, fin = Chargement(bt);
       try{
         // Le jeton voyage en paramètre : la route le revérifie et contrôle que
         // le billet appartient bien à l'adresse de la session.
@@ -1929,17 +1937,22 @@ document.getElementById('againBtn').addEventListener('click',resetForm);
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
       }catch(err){ dire('tkMsg3', err.message, 'ko'); }
-      finally{ bt.disabled = false; bt.textContent = lib; }
+      finally{ fin(); }
     }));
 
     hote.querySelectorAll('[data-img]').forEach(b => b.addEventListener('click', e => {
       const i = e.currentTarget.dataset.img;
+      // La toile est deja dessinee : l'encodage PNG est presque toujours
+      // instantane. Seuil de 150 ms pour que les points n'apparaissent que sur
+      // un telephone lent, sans clignoter ailleurs.
+      const fin = Chargement(e.currentTarget, 150);
       $$('tkCv'+i).toBlob(blob => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = 'billet-' + (billets[i].code || 'feja') + '.png';
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
+        fin();
       }, 'image/png');
     }));
   }

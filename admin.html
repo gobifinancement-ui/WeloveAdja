@@ -430,6 +430,7 @@ button{font-family:var(--body);cursor:pointer}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <script src="/js/branding.js" defer></script>
+<script src="/js/chargement.js"></script>
 </head>
 <body>
 
@@ -1041,9 +1042,7 @@ document.addEventListener('click', async e => {
     // apres, le navigateur le prendrait pour une fenetre surgissante et le
     // bloquerait.
     const onglet = window.open('', '_blank');
-    tk.disabled = true;
-    const libelle = tk.textContent;
-    tk.textContent = 'Préparation…';
+    const fin = Chargement(tk);
     try {
       const res = await apiFetch('/api/admin/ticket.pdf?id=' + encodeURIComponent(tk.dataset.ticket));
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Billet indisponible');
@@ -1056,8 +1055,7 @@ document.addEventListener('click', async e => {
       if (onglet) onglet.close();
       alert(err.message || 'Impossible de générer le billet.');
     } finally {
-      tk.disabled = false;
-      tk.textContent = libelle;
+      fin();
     }
   }
 });
@@ -1203,8 +1201,7 @@ function direMail(texte, type){
 }
 
 document.getElementById('mailVerify').addEventListener('click', async e => {
-  const b = e.currentTarget, lib = b.textContent;
-  b.disabled = true; b.textContent = 'Test…';
+  const b = e.currentTarget, fin = Chargement(b);
   direMail('Connexion au serveur SMTP…');
   try{
     const res = await apiFetch('/api/admin/mail/verify');
@@ -1223,7 +1220,7 @@ document.getElementById('mailVerify').addEventListener('click', async e => {
         (d.voie === 'resend' ? '\n\nLe site enverra par Resend en attendant.' : ''), 'ko');
     }
   }catch(err){ direMail('Test impossible : ' + err.message, 'ko'); }
-  finally{ b.disabled = false; b.textContent = lib; }
+  finally{ fin(); }
 });
 
 document.getElementById('mailTest').addEventListener('click', async e => {
@@ -1231,8 +1228,7 @@ document.getElementById('mailTest').addEventListener('click', async e => {
   const dest = prompt("Adresse qui doit recevoir l'e-mail de test :", defaut);
   if(!dest) return;
 
-  const b = e.currentTarget, lib = b.textContent;
-  b.disabled = true; b.textContent = 'Envoi…';
+  const b = e.currentTarget, fin = Chargement(b);
   direMail('Envoi en cours…');
   try{
     const res = await apiFetch('/api/admin/mail/test', {
@@ -1243,7 +1239,7 @@ document.getElementById('mailTest').addEventListener('click', async e => {
     direMail('Message envoyé à ' + d.destinataire + ' par ' + d.voie +
       '.\nVérifie ta boîte, et aussi les indésirables.', 'ok');
   }catch(err){ direMail('Échec : ' + err.message, 'ko'); }
-  finally{ b.disabled = false; b.textContent = lib; }
+  finally{ fin(); }
 });
 
 /* ---------- STATISTIQUES ---------- */
@@ -1384,9 +1380,7 @@ document.getElementById('statsReload').addEventListener('click', loadStats);
    Word n'ont aucun interet a l'ecran et partent en telechargement. */
 async function telecharger(bouton, route, ouvrirDansOnglet) {
   const onglet = ouvrirDansOnglet ? window.open('', '_blank') : null;
-  const libelle = bouton.textContent;
-  bouton.disabled = true;
-  bouton.textContent = 'Préparation…';
+  const fin = Chargement(bouton);
   try {
     const res = await apiFetch(route);
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Export impossible');
@@ -1408,8 +1402,7 @@ async function telecharger(bouton, route, ouvrirDansOnglet) {
     if (onglet) onglet.close();
     alert(e.message || 'Export impossible.');
   } finally {
-    bouton.disabled = false;
-    bouton.textContent = libelle;
+    fin();
   }
 }
 
