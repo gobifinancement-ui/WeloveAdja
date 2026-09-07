@@ -120,6 +120,9 @@ const DEFAULT_SETTINGS = {
   // Media anime en fond de l'en-tete : GIF ou video. Vide = le fond
   // actuel (rayonnement + degrade) reste seul.
   hero_media_url: "",
+  // "1" = le media anime est affiche ; "0" = on revient a l'arriere-plan
+  // d'origine SANS supprimer le fichier, pour pouvoir y revenir.
+  hero_media_active: "1",
   theme_preset: "indigo",
   theme_custom_json: "{}",
   // Rotation quotidienne des couleurs : liste de presets parcourue un par
@@ -212,6 +215,7 @@ const SETTINGS_KEY_MAP = {
   smtpTlsStrict:        "smtp_tls_strict",
   mailFrom:             "mail_from",
   alertEmail:           "alert_email",
+  heroMediaActive:      "hero_media_active",
   adminPassword:        "admin_password",
   scanPassword:         "scan_password",
   paymentSecretKey:     "payment_secret_key",
@@ -1234,6 +1238,11 @@ function resolveEventDate(settings = getSettings()) {
 function buildHeroMedia(settings) {
   const url = String(settings.hero_media_url || "").trim();
   if (!url) return null;
+
+  // Interrupteur : le fichier reste sur le disque, il n'est simplement plus
+  // affiche. Supprimer le media pour revenir a l'ancien fond obligerait a le
+  // reimporter pour faire marche arriere.
+  if (String(settings.hero_media_active || "1") !== "1") return null;
   const extension = (url.split("?")[0].match(/\.(\w+)$/) || [])[1] || "";
   return {
     url,
@@ -3911,7 +3920,9 @@ async function handleApi(request, response, url) {
           // donc plus que la limite de 12 Mo appliquee au fichier lui-meme.
           const body = await parseJsonBody(request, 20 * 1024 * 1024);
           const media = saveHeroMedia(body.media_base64);
-          saveSettings({ hero_media_url: media.url });
+          // Un nouvel import reactive l'affichage : sans cela, on televerse un
+          // fichier et rien ne change a l'ecran, ce qui laisse croire a un bug.
+          saveSettings({ hero_media_url: media.url, hero_media_active: "1" });
           sendJson(response, 200, media);
           return;
         }

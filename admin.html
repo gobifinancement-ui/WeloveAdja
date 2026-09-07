@@ -639,6 +639,10 @@ button{font-family:var(--body);cursor:pointer}
               <span class="hint" id="heroHint">12 Mo maximum.</span>
             </div>
           </div>
+          <div id="heroToggleWrap" style="display:none;margin-top:12px">
+            <label class="chk"><input type="checkbox" id="heroActive"> <span>Afficher le fond animé</span></label>
+            <span class="desc" style="margin-top:6px">Décoché, le site reprend son arrière-plan d'origine. Le fichier reste importé : tu peux revenir en arrière quand tu veux.</span>
+          </div>
         </div>
 
         <div class="f" style="margin-bottom:22px">
@@ -1601,6 +1605,7 @@ async function fillSettings() {
       el.value = raw[dbKey] || '';
     });
     document.getElementById('eventAnnual').checked = String(raw.event_annual || '0') === '1';
+    document.getElementById('heroActive').checked = String(raw.hero_media_active || '1') === '1';
     peindreHero(raw.hero_media_url || '');
     peindreWordmark(raw.wordmark_url || '');
     peindreFond(raw.ticket_bg_url || '');
@@ -2051,6 +2056,9 @@ function brandingUploader({ pick, input, del, apercu, route, maxDim, format, qua
 function peindreHero(url, type){
   const zone = document.getElementById('heroPv');
   const del = document.getElementById('heroDel');
+  const bascule = document.getElementById('heroToggleWrap');
+  // L'interrupteur n'a de sens qu'une fois un media importe.
+  bascule.style.display = url ? '' : 'none';
   if(!url){
     zone.innerHTML = '<span class="none">Aucun fond animé</span>';
     del.style.display = 'none';
@@ -2101,6 +2109,20 @@ document.getElementById('heroFile').addEventListener('change', async e => {
   }catch(err){
     hint.textContent = '12 Mo maximum.';
     toast(err.message);
+  }
+});
+
+document.getElementById('heroActive').addEventListener('change', async e => {
+  const actif = e.currentTarget.checked;
+  try{
+    await apiFetch('/api/admin/settings', {
+      method: 'PUT', body: JSON.stringify({ heroMediaActive: actif ? '1' : '0' })
+    });
+    toast(actif ? 'Fond animé affiché' : "Arrière-plan d'origine rétabli",
+          'Recharge le site pour voir le changement.');
+  }catch(err){
+    e.currentTarget.checked = !actif;   // on annule visuellement l'echec
+    toast(err.message || 'Enregistrement impossible');
   }
 });
 
