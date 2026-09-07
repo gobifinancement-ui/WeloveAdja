@@ -285,6 +285,9 @@ button{font-family:var(--body);cursor:pointer}
 .mail-diag-out{margin-top:12px;font-size:.8rem;line-height:1.6;color:var(--cream-52);white-space:pre-wrap;word-break:break-word}
 .mail-diag-out.ok{color:var(--green-br)}
 .mail-diag-out.ko{color:var(--red)}
+.veil-row{display:flex;align-items:center;gap:12px;margin-top:8px}
+.veil-row input[type=range]{flex:1;accent-color:var(--gold);cursor:pointer}
+.veil-row output{font-variant-numeric:tabular-nums;font-weight:700;min-width:3.4em;text-align:right}
 .chk{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.85rem;color:var(--cream-72);margin-top:4px}
 .chk input{width:18px;height:18px;accent-color:var(--gold);cursor:pointer;flex:none}
 .chk:hover{color:var(--cream)}
@@ -642,6 +645,13 @@ button{font-family:var(--body);cursor:pointer}
           <div id="heroToggleWrap" style="display:none;margin-top:12px">
             <label class="chk"><input type="checkbox" id="heroActive"> <span>Afficher le fond animé</span></label>
             <span class="desc" style="margin-top:6px">Décoché, le site reprend son arrière-plan d'origine. Le fichier reste importé : tu peux revenir en arrière quand tu veux.</span>
+
+            <label style="display:block;margin-top:14px;font-size:.8rem;font-weight:700">Assombrissement du fond</label>
+            <span class="desc">Si la vidéo est trop claire et gêne la lecture du titre, monte cette valeur.</span>
+            <div class="veil-row">
+              <input type="range" id="heroVeil" min="20" max="95" step="5" value="70">
+              <output id="heroVeilOut">70 %</output>
+            </div>
           </div>
         </div>
 
@@ -1606,6 +1616,8 @@ async function fillSettings() {
     });
     document.getElementById('eventAnnual').checked = String(raw.event_annual || '0') === '1';
     document.getElementById('heroActive').checked = String(raw.hero_media_active || '1') === '1';
+    heroVeil.value = String(raw.hero_media_veil || '70');
+    heroVeilOut.textContent = heroVeil.value + ' %';
     peindreHero(raw.hero_media_url || '');
     peindreWordmark(raw.wordmark_url || '');
     peindreFond(raw.ticket_bg_url || '');
@@ -2110,6 +2122,22 @@ document.getElementById('heroFile').addEventListener('change', async e => {
     hint.textContent = '12 Mo maximum.';
     toast(err.message);
   }
+});
+
+/* Assombrissement. On enregistre a la fin du geste (change) et non a chaque
+   pixel (input) : sinon un glissement enverrait cinquante requetes. */
+const heroVeil = document.getElementById('heroVeil');
+const heroVeilOut = document.getElementById('heroVeilOut');
+
+heroVeil.addEventListener('input', () => { heroVeilOut.textContent = heroVeil.value + ' %'; });
+
+heroVeil.addEventListener('change', async () => {
+  try{
+    await apiFetch('/api/admin/settings', {
+      method: 'PUT', body: JSON.stringify({ heroMediaVeil: heroVeil.value })
+    });
+    toast('Assombrissement enregistré', 'Recharge le site pour voir le changement.');
+  }catch(err){ toast(err.message || 'Enregistrement impossible'); }
 });
 
 document.getElementById('heroActive').addEventListener('change', async e => {

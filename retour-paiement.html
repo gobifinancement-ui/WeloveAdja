@@ -80,6 +80,10 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
 .muted{font-size:.74rem;color:var(--cream-32);margin:0 0 10px;line-height:1.45}
 /* Le retour a l'accueil est une sortie secondaire : un lien suffit, un second
    bouton pleine largeur coutait 48px pour rien. */
+.dl-choix{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}
+.dl-choix .btn{margin-top:0}
+.dl-msg{font-size:.78rem;color:var(--cream-52);margin-top:9px;min-height:1.1em;line-height:1.5}
+.dl-msg.ko{color:var(--ko)}
 .home-link{display:inline-block;margin-top:10px;color:var(--cream-52);font-size:.8rem;font-weight:700;text-decoration:none}
 .home-link:hover{color:var(--cream)}
 .ok-body{display:flex;flex-direction:column;min-height:0}
@@ -100,6 +104,7 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
 </style>
 <link rel="icon" href="/api/branding/default-icon.svg">
 <link rel="stylesheet" href="/api/theme.css">
+<script src="/js/ticket-canvas.js" defer></script>
 </head>
 <body>
 <div class="card">
@@ -140,8 +145,18 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
     </div>
 
     <p class="muted" id="mailNote">Un email de confirmation t'a été envoyé avec ce QR code.</p>
-    <a class="btn btn-gold" id="verifyLink" href="/verification.html">Vérifier mon code d'accès →</a>
+    <button class="btn btn-gold" id="dlOpen" type="button">🎟️ Télécharger mon billet</button>
+    <div class="dl-choix" id="dlChoix" hidden>
+      <button class="btn btn-ghost" id="dlPdf" type="button">En PDF</button>
+      <button class="btn btn-ghost" id="dlImg" type="button">En image</button>
+    </div>
+    <div class="dl-msg" id="dlMsg"></div>
+    <a class="btn btn-ghost" id="verifyLink" href="/verification.html">Vérifier mon code</a>
     <a class="home-link" href="/">Retour à l'accueil</a>
+
+    <!-- Toile de rendu du billet, hors ecran : elle sert uniquement a produire
+         le fichier image, l'apercu est deja affiche plus haut. -->
+    <canvas id="dlCanvas" style="display:none"></canvas>
     </div>
     </div>
   </div>
@@ -164,6 +179,8 @@ const $ = (id) => document.getElementById(id);
 const show = (id) => ['pending','ok','ko'].forEach(k => $(k).classList.toggle('hidden', k !== id));
 
 fetch('/api/public-config').then(r => r.json()).then(c => {
+  // Retenue pour le dessin du billet : le logo en fait partie.
+  window.__brandConfig = c;
   if (c.logoUrl) $('brandLogo').src = c.logoUrl;
 }).catch(() => {});
 
@@ -213,6 +230,19 @@ async function check() {
       // le participant voit son billet sans rien retaper.
       if (code) $('verifyLink').href = '/verification.html?code=' + encodeURIComponent(code);
 
+      // Jeton de telechargement delivre par le serveur au moment ou le
+      // paiement est confirme. Sans lui, le participant devrait redemander un
+      // code par e-mail pour un billet qu'il vient d'acheter.
+      jetonBillet = data.ticket_token || '';
+      billetCourant = {
+        id: p.id,
+        nom: p.nom,
+        code: code,
+        lieu: p.lieu_retrait,
+        qr: p.qr_code_url,
+      };
+      $('dlOpen').style.display = jetonBillet ? '' : 'none';
+
       // L'email n'est promis que s'il est reellement parti. Le promettre a tort
       // ferait attendre pour rien un message qui n'arrivera jamais.
       if (data.email_sent === false) {
@@ -257,6 +287,73 @@ async function check() {
 }
 
 $('retry').addEventListener('click', () => { attempt = 0; show('pending'); check(); });
+
+/* ---- Telechargement du billet -------------------------------------------
+   Deux formats : le PDF vient du serveur, l'image est dessinee ici sur une
+   toile a partir du meme module que la page d'accueil. */
+let jetonBillet = '';
+let billetCourant = null;
+
+function direDl(texte, type) {
+  const el = $('dlMsg');
+  el.textContent = texte || '';
+  el.className = 'dl-msg' + (type ? ' ' + type : '');
+}
+
+$('dlOpen').addEventListener('click', () => {
+  const choix = $('dlChoix');
+  choix.hidden = !choix.hidden;
+  direDl('');
+});
+
+$('dlPdf').addEventListener('click', async (e) => {
+  if (!jetonBillet || !billetCourant) return;
+  const b = e.currentTarget, libelle = b.textContent;
+  b.disabled = true; b.textContent = 'Préparation…';
+  try {
+    const res = await fetch('/api/public/ticket/pdf?token=' + encodeURIComponent(jetonBillet) +
+      '&id=' + encodeURIComponent(billetCourant.id));
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Téléchargement impossible');
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url; a.download = 'billet-' + (billetCourant.code || 'feja') + '.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    direDl('Billet PDF téléchargé.');
+  } catch (err) {
+    direDl(err.message || 'Téléchargement impossible.', 'ko');
+  } finally {
+    b.disabled = false; b.textContent = libelle;
+  }
+});
+
+$('dlImg').addEventListener('click', async (e) => {
+  if (!billetCourant || !window.TicketCanvas) return;
+  const b = e.currentTarget, libelle = b.textContent;
+  b.disabled = true; b.textContent = 'Préparation…';
+  try {
+    const marque = window.__brandConfig || {};
+    const actifs = await TicketCanvas.chargerActifs(marque);
+    actifs.qr = await TicketCanvas.charger(billetCourant.qr || '');
+    await TicketCanvas.dessiner($('dlCanvas'), billetCourant, actifs);
+
+    await new Promise((resolve) => {
+      $('dlCanvas').toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'billet-' + (billetCourant.code || 'feja') + '.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+        resolve();
+      }, 'image/png');
+    });
+    direDl('Billet image téléchargé.');
+  } catch (err) {
+    direDl(err.message || 'Téléchargement impossible.', 'ko');
+  } finally {
+    b.disabled = false; b.textContent = libelle;
+  }
+});
 
 /* Copie du code. navigator.clipboard exige un contexte securise : en HTTP sur
    une adresse locale il est absent, d'ou le repli par selection. */

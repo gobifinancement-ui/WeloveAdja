@@ -123,6 +123,10 @@ const DEFAULT_SETTINGS = {
   // "1" = le media anime est affiche ; "0" = on revient a l'arriere-plan
   // d'origine SANS supprimer le fichier, pour pouvoir y revenir.
   hero_media_active: "1",
+  // Intensite du voile pose sur le fond anime, de 0 a 100. Plus la valeur
+  // est haute, plus le media est assombri et plus les textes ressortent.
+  // 70 par defaut : un media clair rend le titre illisible en dessous.
+  hero_media_veil: "70",
   theme_preset: "indigo",
   theme_custom_json: "{}",
   // Rotation quotidienne des couleurs : liste de presets parcourue un par
@@ -216,6 +220,7 @@ const SETTINGS_KEY_MAP = {
   mailFrom:             "mail_from",
   alertEmail:           "alert_email",
   heroMediaActive:      "hero_media_active",
+  heroMediaVeil:        "hero_media_veil",
   adminPassword:        "admin_password",
   scanPassword:         "scan_password",
   paymentSecretKey:     "payment_secret_key",
@@ -1243,10 +1248,16 @@ function buildHeroMedia(settings) {
   // affiche. Supprimer le media pour revenir a l'ancien fond obligerait a le
   // reimporter pour faire marche arriere.
   if (String(settings.hero_media_active || "1") !== "1") return null;
+
+  // Voile : borne entre 20 et 95. En dessous de 20 le texte devient illisible
+  // sur un media clair, au-dela de 95 le media ne se voit plus du tout.
+  const brut = Number(settings.hero_media_veil);
+  const veil = Number.isFinite(brut) ? Math.min(95, Math.max(20, Math.round(brut))) : 70;
   const extension = (url.split("?")[0].match(/\.(\w+)$/) || [])[1] || "";
   return {
     url,
     type: extension.toLowerCase() === "gif" ? "image" : "video",
+    veil,
   };
 }
 
@@ -3640,6 +3651,10 @@ async function handleApi(request, response, url) {
           participant: result.participant,
           email_sent: result.emailSent,
           already_finalized: result.alreadyFinalized,
+          // Jeton de telechargement du billet. Le participant vient de payer
+          // et se trouve sur SA page de retour : lui faire redemander un code
+          // par e-mail pour un billet qu'il vient d'acheter serait absurde.
+          ticket_token: createTicketSession(result.participant.email),
         });
         return;
       }
@@ -3674,6 +3689,7 @@ async function handleApi(request, response, url) {
           participant: result.participant,
           email_sent: result.emailSent,
           already_finalized: result.alreadyFinalized,
+          ticket_token: createTicketSession(result.participant.email),
         });
         return;
       }
