@@ -214,6 +214,178 @@
     }
   }
 
+  /* ---------------- Photos hors-ligne ----------------
+     Les photos ne sont pas dans l'instantane : trop lourdes pour etre
+     rechargees a chaque synchronisation. On les telecharge une fois, sur
+     demande, quand l'agent a du reseau - idealement en wifi avant l'evenement.
+
+     Chaque photo est reduite a 256 px avant stockage : une photo de telephone
+     pese 150 Ko, la vignette 15 Ko. Sur 300 participants, 4 Mo au lieu de 45. */
+
+  async function majEtatPhotos() {
+    const zone = $("dlEtat");
+    if (!zone) return;
+    try {
+      const codes = await ScanStore.listCodes();
+      const avecPhoto = codes.filter((c) => c.photo).length;
+      const enCache = await ScanStore.countPhotos();
+      zone.textContent = avecPhoto
+        ? `${enCache} photo(s) en local sur ${avecPhoto} attendue(s).`
+        : "Aucune photo à télécharger : mets d'abord la base à jour.";
+    } catch {
+      zone.textContent = "—";
+    }
+  }
+
+  async function telechargerPhotos() {
+    const bouton = $("dlPhotos");
+    const barre = $("dlBar");
+    const remplissage = $("dlBarFill");
+    const zone = $("dlEtat");
+
+    if (!isOnline()) {
+      zone.textContent = "Pas de réseau. Reconnecte-toi puis réessaie.";
+      return;
+    }
+
+    const codes = (await ScanStore.listCodes()).filter((c) => c.photo);
+    if (!codes.length) {
+      zone.textContent = "Aucune photo à télécharger : mets d'abord la base à jour.";
+      return;
+    }
+
+    bouton.disabled = true;
+    barre.classList.add("on");
+    let faits = 0, echecs = 0, ignores = 0;
+
+    for (const entree of codes) {
+      // Deja en cache : on ne retelecharge pas. Reprendre un telechargement
+      // interrompu doit couter le moins possible sur un reseau fragile.
+      const deja = await ScanStore.getPhoto(entree.code).catch(() => null);
+      if (deja) { ignores++; }
+      else {
+        try {
+          const res = await fetch(entree.photo, { cache: "no-store" });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          const petit = await ScanStore.shrinkImage(await res.blob());
+          await ScanStore.putPhoto(entree.code, petit);
+          faits++;
+        } catch {
+          echecs++;
+        }
+      }
+
+      const total = faits + echecs + ignores;
+      remplissage.style.width = Math.round((total / codes.length) * 100) + "%";
+      zone.textContent = `${total} / ${codes.length}…`;
+    }
+
+    bouton.disabled = false;
+    barre.classList.remove("on");
+    remplissage.style.width = "0";
+    zone.textContent =
+      `${faits} téléchargée(s)` +
+      (ignores ? `, ${ignores} déjà en local` : "") +
+      (echecs ? `, ${echecs} en échec` : "") + ".";
+  }
+
+  if ($("dlPhotos")) $("dlPhotos").addEventListener("click", telechargerPhotos);
+
+  /* ---------------- Vérification d'identité ----------------
+     Le controleur doit voir le visage AVANT de decider. Le code n'est donc
+     consomme qu'apres confirmation : consomme avant, un refus laisserait le
+     billet brule alors que la personne n'est pas entree. */
+
+  let attenteIdentite = null;   // { code, known, onConfirm }
+  let urlPhotoAffichee = "";
+
+  function fermerIdentite() {
+    $("idSheet").classList.remove("show");
+    if (urlPhotoAffichee) {
+      URL.revokeObjectURL(urlPhotoAffichee);
+      urlPhotoAffichee = "";
+    }
+    attenteIdentite = null;
+  }
+
+  /* Charge la photo : d'abord le magasin local, sinon le reseau. L'ordre
+     compte : hors-ligne, seul le local repond, et le jour J le reseau sera
+     sature. */
+  async function chargerPhoto(code, urlDistante) {
+    const local = await ScanStore.getPhoto(code).catch(() => null);
+    if (local) return { blob: local, source: "local" };
+
+    if (!urlDistante || !isOnline()) return null;
+    try {
+      const res = await fetch(urlDistante, { cache: "force-cache" });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      // Mise en cache au passage : la prochaine fois, plus besoin de reseau.
+      ScanStore.shrinkImage(blob).then((petit) => ScanStore.putPhoto(code, petit)).catch(() => {});
+      return { blob, source: "réseau" };
+    } catch {
+      return null;
+    }
+  }
+
+  async function demanderIdentite({ code, known, meta, avertissement, onConfirm }) {
+    fermerIdentite();
+    attenteIdentite = { code, onConfirm };
+
+    $("idName").textContent = (known && known.nom) || "—";
+    $("idCode").textContent = code;
+    $("idMeta").innerHTML = (meta || [])
+      .filter(Boolean)
+      .map((t) => `<span>${escapeHtml(t)}</span>`)
+      .join("");
+
+    const zoneAvert = $("idWarn");
+    zoneAvert.hidden = !avertissement;
+    if (avertissement) zoneAvert.innerHTML = avertissement;
+
+    // On affiche l'écran tout de suite et on remplit la photo ensuite : le
+    // controleur ne doit pas attendre devant un ecran vide.
+    $("idPhoto").removeAttribute("src");
+    $("idNoPhoto").hidden = false;
+    $("idNoPhotoTxt").textContent = "Chargement de la photo…";
+    $("idSheet").classList.add("show");
+
+    const photo = await chargerPhoto(code, known && known.photo);
+    if (!attenteIdentite || attenteIdentite.code !== code) return;   // deja referme
+
+    if (photo) {
+      urlPhotoAffichee = URL.createObjectURL(photo.blob);
+      $("idPhoto").src = urlPhotoAffichee;
+      $("idNoPhoto").hidden = true;
+    } else {
+      $("idNoPhoto").hidden = false;
+      $("idNoPhotoTxt").textContent = isOnline()
+        ? "Aucune photo enregistrée pour ce participant"
+        : "Photo indisponible hors-ligne. Télécharge les photos depuis les réglages quand tu auras du réseau.";
+    }
+  }
+
+  $("idConfirm").addEventListener("click", async () => {
+    const attente = attenteIdentite;
+    if (!attente) return;
+    fermerIdentite();
+    await attente.onConfirm();
+  });
+
+  $("idRefuse").addEventListener("click", () => {
+    // Sans verification en cours, il n'y a rien a refuser : un double appui
+    // apres fermeture ne doit pas afficher un verdict sorti de nulle part.
+    if (!attenteIdentite) return;
+    const code = attenteIdentite.code;
+    fermerIdentite();
+    beep(false);
+    buzz([90, 60, 90]);
+    // Rien n'est consomme : le billet reste valable pour son vrai porteur.
+    showVerdict("ko", "Entrée refusée", "Le billet n'a pas été utilisé",
+      { nom: "—", code: code || "—" },
+      "Le code reste <b>valable</b>. La personne inscrite peut se présenter avec ce même billet.");
+  });
+
   /* ---------------- Verdict ---------------- */
 
   const ICONS = {
@@ -303,23 +475,45 @@
     if (!known) {
       if (isOnline() && getToken()) {
         try {
+          // peek : on regarde sans consommer. La consommation n'aura lieu
+          // qu'apres confirmation visuelle par le controleur.
           const result = await api("/api/admin/verify-code", {
             method: "POST",
-            body: JSON.stringify({ code }),
+            body: JSON.stringify({ code, peek: true }),
           });
           if (result.status === "valid") {
-            await ScanStore.consume(code, { origin: "local" });
-            await ScanStore.clearFromQueue([code]); // deja applique cote serveur
-            beep(true);
-            buzz(60);
-            current = { code, items: {} };
-            showVerdict("ok", "Accès autorisé", "Vérifié en ligne", {
-              nom: result.participant.nom,
+            // ATTENTION : le serveur a DEJA marque le code utilise en
+            // repondant "valid". Un refus ici ne peut donc plus l'annuler
+            // localement ; on le signale au controleur plutot que de le
+            // laisser croire que le billet reste valable.
+            await demanderIdentite({
               code,
-              montant: result.participant.montant,
-              lieu_retrait: result.participant.lieu_retrait,
+              known: {
+                nom: result.participant.nom,
+                photo: result.participant.participant_photo_url || "",
+              },
+              meta: [result.participant.montant, result.participant.lieu_retrait],
+              onConfirm: async () => {
+                // C'est ici seulement que le code est reellement consomme,
+                // cote serveur comme en local.
+                await api("/api/admin/verify-code", {
+                  method: "POST",
+                  body: JSON.stringify({ code }),
+                }).catch(() => { /* la file de synchro rattrapera */ });
+                await ScanStore.consume(code, { origin: "local" });
+                await ScanStore.clearFromQueue([code]); // deja applique cote serveur
+                beep(true);
+                buzz(60);
+                current = { code, items: {} };
+                showVerdict("ok", "Accès autorisé", "Vérifié en ligne", {
+                  nom: result.participant.nom,
+                  code,
+                  montant: result.participant.montant,
+                  lieu_retrait: result.participant.lieu_retrait,
+                });
+                await paintStats();
+              },
             });
-            await paintStats();
             return;
           }
           if (result.status === "already_used") {
@@ -354,6 +548,18 @@
       return;
     }
 
+    // Verification d'identite AVANT toute consommation.
+    await demanderIdentite({
+      code,
+      known,
+      meta: [known.montant, known.lieu_retrait],
+      onConfirm: () => finaliserEntree(code, known),
+    });
+  }
+
+  /* Consomme le code et affiche le verdict. Appelee uniquement apres que le
+     controleur a confirme que la personne est bien la bonne. */
+  async function finaliserEntree(code, known) {
     // Le registre local tranche : une seule consommation possible, jamais deux.
     const outcome = await ScanStore.consume(code, { items: {} });
 
@@ -383,6 +589,7 @@
     });
 
     await paintStats();
+    majEtatPhotos();
     if (isOnline()) syncQueue(true);
   }
 
@@ -460,6 +667,13 @@
     });
     document.getElementById("pwSkip").addEventListener("click", () => overlay.remove());
   }
+
+  // Exposee uniquement pour les tests automatises : le module reste ferme,
+  // aucune donnee ni aucun etat interne n'est accessible depuis l'exterieur.
+  // `window` et non `global` : ce module est enveloppe dans une fonction SANS
+  // parametre, `global` n'y existe pas et levait une ReferenceError qui
+  // interrompait le reste du fichier, boot() compris.
+  window.__scanHandleCode = handleCode;
 
   /* ---------------- Saisie manuelle ---------------- */
 
@@ -548,6 +762,7 @@
     $("devLabel").textContent = label || "Poste non nommé";
 
     await paintStats();
+    majEtatPhotos();
 
     // Branding : appliqué depuis le cache si hors-ligne.
     fetch("/api/public-config")

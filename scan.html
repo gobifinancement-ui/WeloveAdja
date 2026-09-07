@@ -121,6 +121,40 @@ button{font-family:inherit}
 .toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%) translateY(20px);background:rgba(0,0,0,.9);color:#fff;padding:10px 16px;border-radius:11px;font-size:.82rem;font-weight:600;opacity:0;transition:.25s;z-index:40;pointer-events:none;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .mono{font-family:ui-monospace,monospace}
+
+/* ===== VERIFICATION D'IDENTITE =====
+   La photo occupe l'essentiel de l'ecran : c'est sur elle que se prend la
+   decision, tout le reste est secondaire. */
+#idCard{text-align:center}
+.id-head{margin-bottom:14px}
+.id-lbl{display:block;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cream-52);margin-bottom:8px}
+#idName{font-family:var(--display);font-weight:600;font-size:1.5rem;margin:0 0 4px;line-height:1.2}
+.id-code{font-family:ui-monospace,monospace;letter-spacing:.18em;color:var(--gold-lt);font-size:1.05rem}
+.id-photo{position:relative;width:100%;max-width:300px;aspect-ratio:1;margin:0 auto 14px;
+  border-radius:20px;overflow:hidden;background:var(--glass);border:2px solid var(--stroke-gd)}
+.id-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.id-nophoto{position:absolute;inset:0;display:grid;place-items:center;gap:10px;align-content:center;
+  color:var(--cream-32);font-size:.82rem;text-align:center;padding:16px}
+/* display:grid a la meme specificite que [hidden] et l'emporte par l'ordre
+   des regles : sans cette ligne, le message "Chargement..." restait affiche
+   PAR-DESSUS la photo une fois celle-ci arrivee. */
+.id-nophoto[hidden]{display:none}
+.id-meta{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;color:var(--cream-52);font-size:.84rem;margin-bottom:12px}
+.id-warn{background:rgba(224,96,74,.16);border:1px solid rgba(224,96,74,.5);border-radius:12px;
+  padding:10px 13px;font-size:.82rem;line-height:1.5;margin-bottom:12px;text-align:left}
+.id-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.id-actions .btn{width:100%;min-height:56px;font-size:.95rem}
+/* Le refus est volontairement a gauche et sobre : c'est le geste rare, il ne
+   doit pas etre touche par reflexe a la place de la confirmation. */
+.btn-ko{background:transparent;border:1px solid var(--ko);color:var(--ko)}
+.btn-ko:active{background:rgba(224,96,74,.14)}
+
+/* Telechargement des photos, dans les reglages du poste. */
+.photo-dl{margin-top:14px;padding-top:14px;border-top:1px solid var(--stroke)}
+.photo-dl .bar{height:8px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:9px;display:none}
+.photo-dl .bar.on{display:block}
+.photo-dl .bar i{display:block;height:100%;background:var(--gold);width:0;transition:width .2s}
+.photo-dl .etat{font-size:.78rem;color:var(--cream-52);margin-top:8px;line-height:1.5}
 </style>
 <link rel="icon" href="/api/branding/default-icon.svg">
 <link rel="stylesheet" href="/api/theme.css">
@@ -179,6 +213,34 @@ button{font-family:inherit}
 </div>
 
 <!-- Verdict -->
+<!-- Verification d'identite : s'affiche AVANT toute decision, pour que le
+     controleur voie la photo avant de valider ou de refuser l'entree. -->
+<div class="sheet" id="idSheet">
+  <div class="card" id="idCard">
+    <div class="id-head">
+      <span class="id-lbl">Est-ce bien cette personne ?</span>
+      <h2 id="idName">—</h2>
+      <div class="id-code" id="idCode">—</div>
+    </div>
+
+    <div class="id-photo" id="idPhotoWrap">
+      <img id="idPhoto" alt="Photo du participant">
+      <div class="id-nophoto" id="idNoPhoto" hidden>
+        <svg width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span id="idNoPhotoTxt">Aucune photo enregistrée</span>
+      </div>
+    </div>
+
+    <div class="id-meta" id="idMeta"></div>
+    <div class="id-warn" id="idWarn" hidden></div>
+
+    <div class="id-actions">
+      <button class="btn btn-ko" id="idRefuse">Ce n'est pas lui</button>
+      <button class="btn btn-gold" id="idConfirm">Confirmer l'entrée</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet" id="sheet">
   <div class="card" id="sheetCard">
     <div class="verdict">
@@ -212,6 +274,14 @@ button{font-family:inherit}
       <label>Nom du poste</label>
       <span class="desc">Ex. « Entrée principale », « Portail VIP »</span>
       <input class="in" id="devLabelIn" placeholder="Entrée principale">
+    </div>
+
+    <div class="photo-dl">
+      <label>Photos des participants</label>
+      <span class="desc">À télécharger tant qu'il y a du réseau. Sans elles, la vérification d'identité ne fonctionnera pas hors-ligne le jour J.</span>
+      <button class="btn btn-ghost" id="dlPhotos" style="width:100%;margin-top:10px">Télécharger les photos</button>
+      <div class="bar" id="dlBar"><i id="dlBarFill"></i></div>
+      <div class="etat" id="dlEtat">—</div>
     </div>
 
     <div class="f">

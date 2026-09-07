@@ -14,8 +14,11 @@
 
 (function (global) {
   const DB_NAME = "adja-scan";
-  const DB_VERSION = 1;
-  const STORES = { codes: "codes", ledger: "ledger", queue: "queue", meta: "meta" };
+  // 2 : ajout du magasin des photos. Sans cette montee de version,
+  // onupgradeneeded ne se declencherait pas sur un telephone qui a deja
+  // ouvert la base, et le magasin manquerait.
+  const DB_VERSION = 2;
+  const STORES = { codes: "codes", ledger: "ledger", queue: "queue", meta: "meta", photos: "photos" };
 
   let dbPromise = null;
 
@@ -31,6 +34,7 @@
         if (!db.objectStoreNames.contains(STORES.ledger)) db.createObjectStore(STORES.ledger, { keyPath: "code" });
         if (!db.objectStoreNames.contains(STORES.queue)) db.createObjectStore(STORES.queue, { keyPath: "code" });
         if (!db.objectStoreNames.contains(STORES.meta)) db.createObjectStore(STORES.meta, { keyPath: "key" });
+        if (!db.objectStoreNames.contains(STORES.photos)) db.createObjectStore(STORES.photos, { keyPath: "code" });
       };
 
       request.onsuccess = () => resolve(request.result);
@@ -154,6 +158,12 @@
     };
   }
 
+  /* Tous les codes de l'instantane. Sert au telechargement des photos, qui
+     doit savoir lesquelles sont attendues. */
+  async function listCodes() {
+    return tx(STORES.codes, "readonly", (store) => store.getAll());
+  }
+
   async function lookup(code) {
     return get(STORES.codes, String(code || "").toUpperCase());
   }
@@ -249,7 +259,62 @@
     });
   }
 
+  /* ---- Photos des participants -------------------------------------------
+     Gardees en local pour que le controle d'identite fonctionne sans reseau.
+     Les images sont reduites AVANT stockage : une photo de telephone pese
+     150 Ko, une vignette de 256 px en pese 15, et pour reconnaitre un visage
+     a l'entree la vignette suffit largement. Sur 300 participants, cela fait
+     4 Mo au lieu de 45. */
+  async function putPhoto(code, blob) {
+    return tx(STORES.photos, "readwrite", (store) =>
+      store.put({ code: String(code).toUpperCase(), blob, at: Date.now() }));
+  }
+
+  async function getPhoto(code) {
+    const ligne = await tx(STORES.photos, "readonly", (store) =>
+      store.get(String(code).toUpperCase()));
+    return ligne ? ligne.blob : null;
+  }
+
+  async function countPhotos() {
+    return tx(STORES.photos, "readonly", (store) => store.count());
+  }
+
+  async function clearPhotos() {
+    return tx(STORES.photos, "readwrite", (store) => store.clear());
+  }
+
+  /* Reduit une image a `taille` pixels de cote au maximum, en JPEG.
+     Le rognage est carre et centre : une photo d'identite se lit mieux ainsi,
+     et toutes les vignettes ont alors la meme forme a l'ecran. */
+  function shrinkImage(blob, taille = 256, qualite = 0.72) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const cote = Math.min(img.width, img.height);
+        const sx = (img.width - cote) / 2;
+        const sy = (img.height - cote) / 2;
+        const cv = document.createElement("canvas");
+        cv.width = taille;
+        cv.height = taille;
+        cv.getContext("2d").drawImage(img, sx, sy, cote, cote, 0, 0, taille, taille);
+        cv.toBlob((petit) => resolve(petit || blob), "image/jpeg", qualite);
+      };
+      // Image illisible : on garde l'originale plutot que de perdre la photo.
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(blob); };
+      img.src = url;
+    });
+  }
+
   global.ScanStore = {
+    listCodes,
+    putPhoto,
+    getPhoto,
+    countPhotos,
+    clearPhotos,
+    shrinkImage,
     getDeviceId,
     getDeviceLabel,
     setDeviceLabel,

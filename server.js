@@ -4243,6 +4243,11 @@ async function handleApi(request, response, url) {
               code: String(p.code_unique).toUpperCase(),
               id: p.id,
               nom: p.nom,
+              // Photo du participant : c'est elle qui permet au controleur de
+              // verifier que le porteur du billet est bien la personne
+              // inscrite. L'app de scan la telecharge et la garde en local
+              // pour rester utilisable sans reseau.
+              photo: p.participant_photo_url || "",
               montant: p.montant,
               lieu_retrait: p.lieu_retrait,
               used: p.statut_code === "utilise",
@@ -4338,6 +4343,14 @@ async function handleApi(request, response, url) {
 
         if (participant.statut_code === "utilise") {
           sendJson(response, 200, { status: "already_used", participant });
+          return;
+        }
+
+        // Consultation seule. L'app de scan doit pouvoir afficher la photo du
+        // participant AVANT que le controleur ne decide : consommer des la
+        // lecture rendrait tout refus impossible a annuler.
+        if (body.peek === true) {
+          sendJson(response, 200, { status: "valid", peek: true, participant });
           return;
         }
 
