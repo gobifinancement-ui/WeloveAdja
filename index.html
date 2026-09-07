@@ -66,7 +66,40 @@ header.scrolled{background:color-mix(in oklab,var(--bg) 72%,transparent);backdro
 .btn-sm{padding:11px 18px;font-size:.92rem;min-height:44px}
 .btn-verify{background:var(--glass);color:var(--cream);border:1px solid var(--stroke-gd)}
 .btn-verify:hover{background:var(--glass-2);transform:translateY(-2px)}
+/* ===== MEDIA ANIME DE L'EN-TETE =====
+   Couvre UNIQUEMENT l'en-tete, du haut jusqu'au compte a rebours : la section
+   .hero s'arrete la, et le fond habituel reprend en dessous.
+
+   Le media fourni est en 9:16, format vertical. Sur telephone il remplit
+   naturellement ; sur ordinateur, l'en-tete est large et bas, donc l'image
+   serait rognee de haut en bas. object-fit:cover conserve les proportions et
+   rogne au lieu d'etirer : c'est la seule facon de ne pas deformer les
+   visages. object-position centre le cadrage sur le milieu, ou se trouve
+   l'essentiel d'une video verticale. */
+.hero-media{position:absolute;inset:0;z-index:-2;overflow:hidden;pointer-events:none}
+.hero-media img,.hero-media video{
+  width:100%;height:100%;object-fit:cover;object-position:center;display:block;
+}
+/* Voile : le titre et le compte a rebours doivent rester lisibles quelle que
+   soit l'image. Plus dense en bas, ou le contenu est le plus charge. */
+.hero-media::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,
+    color-mix(in oklab,var(--bg) 62%,transparent) 0%,
+    color-mix(in oklab,var(--bg) 55%,transparent) 45%,
+    color-mix(in oklab,var(--bg) 88%,transparent) 100%);
+}
+/* Le rayonnement decoratif ferait doublon par-dessus une video : on l'attenue
+   fortement plutot que de le retirer, il garde un lien avec le reste du site. */
+.hero.has-media .sunburst{opacity:.10}
+/* Mouvement reduit : une video de fond en boucle est exactement ce que ce
+   reglage cherche a eviter. On garde la premiere image d'un GIF, on met la
+   video en pause. */
+@media(prefers-reduced-motion:reduce){
+  .hero-media video{display:none}
+}
 .hero{position:relative;text-align:center;padding-block:clamp(44px,8vw,96px) clamp(30px,6vw,56px);overflow:hidden}
+.hero.has-media{margin-top:calc(-1 * var(--hdr-h,0px));padding-top:calc(clamp(44px,8vw,96px) + var(--hdr-h,0px))}
 .sunburst{position:absolute;top:-4%;left:50%;transform:translateX(-50%);width:min(720px,120vw);height:min(720px,120vw);z-index:-1;opacity:.32;pointer-events:none;animation:spin 110s linear infinite}
 @keyframes spin{to{transform:translateX(-50%) rotate(360deg)}}
 .hero .inner{max-width:760px;margin-inline:auto;display:flex;flex-direction:column;align-items:center}
@@ -612,6 +645,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
 
 <main id="top">
   <section class="hero">
+    <div class="hero-media" id="heroMedia" hidden aria-hidden="true"></div>
     <svg class="sunburst" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g stroke="var(--gold)" stroke-width="1"><g id="rays"></g></g><circle cx="100" cy="100" r="42" fill="none" stroke="var(--gold)" stroke-width="1"/><circle cx="100" cy="100" r="30" fill="none" stroke="var(--green-br)" stroke-width="1"/></svg>
     <div class="wrap">
       <div class="inner">
@@ -1001,6 +1035,7 @@ function applyConfig() {
   document.querySelectorAll('[data-cta-amount]').forEach(el => {
     el.textContent = `Participer – ${Number(CFG.amount).toLocaleString('fr-FR')} ${CFG.currency}`;
   });
+  renderHeroMedia();
   renderChiefs(); renderSponsors(); renderArtists();
   paintYear();
   applyScrollAnimation();
@@ -1012,6 +1047,49 @@ const SCROLL_ANIMS = ['montee','fondu','zoom','glisse','bascule','flou','aucune'
 function applyScrollAnimation(){
   const choix = SCROLL_ANIMS.includes(CFG.scrollAnimation) ? CFG.scrollAnimation : 'montee';
   document.documentElement.dataset.anim = choix;
+}
+
+/* Media anime de l'en-tete.
+   Le type vient du serveur : deviner entre <img> et <video> depuis
+   l'extension cote client casserait des qu'une URL porte un parametre. */
+/* Hauteur de la barre du haut, publiee en variable CSS. Mesuree et non
+   codee en dur : elle varie avec la largeur de l'ecran. */
+function mesurerBarre(){
+  const barre = document.getElementById('hdr');
+  if(!barre) return;
+  document.documentElement.style.setProperty('--hdr-h', Math.round(barre.getBoundingClientRect().height) + 'px');
+}
+addEventListener('resize', mesurerBarre, { passive: true });
+
+function renderHeroMedia(){
+  const hote = document.getElementById('heroMedia');
+  const hero = document.querySelector('.hero');
+  if(!hote || !hero) return;
+
+  const media = CFG.heroMedia;
+  if(!media || !media.url){
+    hote.hidden = true;
+    hote.innerHTML = '';
+    hero.classList.remove('has-media');
+    return;
+  }
+
+  if(media.type === 'video'){
+    // muted et playsinline ne sont pas decoratifs : sans eux, iOS et Android
+    // REFUSENT la lecture automatique et l'en-tete reste noir.
+    hote.innerHTML =
+      '<video autoplay muted loop playsinline preload="metadata" ' +
+      'poster="" src="' + escHtml(media.url) + '"></video>';
+  }else{
+    hote.innerHTML = '<img src="' + escHtml(media.url) + '" alt="" decoding="async">';
+  }
+
+  hote.hidden = false;
+  hero.classList.add('has-media');
+  mesurerBarre();
+  // Les polices se chargent apres coup et peuvent changer la hauteur de la
+  // barre : on remesure une fois qu'elles sont pretes.
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(mesurerBarre);
 }
 
 /* Affiches des artistes.

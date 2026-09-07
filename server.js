@@ -39,6 +39,10 @@ const MIME_TYPES = {
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
   ".gif": "image/gif",
+  // Video de fond de l'en-tete. Sans ces deux types, le serveur de
+  // fichiers refuse l'extension et le fond reste noir.
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
 };
@@ -113,6 +117,9 @@ const DEFAULT_SETTINGS = {
   wordmark_url: "",
   // Photo de fond du billet. Vide = fond clair uni.
   ticket_bg_url: "",
+  // Media anime en fond de l'en-tete : GIF ou video. Vide = le fond
+  // actuel (rayonnement + degrade) reste seul.
+  hero_media_url: "",
   theme_preset: "indigo",
   theme_custom_json: "{}",
   // Rotation quotidienne des couleurs : liste de presets parcourue un par
@@ -583,14 +590,14 @@ async function initDatabase() {
   }
 }
 
-function parseJsonBody(request) {
+function parseJsonBody(request, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
 
     request.on("data", (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         reject(new Error("Payload trop volumineux."));
         request.destroy();
         return;
@@ -1221,6 +1228,19 @@ function resolveEventDate(settings = getSettings()) {
   return candidat;
 }
 
+// Media de l'en-tete, tel que la page doit l'afficher. On renvoie le TYPE en
+// plus de l'URL : la page doit choisir entre <img> et <video>, et deviner
+// depuis l'extension cote client serait fragile.
+function buildHeroMedia(settings) {
+  const url = String(settings.hero_media_url || "").trim();
+  if (!url) return null;
+  const extension = (url.split("?")[0].match(/\.(\w+)$/) || [])[1] || "";
+  return {
+    url,
+    type: extension.toLowerCase() === "gif" ? "image" : "video",
+  };
+}
+
 function publicSettings(settings = getSettings()) {
   let chiefs = [], sponsors = [], eventItems = [], artists = [];
   try { chiefs = JSON.parse(settings.chiefs_json || "[]"); } catch {}
@@ -1241,6 +1261,7 @@ function publicSettings(settings = getSettings()) {
     email:       settings.vendeur_email || "",
     logoUrl:     settings.logo_url || "",
     demoMode:    isDemoMode(settings),
+    heroMedia:   buildHeroMedia(settings),
     theme:       resolveTheme(settings),
     chiefs,
     sponsors,
@@ -1458,6 +1479,61 @@ function saveBrandingLogo(dataUrl, base = "logo", autoriserSvg = true) {
 
   fs.writeFileSync(path.join(BRANDING_DIR, `${base}.${extension}`), bytes);
   return `/uploads/branding/${base}.${extension}?v=${Date.now()}`;
+}
+
+// Media de fond de l'en-tete. Separe de saveBrandingLogo : les formats
+// acceptes n'ont rien a voir, et une video ne peut pas etre reduite cote
+// navigateur comme on le fait pour les images.
+const HERO_MEDIA_FORMATS = {
+  "image/gif": "gif",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+};
+
+// 12 Mo : au-dela, le visiteur en donnees mobiles paie l'en-tete plus cher que
+// tout le reste du site. Le format MP4 pese environ dix fois moins qu'un GIF
+// de meme duree, c'est ce qu'il faut privilegier.
+const MAX_HERO_MEDIA_BYTES = 12 * 1024 * 1024;
+
+function saveHeroMedia(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:(image\/gif|video\/mp4|video\/webm);base64,(.+)$/);
+  if (!match) {
+    throw new Error("Format non accepté. Choisis un GIF, un MP4 ou un WEBM.");
+  }
+
+  const extension = HERO_MEDIA_FORMATS[match[1]];
+  const bytes = Buffer.from(match[2], "base64");
+
+  if (!bytes.length) throw new Error("Fichier vide.");
+  if (bytes.length > MAX_HERO_MEDIA_BYTES) {
+    throw new Error(`Fichier trop lourd (${Math.round(bytes.length / 1048576)} Mo). Maximum 12 Mo.`);
+  }
+
+  fs.mkdirSync(BRANDING_DIR, { recursive: true });
+  // On purge les autres extensions : sinon un ancien GIF resterait a cote du
+  // nouveau MP4 et continuerait d'etre servi selon l'ordre de lecture.
+  Object.values(HERO_MEDIA_FORMATS).forEach((ext) => {
+    const vieux = path.join(BRANDING_DIR, `hero-media.${ext}`);
+    if (ext !== extension && fs.existsSync(vieux)) {
+      try { fs.unlinkSync(vieux); } catch {}
+    }
+  });
+
+  fs.writeFileSync(path.join(BRANDING_DIR, `hero-media.${extension}`), bytes);
+  return {
+    url: `/uploads/branding/hero-media.${extension}?v=${Date.now()}`,
+    type: extension === "gif" ? "image" : "video",
+    octets: bytes.length,
+  };
+}
+
+function removeHeroMedia() {
+  Object.values(HERO_MEDIA_FORMATS).forEach((ext) => {
+    const cible = path.join(BRANDING_DIR, `hero-media.${ext}`);
+    if (fs.existsSync(cible)) {
+      try { fs.unlinkSync(cible); } catch {}
+    }
+  });
 }
 
 function removeBrandingLogo(base = "logo") {
@@ -3827,6 +3903,27 @@ async function handleApi(request, response, url) {
 
       // Bandeau du titre et photo de fond du billet. Le logo garde sa route
       // historique juste en dessous, pour ne rien casser cote admin.
+      // Media anime de l'en-tete. Route separee : la limite de corps est bien
+      // plus haute que pour une image, et le fichier n'est pas retraite.
+      if (url.pathname === "/api/admin/branding/hero-media") {
+        if (request.method === "POST") {
+          // 20 Mo : le base64 gonfle le fichier d'environ un tiers, il faut
+          // donc plus que la limite de 12 Mo appliquee au fichier lui-meme.
+          const body = await parseJsonBody(request, 20 * 1024 * 1024);
+          const media = saveHeroMedia(body.media_base64);
+          saveSettings({ hero_media_url: media.url });
+          sendJson(response, 200, media);
+          return;
+        }
+
+        if (request.method === "DELETE") {
+          removeHeroMedia();
+          saveSettings({ hero_media_url: "" });
+          sendJson(response, 200, { url: "" });
+          return;
+        }
+      }
+
       const brandingMatch = url.pathname.match(/^\/api\/admin\/branding\/(wordmark|ticket-bg)$/);
       if (brandingMatch) {
         const asset = BRANDING_ASSETS[brandingMatch[1]];

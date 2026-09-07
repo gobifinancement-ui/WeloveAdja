@@ -278,6 +278,8 @@ button{font-family:var(--body);cursor:pointer}
   border:1px solid var(--stroke-gd);border-radius:9px;padding:7px 10px;font-size:.78rem;
   color:var(--cream);box-shadow:0 12px 30px -12px rgba(0,0,0,.8);white-space:nowrap}
 .viz-tip b{font-variant-numeric:tabular-nums}
+/* L'apercu doit accepter une video comme une image. */
+.logo-pv video{width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit}
 .mail-diag{margin:18px 0 22px;padding:14px;border:1px solid var(--stroke);border-radius:14px;background:var(--glass)}
 .mail-diag-acts{display:flex;gap:9px;flex-wrap:wrap}
 .mail-diag-out{margin-top:12px;font-size:.8rem;line-height:1.6;color:var(--cream-52);white-space:pre-wrap;word-break:break-word}
@@ -621,6 +623,20 @@ button{font-family:var(--body);cursor:pointer}
               <button class="btn btn-gold btn-sm" id="wmPick" type="button">Choisir une image</button>
               <button class="btn btn-ghost btn-sm" id="wmDel" type="button" style="display:none">Retirer</button>
               <span class="hint">Image large, réduite automatiquement.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="f" style="margin-bottom:22px">
+          <label>Fond animé de l'en-tête</label>
+          <span class="desc">GIF ou vidéo affichée derrière le titre, jusqu'au compte à rebours. En dessous, le fond habituel reprend. Format vertical 9:16 recommandé. <b class="gold">Une vidéo MP4 pèse environ dix fois moins qu'un GIF de même durée</b> — à préférer pour les visiteurs en données mobiles.</span>
+          <div class="logo-zone">
+            <div class="logo-pv" id="heroPv"><span class="none">Aucun fond animé</span></div>
+            <div class="logo-acts">
+              <input type="file" id="heroFile" accept="image/gif,video/mp4,video/webm" hidden>
+              <button class="btn btn-gold btn-sm" id="heroPick" type="button">Choisir un GIF ou une vidéo</button>
+              <button class="btn btn-ghost btn-sm" id="heroDel" type="button" style="display:none">Retirer</button>
+              <span class="hint" id="heroHint">12 Mo maximum.</span>
             </div>
           </div>
         </div>
@@ -1585,6 +1601,7 @@ async function fillSettings() {
       el.value = raw[dbKey] || '';
     });
     document.getElementById('eventAnnual').checked = String(raw.event_annual || '0') === '1';
+    peindreHero(raw.hero_media_url || '');
     peindreWordmark(raw.wordmark_url || '');
     peindreFond(raw.ticket_bg_url || '');
     const eventName = raw.event_name || 'WeloveAdja';
@@ -2027,6 +2044,74 @@ function brandingUploader({ pick, input, del, apercu, route, maxDim, format, qua
 
   return peindre;
 }
+
+/* Fond anime de l'en-tete.
+   Il n'utilise PAS brandingUploader : une video ne passe pas par un canvas,
+   on l'envoie telle quelle. Et l'apercu doit choisir entre <img> et <video>. */
+function peindreHero(url, type){
+  const zone = document.getElementById('heroPv');
+  const del = document.getElementById('heroDel');
+  if(!url){
+    zone.innerHTML = '<span class="none">Aucun fond animé</span>';
+    del.style.display = 'none';
+    return;
+  }
+  const estVideo = type === 'video' || /\.(mp4|webm)(\?|$)/i.test(url);
+  zone.innerHTML = estVideo
+    ? '<video src="' + esc(url) + '" autoplay muted loop playsinline></video>'
+    : '<img src="' + esc(url) + '" alt="">';
+  del.style.display = '';
+}
+
+document.getElementById('heroPick').addEventListener('click',
+  () => document.getElementById('heroFile').click());
+
+document.getElementById('heroFile').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+
+  // Controle avant lecture : inutile de charger 40 Mo en memoire pour les
+  // refuser ensuite.
+  if(file.size > 12 * 1024 * 1024){
+    toast('Fichier trop lourd', Math.round(file.size / 1048576) + ' Mo, maximum 12 Mo.');
+    return;
+  }
+
+  const hint = document.getElementById('heroHint');
+  hint.textContent = 'Envoi en cours…';
+  try{
+    const dataUrl = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result);
+      fr.onerror = () => rej(new Error('Lecture impossible'));
+      fr.readAsDataURL(file);
+    });
+
+    const res = await apiFetch('/api/admin/branding/hero-media', {
+      method: 'POST', body: JSON.stringify({ media_base64: dataUrl })
+    });
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || 'Envoi impossible');
+
+    peindreHero(d.url, d.type);
+    const ko = Math.round(d.octets / 1024);
+    hint.textContent = (ko > 1024 ? (ko / 1024).toFixed(1) + ' Mo' : ko + ' Ko') + ' envoyés.';
+    toast('Fond animé mis à jour', 'Recharge le site pour le voir.');
+  }catch(err){
+    hint.textContent = '12 Mo maximum.';
+    toast(err.message);
+  }
+});
+
+document.getElementById('heroDel').addEventListener('click', async () => {
+  try{
+    await apiFetch('/api/admin/branding/hero-media', { method: 'DELETE' });
+    peindreHero('');
+    document.getElementById('heroHint').textContent = '12 Mo maximum.';
+    toast('Fond animé retiré');
+  }catch(err){ toast(err.message); }
+});
 
 const peindreWordmark = brandingUploader({
   pick: 'wmPick', input: 'wmFile', del: 'wmDel', apercu: 'wmPv',
