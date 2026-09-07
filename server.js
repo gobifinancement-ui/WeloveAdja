@@ -6,10 +6,10 @@ const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
 const initSqlJs = require("sql.js");
-const { Resend } = require("resend");
 const QRCode = require("qrcode");
 const PDFDocument = require("pdfkit");
 const { PNG } = require("pngjs");
+const mail = require("./lib/mail");
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
@@ -73,6 +73,20 @@ const DEFAULT_SETTINGS = {
   wachap_access_token: "",
   resend_api_key: "",
   resend_from: "",
+  // --- Envoi par le SMTP de la boite du domaine ---
+  // Ces valeurs peuvent aussi venir de l'environnement (SMTP_HOST,
+  // SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_SECURE, MAIL_FROM), qui
+  // l'emporte. En production, on les met dans .env et pas ici.
+  smtp_host: "",
+  smtp_port: "",
+  smtp_user: "",
+  smtp_password: "",
+  smtp_secure: "",
+  smtp_tls_strict: "1",
+  mail_from: "",
+  // Adresse qui recoit les alertes internes. Configurable, jamais codee
+  // en dur : elle change selon la personne de permanence.
+  alert_email: "",
   event_date_label: "",
   event_date: "",
   // "1" = la fete revient chaque annee a la meme date. Le compte a rebours
@@ -183,6 +197,14 @@ const SETTINGS_KEY_MAP = {
   wachapKey:            "wachap_access_token",
   resendKey:            "resend_api_key",
   resendFrom:           "resend_from",
+  smtpHost:             "smtp_host",
+  smtpPort:             "smtp_port",
+  smtpUser:             "smtp_user",
+  smtpPassword:         "smtp_password",
+  smtpSecure:           "smtp_secure",
+  smtpTlsStrict:        "smtp_tls_strict",
+  mailFrom:             "mail_from",
+  alertEmail:           "alert_email",
   adminPassword:        "admin_password",
   scanPassword:         "scan_password",
   paymentSecretKey:     "payment_secret_key",
@@ -1082,6 +1104,27 @@ function getConfigHealth(settings = getSettings()) {
     }
   }
 
+  // Moyen d'envoi. Sans lui, ni le billet ni le code de recuperation ne
+  // partent : c'est bloquant, pas cosmetique.
+  const cfgSmtp = mail.getSmtpConfig(settings);
+  const cleResend = process.env.RESEND_API_KEY || settings.resend_api_key || "";
+  if (cfgSmtp) {
+    add("ok", "mail", `Envoi par SMTP (${cfgSmtp.host}:${cfgSmtp.port})`, null);
+  } else if (cleResend && !/X{3,}/i.test(cleResend)) {
+    add("warn", "mail", "Envoi par Resend, pas par la boîte du domaine",
+      "Fonctionne, mais les messages ne partent pas de ton propre domaine. Renseigne le SMTP pour une identité d'expéditeur cohérente.");
+  } else {
+    add("error", "mail", "Aucun moyen d'envoi d'e-mail",
+      "Ni SMTP ni clé Resend. Le billet et le code de récupération ne partiront pas.");
+  }
+
+  if (!String(settings.alert_email || process.env.MAIL_ALERT_TO || "").trim()) {
+    add("warn", "alert_email", "Aucune adresse d'alerte interne",
+      "Tu ne recevras pas d'e-mail à chaque inscription payée. À renseigner dans Réglages.");
+  } else {
+    add("ok", "alert_email", "Alertes internes activées", null);
+  }
+
   if (!settings.scan_password) {
     add("warn", "scan_password", "Pas de mot de passe dédié au scan",
       "Les téléphones à l'entrée se connectent avec le mot de passe administrateur : chacun peut alors lire les clés de paiement. Définis-en un séparé.");
@@ -1116,6 +1159,7 @@ const SECRET_SETTING_KEYS = [
   "payment_public_key",
   "fedapay_webhook_secret",
   "resend_api_key",
+  "smtp_password",
   "wachap_access_token",
   "wachap_instance_id",
 ];
@@ -2398,31 +2442,13 @@ function getParticipantForTicketSession(token, participantId) {
 }
 
 async function sendTicketCodeEmail(email, code, settings) {
-  const apiKey = process.env.RESEND_API_KEY || settings.resend_api_key;
-  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
-  const from = process.env.RESEND_FROM || settings.resend_from || `${eventName} <onboarding@resend.dev>`;
-
-  if (!apiKey) throw new Error("Envoi d'email non configure.");
-
-  const resend = new Resend(apiKey);
-  const envoi = await resend.emails.send({
-    from,
-    to: email,
-    subject: `${code} — ton code pour récupérer ton billet ${eventName}`,
-    html: `
-      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
-        <p>Voici ton code de vérification pour récupérer ton billet ${escapeHtml(eventName)} :</p>
-        <p style="font-size:34px;font-weight:700;letter-spacing:8px">${escapeHtml(code)}</p>
-        <p>Il est valable <strong>10 minutes</strong> et ne sert qu'une fois.</p>
-        <p style="color:#666;font-size:13px">Si tu n'as pas demandé ce code, ignore ce message : personne ne peut accéder à ton billet sans lui.</p>
-      </div>`,
-    text:
-      `Ton code de verification ${eventName} : ${code}\n\n` +
-      `Valable 10 minutes, utilisable une seule fois.\n` +
-      `Si tu n'as pas demande ce code, ignore ce message.\n`,
-  });
-
-  assertResendOk(envoi, "Code de billet");
+  await new mail.CodeVerificationEmail({
+    settings,
+    baseUrl: getPublicBaseUrl(settings),
+    email,
+    code,
+    dureeMinutes: Math.round(TICKET_CODE_TTL_MS / 60000),
+  }).send();
   return true;
 }
 
@@ -2841,95 +2867,80 @@ function escapeHtml(value) {
   );
 }
 
-// Le SDK Resend ne leve JAMAIS d'exception sur une erreur d'API : il resout
-// avec { data: null, error: {...} }. Sans cette verification, une cle invalide
-// passait pour un envoi reussi et le participant se voyait annoncer un email
-// qui n'arriverait jamais.
-function assertResendOk(reponse, contexte) {
-  const erreur = reponse && reponse.error;
-  if (erreur) {
-    const message = erreur.message || erreur.name || "erreur inconnue";
-    throw new Error(`${contexte} : ${message}`);
-  }
-  return true;
-}
-
-function buildValidationEmailHtml(participant, publicBaseUrl = "") {
-  const eventName = escapeHtml(participant.evenement || DEFAULT_SETTINGS.event_name);
-  const qrImage =
-    participant.qr_code_url && publicBaseUrl
-      ? `<p><img src="${escapeHtml(publicBaseUrl + participant.qr_code_url)}" alt="QR code ${eventName}" style="width:180px;height:180px"></p>`
-      : "";
-  return `
-    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
-      <h1>Votre paiement ${eventName} est valide</h1>
-      <p>Bonjour ${escapeHtml(participant.nom || "")},</p>
-      <p>Votre paiement est confirme. Voici votre code ${eventName} :</p>
-      <p style="font-size:34px;font-weight:700;letter-spacing:6px">${escapeHtml(participant.code_unique)}</p>
-      ${qrImage}
-      <p>Lieu de retrait : <strong>${escapeHtml(participant.lieu_retrait || "Terrain Omnisports CEG2 AZOVÈ")}</strong></p>
-      <p>Presentez ce code ou le QR code joint le jour de l'evenement.</p>
-    </div>
-  `;
-}
-
 async function sendValidationEmail(participant, settings) {
-  const apiKey = process.env.RESEND_API_KEY || settings.resend_api_key;
+  if (!participant.email) return false;
+
+  const baseUrl = getPublicBaseUrl(settings);
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
-  const from = process.env.RESEND_FROM || settings.resend_from || `${eventName} <onboarding@resend.dev>`;
-
-  if (!apiKey || !participant.email) {
-    return false;
-  }
-
-  const resend = new Resend(apiKey);
-  const baseUrl = process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
-  const qrPath = participant.qr_code_url ? path.join(ROOT, participant.qr_code_url.replace(/^\/+/, "")) : "";
+  const nomFichier = eventName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const attachments = [];
 
-  const nomFichier = eventName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-
+  // QR en PNG : certains clients n'affichent pas les images distantes, la
+  // piece jointe reste alors le seul moyen de recuperer le code.
+  const qrPath = participant.qr_code_url
+    ? path.join(ROOT, participant.qr_code_url.split("?")[0].replace(/^\/+/, ""))
+    : "";
   if (qrPath && fs.existsSync(qrPath)) {
     attachments.push({
       filename: `code-${nomFichier}-${participant.code_unique}.png`,
-      content: fs.readFileSync(qrPath).toString("base64"),
+      content: fs.readFileSync(qrPath),
     });
   }
 
-  // Billet PDF. Un echec de generation ne doit jamais empecher l'email de
-  // partir : le code et le QR y sont deja, le PDF est un confort.
+  // Billet PDF. Un echec de generation ne doit jamais empecher l'e-mail de
+  // partir : le code y figure deja, le billet est un confort.
   try {
-    const pdf = await renderTicketPdf(participant, settings);
     attachments.push({
       filename: `billet-${nomFichier}-${participant.code_unique}.pdf`,
-      content: pdf.toString("base64"),
+      content: await renderTicketPdf(participant, settings),
     });
   } catch (error) {
     console.warn("Billet PDF non genere:", error.message);
   }
 
-  const envoi = await resend.emails.send(
-    {
-      from,
-      to: participant.email,
-      subject: `Votre code ${eventName} : ${participant.code_unique}`,
-      html: buildValidationEmailHtml(participant, baseUrl),
-      text:
-        `Bonjour ${participant.nom || ""},\n\n` +
-        `Votre paiement ${eventName} est confirme.\n` +
-        `Code : ${participant.code_unique}\n` +
-        `Lieu de retrait : ${participant.lieu_retrait || "Terrain Omnisports CEG2 AZOVÈ"}\n`,
-      attachments,
-    },
-    {
-      headers: {
-        "Idempotency-Key": `validation-${participant.id}`,
-      },
-    },
-  );
-
-  assertResendOk(envoi, "Email de validation");
+  await new mail.PaiementConfirmeEmail({ settings, baseUrl, participant, attachments }).send();
   return true;
+}
+
+// Alerte "nouvelle inscription payee". Volontairement NON attendue : le
+// participant ne doit pas patienter pendant qu'un e-mail interne part, et un
+// echec d'alerte ne doit jamais faire echouer son inscription.
+function alerterInscriptionPayee(participant, settings) {
+  sendInternalAlert(
+    "Nouvelle inscription payée",
+    [
+      ["Participant", participant.nom || "—"],
+      ["Téléphone", participant.telephone || "—"],
+      ["Email", participant.email || "—"],
+      ["Montant", participant.montant || "—"],
+      ["Code d'accès", participant.code_unique || "—"],
+      ["Référence", participant.id || "—"],
+    ],
+    settings,
+  ).catch(() => { /* deja journalise dans sendInternalAlert */ });
+}
+
+// Avis interne a l'organisation. Ne bloque jamais le parcours du participant :
+// une alerte qui ne part pas est ennuyeuse, une inscription qui echoue l'est
+// beaucoup plus.
+async function sendInternalAlert(evenement, lignes, settings = getSettings(), note = "") {
+  const alerte = new mail.AlerteInterneEmail({
+    settings,
+    baseUrl: getPublicBaseUrl(settings),
+    evenement,
+    lignes,
+    note,
+  });
+
+  if (!alerte.destinataire()) return false;
+
+  try {
+    await alerte.send();
+    return true;
+  } catch (error) {
+    console.warn("Alerte interne non envoyee:", error.message);
+    return false;
+  }
 }
 
 async function finalizePaidParticipant(participant, transaction, settings) {
@@ -2986,9 +2997,14 @@ async function finalizePaidParticipant(participant, transaction, settings) {
 
   const updatedParticipant = getParticipantById(participant.id);
   const emailSent = await sendValidationEmail(updatedParticipant, settings).catch((error) => {
-    console.error("Email Resend non envoye:", error.message);
+    console.error("Email de validation non envoye:", error.message);
     return false;
   });
+
+  // Point de passage unique de TOUT paiement valide, quel que soit le chemin
+  // (retour de paiement, webhook, mode demonstration). Accrochee ailleurs,
+  // l'alerte manquait le parcours de demonstration.
+  alerterInscriptionPayee(updatedParticipant, settings);
 
   return { participant: updatedParticipant, emailSent, alreadyFinalized: false };
 }
@@ -3663,7 +3679,7 @@ async function handleApi(request, response, url) {
           );
           const result = await finalizePaidParticipant(participant, verifiedTransaction, settings);
           if (!result.alreadyFinalized) {
-            notifyOrganizer(result.participant, settings).catch((error) => {
+              notifyOrganizer(result.participant, settings).catch((error) => {
               console.warn("Notification WaChap non envoyee:", error.message);
             });
           }
@@ -3800,6 +3816,11 @@ async function handleApi(request, response, url) {
         });
 
         saveSettings(toSave);
+        // Un changement de parametre SMTP doit prendre effet tout de suite :
+        // sans cela, le transporteur en cache garderait l'ancienne connexion.
+        if (Object.keys(toSave).some((k) => k.startsWith("smtp_") || k === "mail_from")) {
+          mail.resetTransport();
+        }
         sendJson(response, 200, maskSecretSettings(getSettings()));
         return;
       }
@@ -3954,6 +3975,53 @@ async function handleApi(request, response, url) {
           "Cache-Control": "no-store",
         });
         response.end(fichier);
+        return;
+      }
+
+      // Diagnostic SMTP : teste la connexion et l'authentification SANS
+      // envoyer de message. Permet de distinguer un probleme de connexion
+      // d'un probleme de remise.
+      if (url.pathname === "/api/admin/mail/verify" && request.method === "GET") {
+        const settings = getSettings();
+        const resultat = await mail.verifySmtp(settings);
+        const cfg = mail.getSmtpConfig(settings);
+        sendJson(response, 200, {
+          ok: resultat.ok,
+          raison: resultat.raison || null,
+          // Jamais le mot de passe : cette reponse part vers un navigateur.
+          hote: cfg ? cfg.host : null,
+          port: cfg ? cfg.port : null,
+          chiffrement: cfg ? (cfg.secure ? "TLS implicite (465)" : "STARTTLS") : null,
+          utilisateur: cfg ? cfg.user : null,
+          expediteur: mail.getFromAddress(settings, settings.event_name) || null,
+          voie: cfg ? "smtp" : (settings.resend_api_key || process.env.RESEND_API_KEY ? "resend" : "aucune"),
+        });
+        return;
+      }
+
+      // Envoi reel d'un message de test.
+      if (url.pathname === "/api/admin/mail/test" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const settings = getSettings();
+        const destinataire = String(body.email || "").trim() ||
+          String(settings.alert_email || "").trim() ||
+          String(settings.vendeur_email || "").trim();
+
+        if (!destinataire || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(destinataire)) {
+          sendJson(response, 400, { error: "Adresse de destination invalide." });
+          return;
+        }
+
+        try {
+          const envoi = await new mail.EmailDeTest({
+            settings,
+            baseUrl: getPublicBaseUrl(settings),
+            email: destinataire,
+          }).send();
+          sendJson(response, 200, { ok: true, destinataire, voie: envoi.voie });
+        } catch (error) {
+          sendJson(response, 502, { error: error.message });
+        }
         return;
       }
 

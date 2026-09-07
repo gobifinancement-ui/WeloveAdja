@@ -2,12 +2,14 @@
   "name": "weloveadja",
   "private": true,
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/mail.test.js"
   },
   "dependencies": {
     "docx": "^9.7.1",
     "dotenv": "^17.4.2",
     "jsqr": "^1.4.0",
+    "nodemailer": "^10.0.1",
     "pdfkit": "^0.20.2",
     "pngjs": "^7.0.0",
     "qrcode": "^1.5.4",

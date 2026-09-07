@@ -278,6 +278,11 @@ button{font-family:var(--body);cursor:pointer}
   border:1px solid var(--stroke-gd);border-radius:9px;padding:7px 10px;font-size:.78rem;
   color:var(--cream);box-shadow:0 12px 30px -12px rgba(0,0,0,.8);white-space:nowrap}
 .viz-tip b{font-variant-numeric:tabular-nums}
+.mail-diag{margin:18px 0 22px;padding:14px;border:1px solid var(--stroke);border-radius:14px;background:var(--glass)}
+.mail-diag-acts{display:flex;gap:9px;flex-wrap:wrap}
+.mail-diag-out{margin-top:12px;font-size:.8rem;line-height:1.6;color:var(--cream-52);white-space:pre-wrap;word-break:break-word}
+.mail-diag-out.ok{color:var(--green-br)}
+.mail-diag-out.ko{color:var(--red)}
 .chk{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.85rem;color:var(--cream-72);margin-top:4px}
 .chk input{width:18px;height:18px;accent-color:var(--gold);cursor:pointer;flex:none}
 .chk:hover{color:var(--cream)}
@@ -745,6 +750,37 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Email expéditeur Resend</label><span class="desc">Ex. WeloveAdja &lt;noreply@weloveadja.bj&gt;</span>
             <input class="in" data-set="resendFrom" placeholder="WeloveAdja &lt;noreply@…&gt;">
           </div>
+          <div class="f" style="margin-bottom:6px">
+            <label>Envoi des e-mails (SMTP du domaine)</label>
+            <span class="desc">Renseigne la boîte mail de ton domaine. Sans elle, le site retombe sur Resend, et les messages ne partent pas de ton propre domaine. Ces valeurs peuvent aussi vivre dans le fichier .env du serveur, qui l'emporte sur ce formulaire.</span>
+          </div>
+          <div class="f"><label>Serveur SMTP (hôte)</label><span class="desc">Le nom EXACT donné par l'hébergeur de tes boîtes mail. Ne devine pas : sur un serveur mutualisé, le certificat porte souvent un nom du type mail62.hebergeur-panel.com.</span>
+            <input class="in" data-set="smtpHost" placeholder="mail62.hebergeur-panel.com" autocomplete="off">
+          </div>
+          <div class="f"><label>Port</label><span class="desc">587 avec STARTTLS, ou 465 avec TLS implicite.</span>
+            <input class="in" data-set="smtpPort" placeholder="587" inputmode="numeric" autocomplete="off">
+          </div>
+          <div class="f"><label>Utilisateur SMTP</label><span class="desc">L'adresse complète de la boîte, par exemple no-reply@tondomaine.bj</span>
+            <input class="in" data-set="smtpUser" placeholder="no-reply@tondomaine.bj" autocomplete="off">
+          </div>
+          <div class="f"><label>Mot de passe SMTP</label><span class="desc">Celui de la boîte mail. Stocké côté serveur, jamais réaffiché.</span>
+            <div class="ipwrap"><input class="in" data-set="smtpPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          </div>
+          <div class="f"><label>Expéditeur affiché</label><span class="desc">Ce que voit le destinataire. Laisse vide pour utiliser l'utilisateur SMTP : une adresse d'un autre domaine ferait échouer SPF et partirait en indésirables.</span>
+            <input class="in" data-set="mailFrom" placeholder="FEJA &lt;no-reply@tondomaine.bj&gt;" autocomplete="off">
+          </div>
+          <div class="f"><label>Adresse des alertes internes</label><span class="desc">Reçoit un e-mail à chaque inscription payée. Différente de l'adresse de contact publique.</span>
+            <input class="in" data-set="alertEmail" placeholder="organisation@tondomaine.bj" autocomplete="off">
+          </div>
+
+          <div class="mail-diag">
+            <div class="mail-diag-acts">
+              <button class="btn btn-ghost btn-sm" id="mailVerify" type="button">Tester la connexion</button>
+              <button class="btn btn-gold btn-sm" id="mailTest" type="button">Envoyer un e-mail de test</button>
+            </div>
+            <div class="mail-diag-out" id="mailDiag">Enregistre d'abord tes réglages, puis teste la connexion.</div>
+          </div>
+
           <div class="f"><label>Mot de passe admin</label><span class="desc">Pour accéder à cet espace. Laisse le champ tel quel pour ne pas le changer.</span>
             <div class="ipwrap"><input class="in" data-set="adminPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
@@ -1128,6 +1164,58 @@ async function adminVerify() {
   }
 }
 
+/* ---------- DIAGNOSTIC DES E-MAILS ---------- */
+const mailDiag = document.getElementById('mailDiag');
+
+function direMail(texte, type){
+  mailDiag.textContent = texte;
+  mailDiag.className = 'mail-diag-out' + (type ? ' ' + type : '');
+}
+
+document.getElementById('mailVerify').addEventListener('click', async e => {
+  const b = e.currentTarget, lib = b.textContent;
+  b.disabled = true; b.textContent = 'Test…';
+  direMail('Connexion au serveur SMTP…');
+  try{
+    const res = await apiFetch('/api/admin/mail/verify');
+    const d = await res.json();
+    if(d.ok){
+      // On affiche les parametres retenus : c'est ce qu'il faut relire quand
+      // un envoi echoue, et le mot de passe n'en fait jamais partie.
+      direMail(
+        'Connexion réussie.\n' +
+        'Hôte : ' + d.hote + '\n' +
+        'Port : ' + d.port + '  (' + d.chiffrement + ')\n' +
+        'Utilisateur : ' + d.utilisateur + '\n' +
+        'Expéditeur : ' + (d.expediteur || '—'), 'ok');
+    }else{
+      direMail('Échec : ' + (d.raison || 'raison inconnue') +
+        (d.voie === 'resend' ? '\n\nLe site enverra par Resend en attendant.' : ''), 'ko');
+    }
+  }catch(err){ direMail('Test impossible : ' + err.message, 'ko'); }
+  finally{ b.disabled = false; b.textContent = lib; }
+});
+
+document.getElementById('mailTest').addEventListener('click', async e => {
+  const defaut = (document.querySelector('[data-set="alertEmail"]').value || '').trim();
+  const dest = prompt("Adresse qui doit recevoir l'e-mail de test :", defaut);
+  if(!dest) return;
+
+  const b = e.currentTarget, lib = b.textContent;
+  b.disabled = true; b.textContent = 'Envoi…';
+  direMail('Envoi en cours…');
+  try{
+    const res = await apiFetch('/api/admin/mail/test', {
+      method:'POST', body: JSON.stringify({ email: dest })
+    });
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || 'Envoi impossible');
+    direMail('Message envoyé à ' + d.destinataire + ' par ' + d.voie +
+      '.\nVérifie ta boîte, et aussi les indésirables.', 'ok');
+  }catch(err){ direMail('Échec : ' + err.message, 'ko'); }
+  finally{ b.disabled = false; b.textContent = lib; }
+});
+
 /* ---------- STATISTIQUES ---------- */
 const nb = n => Number(n || 0).toLocaleString('fr-FR');
 
@@ -1474,6 +1562,12 @@ const SETTINGS_MAP = {
   wachapKey:             'wachap_access_token',
   resendKey:             'resend_api_key',
   resendFrom:            'resend_from',
+  smtpHost:              'smtp_host',
+  smtpPort:              'smtp_port',
+  smtpUser:              'smtp_user',
+  smtpPassword:          'smtp_password',
+  mailFrom:              'mail_from',
+  alertEmail:            'alert_email',
   adminPassword:         'admin_password',
   scanPassword:          'scan_password',
   paymentSecretKey:      'payment_secret_key',
