@@ -549,6 +549,73 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .reveal-disc.go{animation:disc-reveal .52s forwards}
 /* Cascade : le retard de chaque element est pose en JS, pour rester juste
    quel que soit le nombre de champs du volet. */
+/* --- Achat groupe ---------------------------------------------------- */
+.qty{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.qty-opt{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  padding:11px 4px;border-radius:14px;cursor:pointer;
+  background:var(--glass);border:1px solid var(--stroke);color:var(--cream-72);
+  transition:background .22s var(--ease),border-color .22s var(--ease),
+             color .22s var(--ease),transform .22s var(--ease);
+}
+.qty-opt b{font-size:1.15rem;line-height:1;font-weight:800}
+.qty-opt span{font-size:.62rem;letter-spacing:.06em;text-transform:uppercase}
+.qty-opt:hover{background:var(--glass-2);transform:translateY(-1px)}
+.qty-opt.on{
+  background:color-mix(in oklab,var(--gold) 18%,transparent);
+  border-color:var(--stroke-gd);color:var(--cream);
+}
+.qty-opt.on b{color:var(--gold-lt)}
+.qty-libre{margin-top:10px}
+.qty-libre input{width:100%}
+
+/* La liste des noms anime ses enfants un a un, comme les champs d'un volet. */
+.field-list.stagger>*{animation:field-in .38s cubic-bezier(.22,.9,.28,1) both}
+
+.ph-list{display:flex;flex-direction:column;gap:10px}
+.ph-item{
+  display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:16px;
+  background:var(--glass);border:1px solid var(--stroke);
+  transition:border-color .25s var(--ease),background .25s var(--ease);
+}
+/* Deux lignes plutot qu'une : sur un telephone etroit, la vignette, le nom et
+   trois boutons cote a cote se chevauchaient. */
+.ph-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
+.ph-item.ok{border-color:var(--stroke-gd);background:var(--glass-2)}
+.ph-item.manque{border-color:color-mix(in oklab,var(--red) 45%,transparent)}
+.ph-thumb{
+  position:relative;flex:0 0 46px;width:46px;height:46px;border-radius:50%;overflow:hidden;
+  display:grid;place-items:center;background:var(--surface);border:1px solid var(--stroke);
+}
+.ph-thumb img{width:100%;height:100%;object-fit:cover;display:none}
+.ph-thumb.rempli img{display:block;animation:photo-in .34s cubic-bezier(.22,.9,.28,1) both}
+.ph-thumb.rempli .ph-ini{display:none}
+.ph-ini{font-weight:800;color:var(--cream-52);font-size:1rem}
+@keyframes photo-in{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:none}}
+.ph-meta{display:flex;align-items:baseline;gap:8px;min-width:0}
+.ph-meta b{flex:1;min-width:0;font-size:.86rem;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-meta span{flex:0 0 auto;font-size:.66rem;color:var(--cream-52)}
+.ph-item.ok .ph-meta span{color:var(--gold-lt)}
+.ph-acts{display:flex;gap:6px;flex-wrap:wrap}
+.ph-acts button{
+  padding:7px 9px;border-radius:10px;cursor:pointer;font-size:.68rem;font-weight:700;
+  background:var(--glass-2);border:1px solid var(--stroke);color:var(--cream-72);
+  transition:background .2s var(--ease),color .2s var(--ease),transform .2s var(--ease);
+}
+.ph-acts button:hover{background:var(--surface-strong);color:var(--cream);transform:translateY(-1px)}
+.ph-acts button:active{transform:scale(.95)}
+
+.pr-noms{display:flex;flex-direction:column;gap:6px;padding:10px 0 4px}
+.pr-noms .pn{
+  display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--cream-72);
+  animation:field-in .34s cubic-bezier(.22,.9,.28,1) both;
+}
+.pr-noms .pn i{
+  flex:0 0 auto;width:19px;height:19px;border-radius:50%;display:grid;place-items:center;
+  font-style:normal;font-size:.62rem;font-weight:800;
+  background:color-mix(in oklab,var(--gold) 20%,transparent);color:var(--gold-lt);
+}
+
 .pane.stagger>*,
 .verify-shell.stagger>*{animation:field-in .38s cubic-bezier(.22,.9,.28,1) both}
 .reg-shell{animation:none}
@@ -790,10 +857,35 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <!-- ÉTAPE 1 – INFOS -->
         <div class="pane show" data-pane="1">
           <div class="field">
+            <label>Combien de billets ?</label>
+            <div class="qty" id="qty" role="group" aria-label="Nombre de billets">
+              <button type="button" class="qty-opt on" data-qty="1"><b>1</b><span>billet</span></button>
+              <button type="button" class="qty-opt" data-qty="2"><b>2</b><span>billets</span></button>
+              <button type="button" class="qty-opt" data-qty="3"><b>3</b><span>billets</span></button>
+              <button type="button" class="qty-opt" data-qty="0"><b>+</b><span>autre</span></button>
+            </div>
+            <div class="qty-libre" id="qtyLibre" hidden>
+              <input id="qtyNb" type="number" min="2" max="10" step="1" inputmode="numeric" placeholder="Nombre de billets (2 à 10)">
+            </div>
+            <div class="err" data-err="qty">Entre 2 et 10 billets par achat.</div>
+          </div>
+
+          <div id="nomSolo">
+          <div class="field">
             <label for="nom">Nom complet</label>
             <div class="input-wrap"><span class="lead-ic"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><input id="nom" type="text" placeholder="Ex. Kossi Adjavon" autocomplete="name"></div>
             <div class="err" data-err="nom">Merci d'indiquer ton nom complet.</div>
           </div>
+          </div>
+
+          <!-- Un champ par personne des qu'il y a plus d'un billet. Rempli par
+               construireNoms() : le nombre change au clic, une liste ecrite en
+               dur serait fausse des le deuxieme choix. -->
+          <div class="field-list" id="nomsGroupe" hidden></div>
+
+          <!-- Point de retour du bloc coordonnees quand on repasse a 1 billet. -->
+          <span id="ancreContact" hidden></span>
+          <div id="blocContact">
           <div class="field">
             <label for="tel">Numéro Mobile Money</label>
             <div class="input-wrap tel-wrap">
@@ -816,11 +908,13 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
             <div class="input-wrap"><span class="lead-ic"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg></span><input id="email" type="email" placeholder="Ex. kossi@email.com" autocomplete="email"></div>
             <div class="err" data-err="email">Adresse email invalide.</div>
           </div>
+          </div>
           <div class="reg-actions"><button class="btn btn-gold btn-block" data-next="1">Continuer →</button></div>
         </div>
 
         <!-- ÉTAPE 2 – PHOTO DU PARTICIPANT -->
         <div class="pane" data-pane="2">
+          <div id="photoSolo">
           <div class="field">
             <label>Photo du participant <span class="hint">– visage clair, bien éclairé</span></label>
             <div class="photo-pick" id="photoPick">
@@ -845,21 +939,38 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
             </div>
             <div class="err" data-err="photo" style="margin-top:14px">Merci d'ajouter ta photo (obligatoire).</div>
           </div>
+          </div>
+
+          <!-- Un emplacement par personne, portant le nom saisi a l'etape
+               precedente : sans le nom en face, on ne sait plus quelle photo
+               va a qui des le troisieme billet. -->
+          <div class="ph-list" id="photosGroupe" hidden></div>
+          <input id="gphotoFile" type="file" accept="image/*" hidden>
+          <input id="gphotoCam" type="file" accept="image/*" capture="user" hidden>
+          <div class="err" data-err="photos">Il manque la photo de quelqu'un.</div>
+
           <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Ta photo est utilisée uniquement pour vérifier ton identité le jour J. Elle ne sera jamais publiée.</span></p>
           <div class="reg-actions"><button class="btn btn-back" data-back="2">← Retour</button><button class="btn btn-gold" data-next="2">Continuer →</button></div>
         </div>
 
         <!-- ÉTAPE 3 – LANCEMENT DU PAIEMENT -->
         <div class="pane" data-pane="3">
+          <!-- Le bloc coordonnees vient se poser ici quand l'achat couvre
+               plusieurs billets : les noms et les photos concernent les
+               autres, le telephone et l'email ne concernent que l'acheteur. -->
+          <div id="slotContact3"></div>
+
           <div class="pay-recap">
             <div class="pr-head">
               <span class="lbl">Montant à payer</span>
               <span class="amt" data-amount>5 000 <small>XOF</small></span>
             </div>
             <div class="pr-rows">
-              <div class="pr-row"><span>Nom</span><b id="s-nom">—</b></div>
-              <div class="pr-row"><span>Téléphone</span><b id="s-tel">—</b></div>
-              <div class="pr-row"><span>Email</span><b id="s-email">—</b></div>
+              <div class="pr-row" id="s-nb" style="display:none"><span>Billets</span><b>—</b></div>
+              <div class="pr-noms" id="s-noms" style="display:none"></div>
+              <div class="pr-row" id="s-row-nom"><span>Nom</span><b id="s-nom">—</b></div>
+              <div class="pr-row" id="s-row-tel"><span>Téléphone</span><b id="s-tel">—</b></div>
+              <div class="pr-row" id="s-row-email"><span>Email</span><b id="s-email">—</b></div>
             </div>
             <button type="button" class="pr-edit" data-back="2">Modifier mes informations</button>
           </div>
@@ -1040,6 +1151,9 @@ function applyConfig() {
   document.querySelectorAll('[data-cta-amount]').forEach(el => {
     el.textContent = `Participer – ${Number(CFG.amount).toLocaleString('fr-FR')} ${CFG.currency}`;
   });
+  // Le montant unitaire vient d'etre pose : on le repasse au total si un
+  // nombre de billets a deja ete choisi.
+  if(typeof majMontant === 'function') majMontant();
   renderHeroMedia();
   renderChiefs(); renderSponsors(); renderArtists();
   paintYear();
@@ -1421,9 +1535,40 @@ function fillPayRecap(){
   const opt=paysSel&&paysSel.selectedOptions[0];
   const indicatif=opt?'+'+opt.dataset.dial+' ':'';
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v||'—';};
-  set('s-nom',document.getElementById('nom').value.trim());
   set('s-tel',indicatif+document.getElementById('tel').value.trim());
   set('s-email',document.getElementById('email').value.trim());
+
+  const montre=(id,on)=>{const el=document.getElementById(id);if(el)el.style.display=on?'':'none';};
+
+  // A plusieurs billets, une seule ligne "Nom" ne dirait rien : on liste les
+  // porteurs, c'est le dernier moment pour rattraper une faute sur un nom.
+  montre('s-nb',enGroupe());
+  montre('s-noms',enGroupe());
+  montre('s-row-nom',!enGroupe());
+
+  // Le telephone et l'email se saisissent sur CET ecran quand l'achat est
+  // groupe : les repeter juste en dessous des champs afficherait une valeur
+  // deja perimee au moment ou on la tape.
+  montre('s-row-tel',!enGroupe());
+  montre('s-row-email',!enGroupe());
+
+  const ligneNb=document.getElementById('s-nb');
+  const listeNoms=document.getElementById('s-noms');
+
+  if(enGroupe()){
+    ligneNb.querySelector('b').textContent=nbBillets+' × '+Number(CFG.amount).toLocaleString('fr-FR')+' '+CFG.currency;
+    listeNoms.innerHTML='';
+    for(let i=0;i<nbBillets;i++){
+      const l=document.createElement('div');
+      l.className='pn';
+      l.style.animationDelay=(i*60)+'ms';
+      l.innerHTML='<i>'+(i+1)+'</i><span></span>';
+      l.querySelector('span').textContent=nomDuBillet(i)||('Participant '+(i+1));
+      listeNoms.appendChild(l);
+    }
+  }else{
+    set('s-nom',document.getElementById('nom').value.trim());
+  }
 }
 
 /* ---- Indicatif du pays ------------------------------------------------
@@ -1468,18 +1613,262 @@ if(paysSel && telInput){
 function valEmail(v){return/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);}
 function showErr(key,on){const e=document.querySelector(`[data-err="${key}"]`);const inp=document.getElementById(key);if(e)e.classList.toggle('show',on);if(inp)inp.classList.toggle('bad',on);}
 
-function validateStep1(){
-  const nom=document.getElementById('nom').value.trim();
+/* ============================================================
+   ACHAT GROUPE
+   Un achat couvre 1 a 10 billets. A 1 billet, le parcours ne change pas
+   d'un pixel. Au-dela, l'acheteur nomme chaque personne, donne une photo
+   par nom, puis laisse SES coordonnees : c'est lui qu'on rappellera, et
+   c'est par son adresse qu'il retrouvera les billets de tout le monde.
+   ============================================================ */
+const MAX_BILLETS = 10;
+let nbBillets = 1;
+const photos = [];              // photo compressee, un index par billet
+
+const elQty       = document.getElementById('qty');
+const elQtyLibre  = document.getElementById('qtyLibre');
+const elQtyNb     = document.getElementById('qtyNb');
+const elNomSolo   = document.getElementById('nomSolo');
+const elNomsGrp   = document.getElementById('nomsGroupe');
+const elPhotoSolo = document.getElementById('photoSolo');
+const elPhotosGrp = document.getElementById('photosGroupe');
+const blocContact = document.getElementById('blocContact');
+const ancreContact= document.getElementById('ancreContact');
+const slotContact3= document.getElementById('slotContact3');
+
+const enGroupe = () => nbBillets > 1;
+
+/* Nom porte par un billet. A 1 billet il vient du champ d'origine, sinon du
+   champ genere : un seul point de lecture evite que les deux divergent. */
+function nomDuBillet(i){
+  if(!enGroupe()) return document.getElementById('nom').value.trim();
+  const champ = document.getElementById('nomG' + i);
+  return champ ? champ.value.trim() : '';
+}
+
+function initiale(nom){
+  const t = String(nom || '').trim();
+  return t ? t[0].toUpperCase() : '?';
+}
+
+/* ---- Champs de noms ---------------------------------------------------
+   Reconstruits a chaque changement de nombre. Les valeurs deja tapees sont
+   reprises : passer de 3 a 4 billets ne doit pas effacer les trois noms. */
+function construireNoms(){
+  const anciens = [...elNomsGrp.querySelectorAll('input')].map(i => i.value);
+  elNomsGrp.innerHTML = '';
+  if(!enGroupe()) return;
+
+  for(let i = 0; i < nbBillets; i++){
+    const d = document.createElement('div');
+    d.className = 'field';
+    d.innerHTML =
+      '<label for="nomG' + i + '">Participant ' + (i + 1) +
+      (i === 0 ? ' <span class="hint">– toi</span>' : '') + '</label>' +
+      '<div class="input-wrap"><span class="lead-ic">' +
+      '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">' +
+      '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>' +
+      '<input id="nomG' + i + '" type="text" placeholder="Nom complet" autocomplete="off"></div>' +
+      '<div class="err" data-err="nomG' + i + '">Nom trop court.</div>';
+    elNomsGrp.appendChild(d);
+
+    // Le premier nom reprend celui deja saisi en mode solo : l'acheteur vient
+    // souvent de le taper avant de changer d'avis sur le nombre.
+    const champ = d.querySelector('input');
+    champ.value = anciens[i] || (i === 0 ? document.getElementById('nom').value.trim() : '');
+    champ.addEventListener('input', () => { majEtiquettesPhotos(); });
+  }
+  staggerIn(elNomsGrp, 40);
+}
+
+/* ---- Emplacements de photos ------------------------------------------- */
+function construirePhotos(){
+  elPhotosGrp.innerHTML = '';
+  if(!enGroupe()) return;
+
+  for(let i = 0; i < nbBillets; i++){
+    const d = document.createElement('div');
+    d.className = 'ph-item';
+    d.dataset.i = i;
+    d.innerHTML =
+      '<div class="ph-thumb"><img alt=""><span class="ph-ini">?</span></div>' +
+      '<div class="ph-col">' +
+      '<div class="ph-meta"><b></b><span>Aucune photo</span></div>' +
+      '<div class="ph-acts">' +
+      '<button type="button" data-act="cam">Appareil</button>' +
+      '<button type="button" data-act="gal">Galerie</button>' +
+      // Repli pour l'acheteur qui n'a pas la photo des autres : c'est lui qui
+      // paie, et c'est sa presence qu'on verifiera a l'entree.
+      (i > 0 ? '<button type="button" data-act="moi">Ma photo</button>' : '') +
+      '</div></div>';
+    elPhotosGrp.appendChild(d);
+  }
+  majEtiquettesPhotos();
+  majPhotos();
+}
+
+/* Le nom affiche en face de chaque emplacement suit ce qui est tape a
+   l'etape precedente, sans attendre un rechargement de la liste. */
+function majEtiquettesPhotos(){
+  [...elPhotosGrp.children].forEach((item, i) => {
+    const nom = nomDuBillet(i) || ('Participant ' + (i + 1));
+    item.querySelector('.ph-meta b').textContent = nom;
+    item.querySelector('.ph-ini').textContent = initiale(nomDuBillet(i));
+  });
+}
+
+/* Etat visible de chaque emplacement : vignette, mention, bordure. */
+function majPhotos(){
+  [...elPhotosGrp.children].forEach((item, i) => {
+    const src = photos[i] || '';
+    const thumb = item.querySelector('.ph-thumb');
+    thumb.classList.toggle('rempli', !!src);
+    if(src) thumb.querySelector('img').src = src;
+    item.classList.toggle('ok', !!src);
+    if(src) item.classList.remove('manque');
+    item.querySelector('.ph-meta span').textContent = src ? 'Photo ajoutée' : 'Aucune photo';
+  });
+}
+
+/* ---- Application d'un nombre ------------------------------------------ */
+function appliquerNombre(n){
+  nbBillets = Math.max(1, Math.min(MAX_BILLETS, Number(n) || 1));
+  photos.length = nbBillets;   // les photos en trop disparaissent avec les billets
+
+  elNomSolo.hidden   = enGroupe();
+  elNomsGrp.hidden   = !enGroupe();
+  elPhotoSolo.hidden = enGroupe();
+  elPhotosGrp.hidden = !enGroupe();
+
+  // Le bloc coordonnees change de place, il n'est pas duplique : deux jeux de
+  // champs telephone/email finiraient par ne plus dire la meme chose.
+  if(enGroupe()) slotContact3.appendChild(blocContact);
+  else ancreContact.after(blocContact);
+
+  construireNoms();
+  construirePhotos();
+  majEtapes();
+  majMontant();
+  showErr('qty', false);
+  showErr('photos', false);
+}
+
+/* Les intitules de la barre d'etapes suivent le parcours reellement suivi. */
+function majEtapes(){
+  const labels = enGroupe()
+    ? ['Billets', 'Photos', 'Paiement']
+    : ['Infos', 'Photo', 'Paiement'];
+  document.querySelectorAll('#progress .p-label').forEach((el, i) => { el.textContent = labels[i]; });
+}
+
+/* Montant total, partout ou il s'affiche. */
+function majMontant(){
+  if(typeof CFG === 'undefined' || !CFG.amount) return;
+  const total = Number(CFG.amount) * nbBillets;
+  document.querySelectorAll('[data-amount]').forEach(el => {
+    el.innerHTML = total.toLocaleString('fr-FR') + ' <small>' + CFG.currency + '</small>';
+  });
+}
+
+elQty.addEventListener('click', e => {
+  const b = e.target.closest('.qty-opt');
+  if(!b) return;
+  [...elQty.children].forEach(o => o.classList.toggle('on', o === b));
+
+  const valeur = Number(b.dataset.qty);
+  // 0 = "autre" : le champ libre apparait et c'est lui qui donne le nombre.
+  elQtyLibre.hidden = valeur !== 0;
+  if(valeur === 0){
+    elQtyNb.focus();
+    appliquerNombre(Number(elQtyNb.value) >= 2 ? elQtyNb.value : 1);
+  }else{
+    appliquerNombre(valeur);
+  }
+});
+
+elQtyNb.addEventListener('input', () => {
+  const n = Number(elQtyNb.value);
+  if(n >= 2 && n <= MAX_BILLETS){ appliquerNombre(n); }
+  else if(elQtyNb.value !== ''){ showErr('qty', true); }
+});
+
+/* ---- Photos du groupe : une seule paire d'entrees, une cible a la fois -- */
+const gFile = document.getElementById('gphotoFile');
+const gCam  = document.getElementById('gphotoCam');
+let cibleP  = 0;
+
+elPhotosGrp.addEventListener('click', async e => {
+  const b = e.target.closest('button[data-act]');
+  if(!b) return;
+  cibleP = Number(b.closest('.ph-item').dataset.i);
+
+  if(b.dataset.act === 'moi'){
+    // Repli prevu : l'acheteur n'a pas toujours la photo des autres, et c'est
+    // lui qui paie. Le controle a l'entree se fera sur sa presence.
+    if(!photos[0]){ showErr('photos', true); return; }
+    photos[cibleP] = photos[0];
+    majPhotos();
+    return;
+  }
+  (b.dataset.act === 'cam' ? gCam : gFile).click();
+});
+
+[gFile, gCam].forEach(input => {
+  input.addEventListener('change', async e => {
+    const f = e.target.files[0];
+    if(!f || !f.type.startsWith('image/')) return;
+    const item = elPhotosGrp.children[cibleP];
+    if(item) item.querySelector('.ph-meta span').textContent = 'Compression…';
+
+    photoEnCours = compressImage(f).then(dataUrl => {
+      if(dataUrl){ photos[cibleP] = dataUrl; majPhotos(); showErr('photos', false); }
+      else if(item) item.querySelector('.ph-meta span').textContent = 'Image illisible';
+    }).finally(() => { photoEnCours = null; });
+    e.target.value = '';
+    await photoEnCours;
+  });
+});
+
+/* Coordonnees de l'acheteur. Verifiees a l'etape 1 quand elles s'y trouvent,
+   a l'etape 3 quand l'achat est groupe : le bloc s'y est deplace. */
+function validateContact(){
   const tel=document.getElementById('tel').value.replace(/\D/g,'');
   const email=document.getElementById('email').value.trim();
   let ok=true;
-  if(nom.length<2){showErr('nom',true);ok=false;}else showErr('nom',false);
   if(tel.length<8){showErr('tel',true);ok=false;}else showErr('tel',false);
   if(!valEmail(email)){showErr('email',true);ok=false;}else showErr('email',false);
   return ok;
 }
+
+function validateStep1(){
+  if(enGroupe()){
+    let ok=true;
+    // On signale TOUS les noms manquants d'un coup : s'arreter au premier
+    // obligerait a cinq allers-retours pour cinq champs vides.
+    for(let i=0;i<nbBillets;i++){
+      const court = nomDuBillet(i).length < 2;
+      showErr('nomG'+i, court);
+      if(court) ok=false;
+    }
+    if(ok) majEtiquettesPhotos();
+    return ok;
+  }
+  const nom=document.getElementById('nom').value.trim();
+  let ok=true;
+  if(nom.length<2){showErr('nom',true);ok=false;}else showErr('nom',false);
+  return validateContact() && ok;
+}
 function validateStep2(){
-  if(!photoDataURL){document.querySelector('[data-err="photo"]').classList.add('show');return false;}
+  if(enGroupe()){
+    let ok=true;
+    [...elPhotosGrp.children].forEach((item,i)=>{
+      const manque=!photos[i];
+      item.classList.toggle('manque',manque);
+      if(manque) ok=false;
+    });
+    showErr('photos',!ok);
+    return ok;
+  }
+  if(!photos[0]){document.querySelector('[data-err="photo"]').classList.add('show');return false;}
   document.querySelector('[data-err="photo"]').classList.remove('show');return true;
 }
 
@@ -1499,7 +1888,6 @@ document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',(
 /* ============================================================
    PHOTO DU PARTICIPANT – compression canvas
    ============================================================ */
-let photoDataURL='';
 const photoDrop=document.getElementById('photoPick');
 const photoFileInput=document.getElementById('photoFile');
 const photoPreview=document.getElementById('photoPreview');
@@ -1550,7 +1938,7 @@ async function handlePhoto(f){
   document.getElementById('photoPvSize').textContent='Compression…';
   const dataUrl=await compressImage(f);
   if(!dataUrl){alert('Impossible de lire cette image. Essaie un autre format.');return;}
-  photoDataURL=dataUrl;
+  photos[0]=dataUrl;
   document.getElementById('photoPvImg').src=dataUrl;
   const kB=Math.round(dataUrl.length*0.75/1024);
   document.getElementById('photoPvSize').textContent=kB>1024?(kB/1024).toFixed(1)+' Mo':kB+' Ko';
@@ -1558,7 +1946,7 @@ async function handlePhoto(f){
   document.querySelector('.pick-note').style.display='none';
 }
 document.getElementById('photoPvRemove').addEventListener('click',()=>{
-  photoDataURL='';photoFileInput.value='';photoCamInput.value='';
+  photos[0]='';photoFileInput.value='';photoCamInput.value='';
   photoPreview.classList.remove('show');photoDrop.style.display='';
   document.querySelector('.pick-note').style.display='';
 });
@@ -1585,11 +1973,16 @@ document.getElementById('launchBtn').addEventListener('click',launchPayment);
 document.getElementById('checkBtn').addEventListener('click',()=>{pollPaymentStatus(true);});
 
 async function launchPayment(){
-  const nom=document.getElementById('nom').value.trim();
   const telephone=document.getElementById('tel').value.trim();
   const email=document.getElementById('email').value.trim();
   const pays=document.getElementById('pays').value;
   const launchBtn=document.getElementById('launchBtn');
+
+  // En achat groupe, le telephone et l'email se saisissent sur CET ecran :
+  // sans ce controle, on partirait payer avec une adresse vide et le
+  // participant ne recevrait jamais ses billets.
+  if(enGroupe() && !validateContact()) return;
+
   const finLaunch=Chargement(launchBtn);
 
   try{
@@ -1598,7 +1991,11 @@ async function launchPayment(){
     // qui ouvre l'inscription à tous les pays.
     const createRes=await fetch('/api/payments/create',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({nom,telephone,email,pays,participant_photo_base64:photoDataURL})
+      // Un billet par personne, toujours sous la meme forme : le serveur n'a
+      // pas a distinguer l'achat simple de l'achat groupe.
+      body:JSON.stringify({telephone,email,pays,billets:Array.from({length:nbBillets},(_,i)=>({
+        nom:nomDuBillet(i), photo_base64:photos[i]||''
+      }))})
     });
     const createData=await createRes.json();
     if(!createRes.ok)throw new Error(createData.error||'Création impossible.');
@@ -1740,7 +2137,13 @@ function showConfirm(p){
 function resetForm(){
   ['nom','email'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const tel=document.getElementById('tel');if(tel)tel.value='';
-  photoDataURL='';photoFileInput.value='';photoCamInput.value='';
+  // Retour au billet unique : sans cela, la commande suivante repartirait avec
+  // le nombre de la precedente.
+  photos.length=0;
+  [...elQty.children].forEach((o,i)=>o.classList.toggle('on',i===0));
+  elQtyLibre.hidden=true; elQtyNb.value='';
+  appliquerNombre(1);
+  photoFileInput.value='';photoCamInput.value='';
   photoPreview.classList.remove('show');photoDrop.style.display='';
   document.querySelector('.pick-note').style.display='';
   if(paysSel){paysSel.value='BJ';syncTelPlaceholder();}

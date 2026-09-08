@@ -450,6 +450,12 @@ function ensureParticipantColumns() {
     ["fedapay_status", "TEXT"],
     ["qr_code_url", "TEXT"],
     ["scan_device_id", "TEXT"],
+    // Achat groupe : un billet par personne, mais un seul paiement. Les trois
+    // colonnes disent a quel achat la ligne appartient, son rang, et combien
+    // de billets l'achat comptait.
+    ["groupe_id", "TEXT"],
+    ["groupe_index", "INTEGER"],
+    ["groupe_taille", "INTEGER"],
   ];
 
   requiredColumns.forEach(([name, definition]) => {
@@ -457,6 +463,10 @@ function ensureParticipantColumns() {
       run(`ALTER TABLE participants ADD COLUMN ${name} ${definition}`);
     }
   });
+
+  // Cree apres les ALTER : place dans le bloc de schema, l'index porterait sur
+  // une colonne qui n'existe pas encore dans les bases deja en service.
+  run("CREATE INDEX IF NOT EXISTS idx_participants_groupe ON participants(groupe_id)");
 }
 
 // Les bases creees avant l'introduction des roles n'ont pas la colonne :
@@ -1384,6 +1394,11 @@ function getOperatorMeta(settings, operator) {
 // combinaisons par jour : on pouvait toutes les essayer et recolter les codes
 // de tous les participants. On passe donc a 12 caracteres tires par le
 // generateur cryptographique, soit un espace hors d'atteinte.
+// Nombre de billets qu'un seul achat peut couvrir. Au-dela on n'est plus dans
+// l'achat entre proches mais dans la vente de groupe, qui doit passer par
+// l'organisation : elle seule peut verifier autant d'identites a l'entree.
+const MAX_BILLETS_PAR_ACHAT = 10;
+
 function generateParticipantId() {
   const dateKey = getDateKeyBenin().replace(/-/g, "");
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 symboles, sans O/0/I/1
@@ -1971,9 +1986,11 @@ function insertParticipant(participant) {
         operateur_paiement_code, operateur_paiement, nom_paiement, numero_paiement,
         preuve_paiement, preuve_url, capture_b64, participant_photo_url, statut_paiement, code_unique, statut_code,
         fedapay_transaction_id, fedapay_customer_id, fedapay_reference, fedapay_status, qr_code_url,
-        lieu_retrait, date, date_key, timestamp, validation_at, retrait_effectue_at
+        lieu_retrait, date, date_key, timestamp, validation_at, retrait_effectue_at,
+        groupe_id, groupe_index, groupe_taille
       ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?
       )
     `,
     [
@@ -2008,6 +2025,9 @@ function insertParticipant(participant) {
       participant.timestamp,
       participant.validation_at,
       participant.retrait_effectue_at,
+      participant.groupe_id || null,
+      participant.groupe_index || null,
+      participant.groupe_taille || null,
     ],
   );
   persistDatabase();
@@ -2639,12 +2659,16 @@ async function createPaymentCustomer(settings, participant) {
   return payload.customer || payload;
 }
 
-async function createPaymentTransaction(settings, participant, customer) {
-  const amount = getParticipationAmount(settings);
+async function createPaymentTransaction(settings, participant, customer, nombreBillets = 1) {
+  // Un achat groupe est un seul paiement. Facturer billet par billet
+  // obligerait l'acheteur a repasser autant de fois par Mobile Money.
+  const amount = getParticipationAmount(settings) * Math.max(1, Number(nombreBillets) || 1);
   const callbackBase = process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
   const body = {
-    description: `Participation ${eventName} ${settings.event_year || DEFAULT_SETTINGS.event_year}`,
+    description: nombreBillets > 1
+      ? `${nombreBillets} billets ${eventName} ${settings.event_year || DEFAULT_SETTINGS.event_year}`
+      : `Participation ${eventName} ${settings.event_year || DEFAULT_SETTINGS.event_year}`,
     amount,
     currency: { iso: "XOF" },
     customer: { id: customer.id },
@@ -2655,6 +2679,7 @@ async function createPaymentTransaction(settings, participant, customer) {
       nom: participant.nom,
       telephone: participant.telephone,
       email: participant.email,
+      billets: nombreBillets,
     },
   };
 
@@ -2767,10 +2792,13 @@ function isDemoMode(settings = getSettings()) {
 // accepte. finalizePaidParticipant verifie le statut ET le montant : on fournit
 // donc les deux, sinon la validation echouerait.
 function buildDemoTransaction(participant, settings) {
+  // Le montant doit couvrir tout l'achat : finalizePaidParticipant refuse une
+  // transaction dont le montant ne correspond pas au nombre de billets.
+  const billets = getParticipantsDuGroupe(participant).length;
   return {
     id: `demo-${participant.id}`,
     status: "approved",
-    amount: getParticipationAmount(settings),
+    amount: getParticipationAmount(settings) * billets,
     reference: `DEMO-${participant.id}`,
   };
 }
@@ -2819,14 +2847,53 @@ function validateParticipantInput({ nom, telephone, email }) {
   return null;
 }
 
-function buildPendingParticipant(body, settings) {
+/* Billets demandes par un achat.
+ *
+ * Accepte encore l'ancien format a un seul billet (nom + photo a la racine du
+ * corps) : une page gardee en cache par un navigateur continuerait sinon a
+ * echouer sans que personne comprenne pourquoi.
+ */
+function lireBilletsDemandes(body) {
+  const liste = Array.isArray(body.billets) && body.billets.length
+    ? body.billets
+    : [{ nom: body.nom, photo_base64: body.participant_photo_base64 }];
+
+  return liste.map((b) => ({
+    nom: String((b && b.nom) || "").trim(),
+    photo: (b && (b.photo_base64 || b.participant_photo_base64)) || "",
+  }));
+}
+
+/* Toutes les lignes d'un meme achat, dans l'ordre de saisie.
+ *
+ * Les inscriptions d'avant l'achat groupe n'ont pas de groupe_id : elles sont
+ * leur propre groupe d'une seule ligne, ce qui evite d'avoir a distinguer les
+ * deux cas partout ailleurs.
+ */
+function getParticipantsDuGroupe(participant) {
+  if (!participant) return [];
+  if (!participant.groupe_id) return [participant];
+
+  const lignes = statementAll(
+    "SELECT * FROM participants WHERE groupe_id = ? ORDER BY groupe_index ASC, timestamp ASC",
+    [participant.groupe_id],
+  );
+  return lignes.length ? lignes : [participant];
+}
+
+function buildPendingParticipant(body, settings, billet, groupe) {
   const amount = getParticipationAmount(settings);
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
   const id = generateParticipantId();
-  const nom = String(body.nom || "").trim();
+  // Le nom et la photo viennent du billet ; le telephone et l'email restent
+  // ceux de l'acheteur, sur chaque ligne : c'est par son adresse qu'il
+  // retrouvera plus tard TOUS les billets qu'il a payes.
+  const b = billet || { nom: body.nom, photo: body.participant_photo_base64 };
+  const g = groupe || { id: null, index: 1, taille: 1 };
+  const nom = String(b.nom || "").trim();
   const telephone = String(body.telephone || "").trim();
   const email = String(body.email || "").trim();
-  const participantPhotoUrl = saveParticipantPhoto(body.participant_photo_base64, id);
+  const participantPhotoUrl = saveParticipantPhoto(b.photo, id);
 
   return {
     id,
@@ -2861,6 +2928,9 @@ function buildPendingParticipant(body, settings) {
     timestamp: Date.now(),
     validation_at: null,
     retrait_effectue_at: null,
+    groupe_id: g.id,
+    groupe_index: g.index,
+    groupe_taille: g.taille,
   };
 }
 
@@ -2982,55 +3052,79 @@ function escapeHtml(value) {
   );
 }
 
-async function sendValidationEmail(participant, settings) {
-  if (!participant.email) return false;
+async function sendValidationEmail(participantOuGroupe, settings) {
+  // Accepte une ligne seule ou tout un achat : l'admin renvoie le billet d'un
+  // participant, le paiement en valide parfois plusieurs d'un coup.
+  const billets = Array.isArray(participantOuGroupe) ? participantOuGroupe : [participantOuGroupe];
+  const acheteur = billets[0];
+  if (!acheteur || !acheteur.email) return false;
 
   const baseUrl = getPublicBaseUrl(settings);
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
   const nomFichier = eventName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const attachments = [];
 
-  // QR en PNG : certains clients n'affichent pas les images distantes, la
-  // piece jointe reste alors le seul moyen de recuperer le code.
-  const qrPath = participant.qr_code_url
-    ? path.join(ROOT, participant.qr_code_url.split("?")[0].replace(/^\/+/, ""))
-    : "";
-  if (qrPath && fs.existsSync(qrPath)) {
-    attachments.push({
-      filename: `code-${nomFichier}-${participant.code_unique}.png`,
-      content: fs.readFileSync(qrPath),
-    });
+  for (const billet of billets) {
+    // Le QR en PNG n'accompagne que l'achat d'un seul billet. Au-dela, il
+    // doublerait le nombre de pieces jointes sans rien apporter : le QR de
+    // chacun figure deja sur son billet PDF.
+    if (billets.length === 1 && billet.qr_code_url) {
+      const qrPath = path.join(ROOT, billet.qr_code_url.split("?")[0].replace(/^\/+/, ""));
+      if (fs.existsSync(qrPath)) {
+        attachments.push({
+          filename: `code-${nomFichier}-${billet.code_unique}.png`,
+          content: fs.readFileSync(qrPath),
+        });
+      }
+    }
+
+    // Billet PDF. Un echec de generation ne doit jamais empecher l'e-mail de
+    // partir : le code y figure deja, le billet est un confort.
+    try {
+      attachments.push({
+        filename: `billet-${nomFichier}-${billet.code_unique}.pdf`,
+        content: await renderTicketPdf(billet, settings),
+      });
+    } catch (error) {
+      console.warn("Billet PDF non genere:", error.message);
+    }
   }
 
-  // Billet PDF. Un echec de generation ne doit jamais empecher l'e-mail de
-  // partir : le code y figure deja, le billet est un confort.
-  try {
-    attachments.push({
-      filename: `billet-${nomFichier}-${participant.code_unique}.pdf`,
-      content: await renderTicketPdf(participant, settings),
-    });
-  } catch (error) {
-    console.warn("Billet PDF non genere:", error.message);
-  }
-
-  await new mail.PaiementConfirmeEmail({ settings, baseUrl, participant, attachments }).send();
+  await new mail.PaiementConfirmeEmail({ settings, baseUrl, participant: acheteur, billets, attachments }).send();
   return true;
 }
-
 // Alerte "nouvelle inscription payee". Volontairement NON attendue : le
 // participant ne doit pas patienter pendant qu'un e-mail interne part, et un
 // echec d'alerte ne doit jamais faire echouer son inscription.
-function alerterInscriptionPayee(participant, settings) {
+function alerterInscriptionPayee(participantOuGroupe, settings) {
+  const billets = Array.isArray(participantOuGroupe) ? participantOuGroupe : [participantOuGroupe];
+  const acheteur = billets[0];
+  if (!acheteur) return;
+
+  const lignes = [
+    ["Acheteur", acheteur.nom || "—"],
+    ["Téléphone", acheteur.telephone || "—"],
+    ["Email", acheteur.email || "—"],
+  ];
+
+  if (billets.length > 1) {
+    // Un achat groupe se lit mal en une seule ligne : on liste chaque nom avec
+    // son code, c'est ce qu'on aura sous les yeux a l'entree.
+    lignes.push(["Billets", String(billets.length)]);
+    lignes.push(["Total", formatMontant(getParticipationAmount(settings) * billets.length)]);
+    billets.forEach((b, i) => {
+      lignes.push([`${i + 1}. ${b.nom || "—"}`, b.code_unique || "—"]);
+    });
+  } else {
+    lignes.push(["Montant", acheteur.montant || "—"]);
+    lignes.push(["Code d'accès", acheteur.code_unique || "—"]);
+  }
+
+  lignes.push(["Référence", acheteur.groupe_id || acheteur.id || "—"]);
+
   sendInternalAlert(
-    "Nouvelle inscription payée",
-    [
-      ["Participant", participant.nom || "—"],
-      ["Téléphone", participant.telephone || "—"],
-      ["Email", participant.email || "—"],
-      ["Montant", participant.montant || "—"],
-      ["Code d'accès", participant.code_unique || "—"],
-      ["Référence", participant.id || "—"],
-    ],
+    billets.length > 1 ? `Nouvel achat de ${billets.length} billets` : "Nouvelle inscription payée",
+    lignes,
     settings,
   ).catch(() => { /* deja journalise dans sendInternalAlert */ });
 }
@@ -3058,13 +3152,39 @@ async function sendInternalAlert(evenement, lignes, settings = getSettings(), no
   }
 }
 
+// Forme publique d'un billet. Volontairement etroite : la ligne participant
+// porte aussi le telephone et les references de paiement, qui n'ont rien a
+// faire dans une reponse lue par le navigateur.
+function billetPublic(b) {
+  return {
+    id: b.id,
+    nom: b.nom,
+    code_unique: b.code_unique,
+    qr_code_url: b.qr_code_url,
+    lieu_retrait: b.lieu_retrait,
+    montant: b.montant,
+    groupe_index: b.groupe_index || 1,
+    groupe_taille: b.groupe_taille || 1,
+  };
+}
+
 async function finalizePaidParticipant(participant, transaction, settings) {
   if (!participant) {
     throw new Error("Participant introuvable.");
   }
 
-  if (participant.statut_paiement === "Valide" && participant.code_unique) {
-    return { participant, emailSent: false, alreadyFinalized: true };
+  // Un achat couvre un ou plusieurs billets, mais toujours un seul paiement :
+  // on valide le groupe entier ou rien. Valider ligne par ligne laisserait un
+  // acheteur avec trois billets sur cinq si l'envoi echouait au milieu.
+  const groupe = getParticipantsDuGroupe(participant);
+
+  if (groupe.every((b) => b.statut_paiement === "Valide" && b.code_unique)) {
+    return {
+      participant: getParticipantById(participant.id),
+      billets: groupe,
+      emailSent: false,
+      alreadyFinalized: true,
+    };
   }
 
   const amount = getParticipationAmount(settings);
@@ -3075,43 +3195,57 @@ async function finalizePaidParticipant(participant, transaction, settings) {
     throw new Error("Paiement non confirme.");
   }
 
-  if (transactionAmount !== Number(amount)) {
+  // Le montant attendu depend du nombre de billets : sans cette
+  // multiplication, payer un seul billet en delivrerait cinq.
+  if (transactionAmount !== Number(amount) * groupe.length) {
     throw new Error("Montant du paiement incorrect.");
   }
 
-  const existingTransaction = getParticipantByFedapayTransactionId(transaction.id);
-  if (existingTransaction && existingTransaction.id !== participant.id) {
+  // La transaction appartient bien a cet achat. Un identifiant deja utilise
+  // par un AUTRE groupe signalerait un rejeu.
+  const dejaLiee = getParticipantByFedapayTransactionId(transaction.id);
+  if (dejaLiee && !groupe.some((b) => b.id === dejaLiee.id)) {
     throw new Error("Cette transaction est deja liee a une inscription.");
   }
 
-  const codeUnique = generateUniqueCode();
-  const qrCodeUrl = await saveQrCode(codeUnique, participant.id);
   const validationAt = Date.now();
+  const reference = transaction.reference || transaction.merchant_reference || participant.fedapay_reference || null;
 
-  run(
-    `
-      UPDATE participants
-      SET statut_paiement = ?, code_unique = ?, statut_code = ?, preuve_paiement = ?, preuve_url = ?,
-          fedapay_reference = ?, fedapay_status = ?, qr_code_url = ?, validation_at = ?
-      WHERE id = ?
-    `,
-    [
-      "Valide",
-      codeUnique,
-      "actif",
-      transaction.receipt_url || participant.preuve_paiement || null,
-      transaction.receipt_url || participant.preuve_url || null,
-      transaction.reference || transaction.merchant_reference || participant.fedapay_reference || null,
-      transaction.status || "approved",
-      qrCodeUrl,
-      validationAt,
-      participant.id,
-    ],
-  );
+  for (const billet of groupe) {
+    if (billet.statut_paiement === "Valide" && billet.code_unique) continue;
+
+    const codeUnique = generateUniqueCode();
+    const qrCodeUrl = await saveQrCode(codeUnique, billet.id);
+
+    run(
+      `
+        UPDATE participants
+        SET statut_paiement = ?, code_unique = ?, statut_code = ?, preuve_paiement = ?, preuve_url = ?,
+            fedapay_reference = ?, fedapay_status = ?, qr_code_url = ?, validation_at = ?
+        WHERE id = ?
+      `,
+      [
+        "Valide",
+        codeUnique,
+        "actif",
+        transaction.receipt_url || billet.preuve_paiement || null,
+        transaction.receipt_url || billet.preuve_url || null,
+        reference,
+        transaction.status || "approved",
+        qrCodeUrl,
+        validationAt,
+        billet.id,
+      ],
+    );
+  }
   persistDatabase();
 
-  const updatedParticipant = getParticipantById(participant.id);
-  const emailSent = await sendValidationEmail(updatedParticipant, settings).catch((error) => {
+  const billets = getParticipantsDuGroupe(getParticipantById(participant.id));
+  const updatedParticipant = billets.find((b) => b.id === participant.id) || billets[0];
+
+  // Un seul e-mail pour tout l'achat : cinq messages pour cinq billets
+  // ressembleraient a une erreur d'envoi.
+  const emailSent = await sendValidationEmail(billets, settings).catch((error) => {
     console.error("Email de validation non envoye:", error.message);
     return false;
   });
@@ -3119,9 +3253,9 @@ async function finalizePaidParticipant(participant, transaction, settings) {
   // Point de passage unique de TOUT paiement valide, quel que soit le chemin
   // (retour de paiement, webhook, mode demonstration). Accrochee ailleurs,
   // l'alerte manquait le parcours de demonstration.
-  alerterInscriptionPayee(updatedParticipant, settings);
+  alerterInscriptionPayee(billets, settings);
 
-  return { participant: updatedParticipant, emailSent, alreadyFinalized: false };
+  return { participant: updatedParticipant, billets, emailSent, alreadyFinalized: false };
 }
 
 function normalizeParticipant(p) {
@@ -3540,43 +3674,91 @@ async function handleApi(request, response, url) {
 
       const body = await parseJsonBody(request);
       const settings = getSettings();
-      const nom = String(body.nom || "").trim();
       const telephone = String(body.telephone || "").trim();
       const email = String(body.email || "").trim();
+      const billetsDemandes = lireBilletsDemandes(body);
 
-      if (!nom || !telephone || !email || !body.participant_photo_base64) {
-        sendJson(response, 400, { error: "Nom, telephone, email et photo du participant sont obligatoires." });
+      if (!billetsDemandes.length) {
+        sendJson(response, 400, { error: "Aucun billet demande." });
         return;
       }
 
-      // Bornes de saisie : rien ne les verifiait, on pouvait stocker un nom de
-      // plusieurs megaoctets ou une adresse email qui n'en est pas une (et le
-      // participant ne recevait alors jamais son code).
-      const invalid = validateParticipantInput({ nom, telephone, email });
-      if (invalid) {
-        sendJson(response, 400, { error: invalid });
+      if (billetsDemandes.length > MAX_BILLETS_PAR_ACHAT) {
+        sendJson(response, 400, {
+          error: "Maximum " + MAX_BILLETS_PAR_ACHAT + " billets par achat. Pour un groupe plus grand, contacte l'organisation.",
+        });
         return;
       }
+
+      if (!telephone || !email) {
+        sendJson(response, 400, { error: "Telephone et email de l'acheteur sont obligatoires." });
+        return;
+      }
+
+      // Chaque billet doit porter un nom ET une photo : c'est ce couple qui
+      // permet de verifier a l'entree que le porteur est bien la personne.
+      for (let i = 0; i < billetsDemandes.length; i += 1) {
+        const b = billetsDemandes[i];
+        const rang = billetsDemandes.length > 1 ? " du billet " + (i + 1) : "";
+        if (!b.nom || !b.photo) {
+          sendJson(response, 400, { error: "Nom et photo" + rang + " sont obligatoires." });
+          return;
+        }
+        // Bornes de saisie : rien ne les verifiait, on pouvait stocker un nom de
+        // plusieurs megaoctets ou une adresse email qui n'en est pas une (et le
+        // participant ne recevait alors jamais son code).
+        const invalid = validateParticipantInput({ nom: b.nom, telephone, email });
+        if (invalid) {
+          // Le rang est indispensable des qu'il y a plusieurs noms : sans lui,
+          // l'acheteur de cinq billets ne sait pas lequel corriger.
+          sendJson(response, 400, {
+            error: billetsDemandes.length > 1 ? "Billet " + (i + 1) + " : " + invalid : invalid,
+            billet: i + 1,
+          });
+          return;
+        }
+      }
+
+      // Un identifiant commun a tout l'achat. Genere avant les lignes : elles
+      // doivent toutes le porter des l'insertion, sinon un paiement confirme
+      // entre-temps ne validerait qu'une partie du groupe.
+      const groupeId = "GRP-" + crypto.randomBytes(9).toString("hex").toUpperCase();
+      const construire = (billet, index) =>
+        buildPendingParticipant(body, settings, billet, {
+          id: groupeId,
+          index: index + 1,
+          taille: billetsDemandes.length,
+        });
+
+      const resume = (ligne) => ({
+        id: ligne.id,
+        nom: ligne.nom,
+        telephone: ligne.telephone,
+        email: ligne.email,
+        montant: ligne.montant,
+        statut_paiement: ligne.statut_paiement,
+      });
 
       // En demonstration, on n'appelle jamais l'operateur : getPaymentCredentials
       // leverait "Cle secrete de paiement non configuree" et bloquerait tout.
       if (isDemoMode(settings)) {
-        const demoParticipant = buildPendingParticipant(body, settings);
-        demoParticipant.paiement = DEMO_PAYMENT_TAG;
-        demoParticipant.operateur_paiement = "Démonstration";
-        demoParticipant.fedapay_status = "demo_pending";
-        insertParticipant(demoParticipant);
+        const demos = billetsDemandes.map((billet, index) => {
+          const d = construire(billet, index);
+          d.paiement = DEMO_PAYMENT_TAG;
+          d.operateur_paiement = "Démonstration";
+          d.fedapay_status = "demo_pending";
+          insertParticipant(d);
+          return d;
+        });
+
+        // La premiere ligne porte le paiement : c'est son identifiant que la
+        // page de retour interroge, et c'est par elle qu'on retrouve le groupe.
+        const demoParticipant = demos[0];
 
         sendJson(response, 201, {
           demo: true,
-          participant: {
-            id: demoParticipant.id,
-            nom: demoParticipant.nom,
-            telephone: demoParticipant.telephone,
-            email: demoParticipant.email,
-            montant: demoParticipant.montant,
-            statut_paiement: demoParticipant.statut_paiement,
-          },
+          participant: resume(demoParticipant),
+          billets: demos.map(resume),
           transaction: { id: `demo-${demoParticipant.id}`, reference: `DEMO-${demoParticipant.id}`, status: "pending" },
           // On renvoie directement la page de retour : c'est elle qui
           // interroge /api/payments/status, lequel validera le paiement.
@@ -3586,9 +3768,10 @@ async function handleApi(request, response, url) {
       }
 
       getPaymentCredentials(settings);
-      const participant = buildPendingParticipant(body, settings);
+      const groupe = billetsDemandes.map(construire);
+      const participant = groupe[0];   // porte le paiement pour tout l'achat
       const customer = await createPaymentCustomer(settings, participant);
-      const transaction = await createPaymentTransaction(settings, participant, customer);
+      const transaction = await createPaymentTransaction(settings, participant, customer, groupe.length);
       const transactionId = String(transaction.id || "");
 
       if (!transactionId) {
@@ -3599,12 +3782,15 @@ async function handleApi(request, response, url) {
         throw new Error("Cette transaction est deja liee a une inscription.");
       }
 
-      participant.fedapay_transaction_id = transactionId;
-      participant.fedapay_customer_id = customer.id ? String(customer.id) : null;
-      participant.fedapay_reference = transaction.reference || transaction.merchant_reference || participant.id;
-      participant.fedapay_status = transaction.status || "pending";
-
-      insertParticipant(participant);
+      // Toutes les lignes portent la meme transaction : la finalisation les
+      // valide ensemble, et un rejeu sur une autre inscription reste detecte.
+      groupe.forEach((ligne) => {
+        ligne.fedapay_transaction_id = transactionId;
+        ligne.fedapay_customer_id = customer.id ? String(customer.id) : null;
+        ligne.fedapay_reference = transaction.reference || transaction.merchant_reference || participant.id;
+        ligne.fedapay_status = transaction.status || "pending";
+        insertParticipant(ligne);
+      });
 
       // Redirection totale : on renvoie l'URL de la page FedaPay hebergee,
       // le navigateur y envoie le client et FedaPay le ramene sur
@@ -3612,14 +3798,8 @@ async function handleApi(request, response, url) {
       const checkout = await createPaymentToken(settings, transactionId);
 
       sendJson(response, 201, {
-        participant: {
-          id: participant.id,
-          nom: participant.nom,
-          telephone: participant.telephone,
-          email: participant.email,
-          montant: participant.montant,
-          statut_paiement: participant.statut_paiement,
-        },
+        participant: resume(participant),
+        billets: groupe.map(resume),
         transaction: {
           id: transactionId,
           reference: participant.fedapay_reference,
@@ -3668,6 +3848,9 @@ async function handleApi(request, response, url) {
           status: "approved",
           demo: true,
           participant: result.participant,
+          // Tous les billets de l'achat : la page de retour les aligne pour
+          // que l'acheteur telecharge celui de chacun.
+          billets: (result.billets || [result.participant]).map(billetPublic),
           email_sent: result.emailSent,
           already_finalized: result.alreadyFinalized,
           // Jeton de telechargement du billet. Le participant vient de payer
@@ -3706,6 +3889,7 @@ async function handleApi(request, response, url) {
         sendJson(response, 200, {
           status: "approved",
           participant: result.participant,
+          billets: (result.billets || [result.participant]).map(billetPublic),
           email_sent: result.emailSent,
           already_finalized: result.alreadyFinalized,
           ticket_token: createTicketSession(result.participant.email),
