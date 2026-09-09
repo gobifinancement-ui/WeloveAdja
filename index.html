@@ -293,8 +293,24 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
    un vide qui se payait en defilement. */
 body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 
+/* Indication de geste, sous un choix : sur un telephone, rien ne distingue une
+   pastille cliquable d'un simple encadre tant qu'on ne l'a pas touchee. */
+.tap-note{font-size:.74rem;color:var(--cream-52);margin:10px 0 0;text-align:center}
+
+/* Coche sur l'option retenue : la couleur seule ne suffit pas a dire « choisi »
+   quand quatre pastilles se ressemblent. */
+.qty-opt{position:relative}
+.qty-opt::after{
+  content:"";position:absolute;top:6px;right:6px;width:15px;height:15px;border-radius:50%;
+  background:var(--gold) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23241a04' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 13 4 4L19 7'/%3E%3C/svg%3E") center/9px no-repeat;
+  opacity:0;transform:scale(.5);transition:opacity .2s var(--ease),transform .2s var(--ease);
+}
+.qty-opt.on::after{opacity:1;transform:none}
+.qty-libre label{display:block;font-size:.78rem;font-weight:700;margin-bottom:7px;color:var(--cream)}
+
 /* Chapeau d'une etape : dit ce qu'on attend, sans le repeter sur chaque champ. */
 .pane-intro{margin-bottom:20px}
+.pane-intro.court{margin-bottom:14px}
 .pane-intro b{display:block;font-family:var(--display);font-weight:500;font-size:1.24rem;margin-bottom:5px}
 .pane-intro span{font-size:.84rem;line-height:1.55;color:var(--cream-72)}
 
@@ -302,6 +318,11 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .p-node{display:flex;align-items:center;gap:10px;flex:none}
 .p-dot{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:.92rem;flex:none;background:var(--glass);border:1px solid var(--stroke);color:var(--cream-52);transition:.3s}
 .p-label{font-size:.8rem;color:var(--cream-52);font-weight:600;transition:.3s}
+/* Cinq etapes ne tiennent pas dans la largeur d'un telephone au gabarit de
+   trois : on resserre les pastilles et les traits. */
+.progress.serre{gap:6px}
+.progress.serre .p-dot{width:30px;height:30px;font-size:.8rem}
+.progress.serre .p-bar{width:clamp(12px,4vw,44px)}
 .p-bar{width:clamp(20px,8vw,64px);height:2px;background:var(--stroke);border-radius:2px;overflow:hidden}
 .p-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--green-br));transition:width .4s}
 .p-node.active .p-dot{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#2a1d05;border-color:transparent}
@@ -887,19 +908,35 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
       <div class="progress" id="progress"></div>
       <div class="reg-body">
         <!-- ÉTAPE 1 – INFOS -->
-        <div class="pane show" data-pane="1">
-          <div class="field">
-            <label>Combien de billets ?</label>
-            <div class="qty" id="qty" role="group" aria-label="Nombre de billets">
-              <button type="button" class="qty-opt on" data-qty="1"><b>1</b><span>billet</span></button>
-              <button type="button" class="qty-opt" data-qty="2"><b>2</b><span>billets</span></button>
-              <button type="button" class="qty-opt" data-qty="3"><b>3</b><span>billets</span></button>
-              <button type="button" class="qty-opt" data-qty="0"><b>+</b><span>autre</span></button>
-            </div>
-            <div class="qty-libre" id="qtyLibre" hidden>
-              <input id="qtyNb" type="number" min="2" max="10" step="1" inputmode="numeric" placeholder="Nombre de billets (2 à 10)">
-            </div>
-            <div class="err" data-err="qty">Entre 2 et 10 billets par achat.</div>
+        <!-- ÉTAPE 0 – COMBIEN DE BILLETS -->
+        <div class="pane show" data-pane="0">
+          <div class="pane-intro">
+            <b>Combien de billets ?</b>
+            <span>Choisis le nombre de personnes qui viennent. 10 au maximum pour un seul achat.</span>
+          </div>
+
+          <div class="qty" id="qty" role="group" aria-label="Nombre de billets">
+            <button type="button" class="qty-opt on" data-qty="1"><b>1</b><span>billet</span></button>
+            <button type="button" class="qty-opt" data-qty="2"><b>2</b><span>billets</span></button>
+            <button type="button" class="qty-opt" data-qty="3"><b>3</b><span>billets</span></button>
+            <button type="button" class="qty-opt" data-qty="0"><b>+</b><span>autre</span></button>
+          </div>
+          <p class="tap-note">Touche un chiffre, ou « autre » pour en saisir un.</p>
+
+          <div class="qty-libre" id="qtyLibre" hidden>
+            <label for="qtyNb">Nombre de billets</label>
+            <input id="qtyNb" type="number" min="2" max="10" step="1" inputmode="numeric" placeholder="Ex. 5">
+          </div>
+          <div class="err" data-err="qty">Choisis un nombre entre 2 et 10.</div>
+
+          <div class="reg-actions"><button class="btn btn-gold btn-block" data-next>Continuer →</button></div>
+        </div>
+
+        <!-- ÉTAPE 1 – QUI PARTICIPE -->
+        <div class="pane" data-pane="1">
+          <div class="pane-intro">
+            <b id="introNomTitre">Tes informations</b>
+            <span id="introNomTexte">Le billet sera établi à ce nom.</span>
           </div>
 
           <div id="nomSolo">
@@ -941,11 +978,18 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
             <div class="err" data-err="email">Adresse email invalide.</div>
           </div>
           </div>
-          <div class="reg-actions"><button class="btn btn-gold btn-block" data-next>Continuer →</button></div>
+          <!-- Un retour est indispensable depuis que la quantite precede : sans
+               lui, on ne peut plus corriger le nombre de billets. -->
+          <div class="reg-actions"><button class="btn btn-back" data-back>← Retour</button><button class="btn btn-gold" data-next>Continuer →</button></div>
         </div>
 
         <!-- ÉTAPE 2 – PHOTO DU PARTICIPANT -->
         <div class="pane" data-pane="2">
+          <div class="pane-intro">
+            <b id="introPhotoTitre">Ta photo</b>
+            <span id="introPhotoTexte">Elle sert à vérifier ton identité à l'entrée. Visage clair, bien éclairé.</span>
+          </div>
+
           <div id="photoSolo">
           <div class="field">
             <label>Photo du participant <span class="hint">– visage clair, bien éclairé</span></label>
@@ -981,7 +1025,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
           <input id="gphotoCam" type="file" accept="image/*" capture="user" hidden>
           <div class="err" data-err="photos">Il manque la photo de quelqu'un.</div>
 
-          <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Ta photo est utilisée uniquement pour vérifier ton identité le jour J. Elle ne sera jamais publiée.</span></p>
+          <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span id="noteVieP">Ta photo est utilisée uniquement pour vérifier ton identité le jour J. Elle ne sera jamais publiée.</span></p>
           <div class="reg-actions"><button class="btn btn-back" data-back>← Retour</button><button class="btn btn-gold" data-next>Continuer →</button></div>
         </div>
 
@@ -999,6 +1043,10 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
 
         <!-- ÉTAPE 3 – LANCEMENT DU PAIEMENT -->
         <div class="pane" data-pane="4">
+          <!-- Titre seul : la phrase d'explication coutait quatre-vingt-dix pixels
+               de defilement pour dire ce que la barre du bas montre deja. -->
+          <div class="pane-intro court"><b>Vérifie avant de payer</b></div>
+
           <div class="pay-recap">
             <div class="pr-rows">
               <div class="pr-row" id="s-nb" style="display:none"><span>Billets</span><b>—</b></div>
@@ -1556,9 +1604,10 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&activeSheet)closeSheet();});
 
    Les volets gardent un numero stable, le parcours dit lesquels et dans quel
    ordre. Renumeroter a chaque changement d'achat serait ingerable. */
-const PARCOURS   = { solo: [1, 2, 4],                  groupe: [1, 2, 3, 4] };
-const ETIQUETTES = { solo: ['Infos', 'Photo', 'Paiement'],
-                     groupe: ['Billets', 'Photos', 'Contact', 'Paiement'] };
+const PARCOURS   = { solo:   [0, 1, 2, 4],
+                     groupe: [0, 1, 2, 3, 4] };
+const ETIQUETTES = { solo:   ['Billets', 'Infos', 'Photo', 'Paiement'],
+                     groupe: ['Billets', 'Noms', 'Photos', 'Contact', 'Paiement'] };
 
 let idx = 0;                       // rang dans le parcours, pas numero de volet
 const panes = document.querySelectorAll('.pane');
@@ -1576,6 +1625,7 @@ function majEtapes(){
     '<div class="p-node"><div class="p-dot">' + (i + 1) + '</div>' +
     '<span class="p-label"></span></div>').join('');
   [...hote.querySelectorAll('.p-label')].forEach((el, i) => { el.textContent = noms[i]; });
+  hote.classList.toggle('serre', noms.length > 4);
 
   // Le rang courant peut depasser apres un passage de quatre etapes a trois.
   if(idx >= parcours().length) idx = parcours().length - 1;
@@ -1620,6 +1670,7 @@ function majBarrePaiement(){
 
 /* Ce qu'il faut avoir rempli pour quitter un volet. */
 async function validerVolet(numero){
+  if(numero === 0) return validateQty();
   if(numero === 1) return validateStep1();
   if(numero === 2){
     // La compression d'une photo tourne peut-etre encore : l'attendre plutot
@@ -1869,10 +1920,36 @@ function appliquerNombre(n){
 
   construireNoms();
   construirePhotos();
+  majTextesGuides();
   majEtapes();
   majMontant();
   showErr('qty', false);
   showErr('photos', false);
+}
+
+/* Textes d'accompagnement. Ils changent avec le nombre de billets : « Ta
+   photo » n'a plus de sens quand on achete pour cinq personnes, et c'est
+   exactement la ou l'acheteur a besoin qu'on lui dise quoi faire. */
+function majTextesGuides(){
+  const dire = (id, texte) => { const el = document.getElementById(id); if(el) el.textContent = texte; };
+
+  if(enGroupe()){
+    dire('introNomTitre', 'À qui sont les billets ?');
+    dire('introNomTexte', "Écris le nom de chaque personne. C'est le nom qui figurera sur son billet, "
+      + "et celui qu'on vérifiera à l'entrée.");
+    dire('introPhotoTitre', 'La photo de chacun');
+    dire('introPhotoTexte', "Choisis la photo des personnes concernées. Si tu n'as pas la photo de "
+      + "quelqu'un, mets la tienne à la place : c'est toi qui achètes.");
+    dire('noteVieP', "Les photos servent uniquement à vérifier les identités le jour J. "
+      + "Elles ne seront jamais publiées.");
+  }else{
+    dire('introNomTitre', 'Tes informations');
+    dire('introNomTexte', 'Le billet sera établi à ce nom.');
+    dire('introPhotoTitre', 'Ta photo');
+    dire('introPhotoTexte', "Elle sert à vérifier ton identité à l'entrée. Visage clair, bien éclairé.");
+    dire('noteVieP', "Ta photo est utilisée uniquement pour vérifier ton identité le jour J. "
+      + "Elle ne sera jamais publiée.");
+  }
 }
 
 /* Montant total, partout ou il s'affiche. */
@@ -1954,6 +2031,18 @@ function validateContact(){
   if(tel.length<8){showErr('tel',true);ok=false;}else showErr('tel',false);
   if(!valEmail(email)){showErr('email',true);ok=false;}else showErr('email',false);
   return ok;
+}
+
+/* Le nombre doit etre choisi pour de bon. Sans ce controle, choisir « autre »
+   sans rien saisir laissait partir un achat a un seul billet. */
+function validateQty(){
+  const libre = document.querySelector('.qty-opt[data-qty="0"]').classList.contains('on');
+  if(libre){
+    const n = Number(elQtyNb.value);
+    if(!(n >= 2 && n <= MAX_BILLETS)){ showErr('qty', true); elQtyNb.focus(); return false; }
+  }
+  showErr('qty', false);
+  return true;
 }
 
 function validateStep1(){
@@ -2144,6 +2233,14 @@ async function resumePendingPayment(){
     const data=await res.json();
     if(data.status==='approved'&&data.participant){
       localStorage.removeItem('adja_pending_payment');
+
+      // Cet ecran ne montre qu'un billet. Un achat groupe en compte plusieurs :
+      // la page de retour est la seule a savoir les aligner.
+      if((data.billets||[]).length>1){
+        location.href='/retour-paiement.html?p='+encodeURIComponent(data.participant.id);
+        return;
+      }
+
       // openSheet prefixe deja "sheet-" : passer "sheet-participer" cherchait
       // "sheet-sheet-participer", donc la feuille ne s'ouvrait jamais et le
       // participant de retour d'un paiement ne voyait pas son code.
@@ -2228,6 +2325,13 @@ function launchConfetti(){
 function showConfirm(p){
   stopPolling();
   document.getElementById('waitingScreen').style.display='none';
+  // Le parcours est termine : les etapes et la barre de paiement n'ont plus
+  // lieu d'etre. La reprise arrive ici sans passer par l'ecran d'attente.
+  document.getElementById('reg-header').style.display='none';
+  document.getElementById('progress').style.display='none';
+  document.querySelector('#sheet-participer .reg-body').style.display='none';
+  document.getElementById('payBar').classList.remove('on');
+  document.body.classList.remove('pay-open');
   const nom=p.nom||document.getElementById('nom').value.trim();
   document.getElementById('c-name').textContent=nom.split(' ')[0]||'';
   document.getElementById('c-code').textContent=p.code_unique||'——';

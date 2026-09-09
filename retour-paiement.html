@@ -265,6 +265,11 @@ async function check() {
       // Jeton de telechargement delivre par le serveur au moment ou le
       // paiement est confirme. Sans lui, le participant devrait redemander un
       // code par e-mail pour un billet qu'il vient d'acheter.
+      // Le repere de reprise a fait son office : cette page vient d'afficher le
+      // resultat. Laisse en place, il ferait reapparaitre « Paiement confirmé »
+      // sur la page d'accueil a chaque visite suivante.
+      try { localStorage.removeItem('adja_pending_payment'); } catch (e) {}
+
       jetonBillet = data.ticket_token || '';
       const enBillet = (b) => ({
         id: b.id, nom: b.nom, code: b.code_unique || b.code || '',
