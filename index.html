@@ -272,6 +272,32 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .reg-top{padding:28px clamp(22px,5vw,38px) 0;text-align:center}
 .reg-top .eyebrow{margin-bottom:8px}
 .reg-top h2{font-family:var(--display);font-weight:500;font-size:clamp(1.7rem,4vw,2.2rem);line-height:1.05}
+/* Barre de paiement : hors du flux, toujours visible. */
+.pay-bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:130;
+  transform:translateY(115%);transition:transform .42s var(--ease);
+  background:linear-gradient(180deg,color-mix(in oklab,var(--bg) 72%,transparent),var(--bg) 42%);
+  backdrop-filter:blur(14px);
+  border-top:1px solid var(--stroke);
+  padding:12px clamp(16px,5vw,40px) calc(12px + env(safe-area-inset-bottom));
+}
+.pay-bar.on{transform:none}
+.pay-bar-in{max-width:620px;margin-inline:auto;display:flex;align-items:center;gap:14px}
+.pb-total{display:flex;flex-direction:column;gap:1px;flex:0 0 auto}
+.pb-total span{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-52)}
+.pb-total b{font-size:1.12rem;font-weight:800;color:var(--gold-lt);white-space:nowrap}
+.pb-total b small{font-size:.62em;font-weight:600;color:var(--cream-52)}
+.pay-bar .btn{flex:1;margin:0}
+/* Place laissee sous le contenu pour que la barre ne recouvre jamais la fin du
+   recapitulatif. Mesuree sur la barre elle-meme : une valeur devinee laissait
+   un vide qui se payait en defilement. */
+body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
+
+/* Chapeau d'une etape : dit ce qu'on attend, sans le repeter sur chaque champ. */
+.pane-intro{margin-bottom:20px}
+.pane-intro b{display:block;font-family:var(--display);font-weight:500;font-size:1.24rem;margin-bottom:5px}
+.pane-intro span{font-size:.84rem;line-height:1.55;color:var(--cream-72)}
+
 .progress{display:flex;align-items:center;justify-content:center;gap:10px;padding:24px clamp(22px,5vw,38px) 6px}
 .p-node{display:flex;align-items:center;gap:10px;flex:none}
 .p-dot{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:.92rem;flex:none;background:var(--glass);border:1px solid var(--stroke);color:var(--cream-52);transition:.3s}
@@ -840,19 +866,25 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
     <b><svg width="18" height="18" fill="none" stroke="var(--gold)" stroke-width="1.9" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg> Participation</b>
     <button class="close" data-close><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg> Fermer</button>
   </div>
+  <!-- Barre de paiement collee en bas de l'ecran. Le montant et le bouton
+       restent sous les yeux : sur un telephone, le recapitulatif pousse
+       sinon le bouton hors de vue et il faut deviner qu'il faut defiler. -->
+  <div class="pay-bar" id="payBar">
+    <div class="pay-bar-in">
+      <div class="pb-total"><span>À payer</span><b data-amount>—</b></div>
+      <button class="btn btn-gold" id="launchBtn">Payer en toute sécurité →</button>
+    </div>
+  </div>
+
   <div class="sheet-body">
     <div class="reg-shell">
       <div class="reg-top" id="reg-header">
         <span class="eyebrow solo" style="display:inline-flex">Participation 2026</span>
         <h2>Réserve ta place</h2>
       </div>
-      <div class="progress" id="progress">
-        <div class="p-node active" data-step="1"><div class="p-dot">1</div><span class="p-label">Infos</span></div>
-        <div class="p-bar"><i id="bar1"></i></div>
-        <div class="p-node" data-step="2"><div class="p-dot">2</div><span class="p-label">Photo</span></div>
-        <div class="p-bar"><i id="bar2"></i></div>
-        <div class="p-node" data-step="3"><div class="p-dot">3</div><span class="p-label">Paiement</span></div>
-      </div>
+      <!-- Engendree par majEtapes() : le nombre d'etapes change avec le
+           nombre de billets. -->
+      <div class="progress" id="progress"></div>
       <div class="reg-body">
         <!-- ÉTAPE 1 – INFOS -->
         <div class="pane show" data-pane="1">
@@ -909,7 +941,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
             <div class="err" data-err="email">Adresse email invalide.</div>
           </div>
           </div>
-          <div class="reg-actions"><button class="btn btn-gold btn-block" data-next="1">Continuer →</button></div>
+          <div class="reg-actions"><button class="btn btn-gold btn-block" data-next>Continuer →</button></div>
         </div>
 
         <!-- ÉTAPE 2 – PHOTO DU PARTICIPANT -->
@@ -950,21 +982,24 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
           <div class="err" data-err="photos">Il manque la photo de quelqu'un.</div>
 
           <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Ta photo est utilisée uniquement pour vérifier ton identité le jour J. Elle ne sera jamais publiée.</span></p>
-          <div class="reg-actions"><button class="btn btn-back" data-back="2">← Retour</button><button class="btn btn-gold" data-next="2">Continuer →</button></div>
+          <div class="reg-actions"><button class="btn btn-back" data-back>← Retour</button><button class="btn btn-gold" data-next>Continuer →</button></div>
+        </div>
+
+        <!-- ÉTAPE COORDONNÉES – achat groupé uniquement. Les noms et les photos
+             concernent les autres ; le téléphone et l'email ne concernent que
+             l'acheteur, ils méritent leur propre écran. -->
+        <div class="pane" data-pane="3">
+          <div class="pane-intro">
+            <b>Tes coordonnées</b>
+            <span>C'est toi qui achètes : le code d'accès de chacun part sur cette adresse.</span>
+          </div>
+          <div id="slotContact3"></div>
+          <div class="reg-actions"><button class="btn btn-back" data-back>← Retour</button><button class="btn btn-gold" data-next>Continuer →</button></div>
         </div>
 
         <!-- ÉTAPE 3 – LANCEMENT DU PAIEMENT -->
-        <div class="pane" data-pane="3">
-          <!-- Le bloc coordonnees vient se poser ici quand l'achat couvre
-               plusieurs billets : les noms et les photos concernent les
-               autres, le telephone et l'email ne concernent que l'acheteur. -->
-          <div id="slotContact3"></div>
-
+        <div class="pane" data-pane="4">
           <div class="pay-recap">
-            <div class="pr-head">
-              <span class="lbl">Montant à payer</span>
-              <span class="amt" data-amount>5 000 <small>XOF</small></span>
-            </div>
             <div class="pr-rows">
               <div class="pr-row" id="s-nb" style="display:none"><span>Billets</span><b>—</b></div>
               <div class="pr-noms" id="s-noms" style="display:none"></div>
@@ -972,7 +1007,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
               <div class="pr-row" id="s-row-tel"><span>Téléphone</span><b id="s-tel">—</b></div>
               <div class="pr-row" id="s-row-email"><span>Email</span><b id="s-email">—</b></div>
             </div>
-            <button type="button" class="pr-edit" data-back="2">Modifier mes informations</button>
+            <button type="button" class="pr-edit" data-edit>Modifier mes informations</button>
           </div>
 
           <div class="pay-brands">
@@ -982,9 +1017,9 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
             <span class="pb"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> Carte bancaire</span>
           </div>
 
-          <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Tu vas être redirigé vers la <b>page de paiement sécurisée</b>, puis ramené ici avec ton code d'accès.</span></p>
+          <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Redirection vers la <b>page de paiement sécurisée</b>, puis retour ici avec ton code.</span></p>
 
-          <div class="reg-actions"><button class="btn btn-back" data-back="3">← Retour</button><button class="btn btn-gold" id="launchBtn">Payer en toute sécurité →</button></div>
+          <div class="reg-actions"><button class="btn btn-back" data-back>← Retour</button></div>
         </div>
       </div>
 
@@ -1475,6 +1510,7 @@ function openSheet(name){
   revealDisc(lastClickX, lastClickY);
   // Des maintenant : l'accueil s'eloigne et s'efface sous le disque.
   document.body.classList.add('sheet-open');
+  majBarrePaiement();
 
   setTimeout(() => {
     activeSheet = sh;
@@ -1503,6 +1539,7 @@ function closeSheet(){
   stopPolling();
   sh.classList.add('leave');
   document.body.classList.remove('sheet-open');
+  majBarrePaiement();
   sh.addEventListener('animationend',()=>{sh.classList.remove('open','leave');activeSheet=null;},{once:true});
 }
 document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openSheet(b.dataset.open)));
@@ -1512,20 +1549,106 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&activeSheet)closeSheet();});
 /* ============================================================
    STEPPER
    ============================================================ */
-let step=1;
-const panes=document.querySelectorAll('.pane');
-const nodes=document.querySelectorAll('.p-node');
-const bar1=document.getElementById('bar1'),bar2=document.getElementById('bar2');
+/* Le parcours n'a pas la meme longueur selon l'achat. A un billet, le nom, le
+   telephone et l'email tiennent sur un ecran. A plusieurs, les noms et les
+   photos concernent les autres et les coordonnees ne concernent que
+   l'acheteur : les melanger obligeait a defiler pour retrouver le bouton.
+
+   Les volets gardent un numero stable, le parcours dit lesquels et dans quel
+   ordre. Renumeroter a chaque changement d'achat serait ingerable. */
+const PARCOURS   = { solo: [1, 2, 4],                  groupe: [1, 2, 3, 4] };
+const ETIQUETTES = { solo: ['Infos', 'Photo', 'Paiement'],
+                     groupe: ['Billets', 'Photos', 'Contact', 'Paiement'] };
+
+let idx = 0;                       // rang dans le parcours, pas numero de volet
+const panes = document.querySelectorAll('.pane');
+
+const modeParcours = () => (enGroupe() ? 'groupe' : 'solo');
+const parcours     = () => PARCOURS[modeParcours()];
+const volet        = () => parcours()[idx];
+
+/* Barre d'etapes engendree : autant de pastilles que d'etapes reelles. */
+function majEtapes(){
+  const noms = ETIQUETTES[modeParcours()];
+  const hote = document.getElementById('progress');
+  hote.innerHTML = noms.map((nom, i) =>
+    (i ? '<div class="p-bar"><i></i></div>' : '') +
+    '<div class="p-node"><div class="p-dot">' + (i + 1) + '</div>' +
+    '<span class="p-label"></span></div>').join('');
+  [...hote.querySelectorAll('.p-label')].forEach((el, i) => { el.textContent = noms[i]; });
+
+  // Le rang courant peut depasser apres un passage de quatre etapes a trois.
+  if(idx >= parcours().length) idx = parcours().length - 1;
+  peindreEtapes();
+}
+
+function peindreEtapes(){
+  const hote = document.getElementById('progress');
+  [...hote.querySelectorAll('.p-node')].forEach((n, i) => {
+    n.classList.toggle('active', i === idx);
+    n.classList.toggle('done', i < idx);
+  });
+  [...hote.querySelectorAll('.p-bar i')].forEach((b, i) => { b.style.width = idx > i ? '100%' : '0'; });
+}
 
 function paint(){
-  panes.forEach(p=>p.classList.toggle('show',+p.dataset.pane===step));
-  nodes.forEach(n=>{const s=+n.dataset.step;n.classList.toggle('active',s===step);n.classList.toggle('done',s<step);});
-  bar1.style.width=step>1?'100%':'0';bar2.style.width=step>2?'100%':'0';
-  const sb=document.querySelector('#sheet-participer');if(sb)sb.scrollTop=0;
+  const courant = volet();
+  panes.forEach(p => p.classList.toggle('show', +p.dataset.pane === courant));
+  peindreEtapes();
+
+  const sb = document.querySelector('#sheet-participer');
+  if(sb) sb.scrollTop = 0;
+
   // Le volet qui vient d'apparaitre fait defiler ses champs, comme a
-  // l'ouverture : sans ca, passer a l'etape 2 semblait brutal a cote.
+  // l'ouverture : sans ca, passer a l'etape suivante semblait brutal a cote.
   staggerIn(document.querySelector('.pane.show'));
-  if(step===3)fillPayRecap();
+
+  if(courant === 4) fillPayRecap();
+  majBarrePaiement();
+}
+
+/* La barre ne parait qu'a l'ecran de paiement, et seulement tant que la
+   feuille est ouverte : elle est fixe, elle flotterait sinon sur l'accueil. */
+function majBarrePaiement(){
+  const barre = document.getElementById('payBar');
+  const dessus = volet() === 4 && document.body.classList.contains('sheet-open');
+  barre.classList.toggle('on', dessus);
+  document.body.classList.toggle('pay-open', dessus);
+  // Hauteur reelle de la barre, y compris la zone sure du telephone.
+  document.body.style.setProperty('--pay-bar-h', dessus ? barre.offsetHeight + 'px' : '0px');
+}
+
+/* Ce qu'il faut avoir rempli pour quitter un volet. */
+async function validerVolet(numero){
+  if(numero === 1) return validateStep1();
+  if(numero === 2){
+    // La compression d'une photo tourne peut-etre encore : l'attendre plutot
+    // que de reclamer une photo que le participant vient de choisir.
+    if(photoEnCours){
+      const b = document.querySelector('.pane.show [data-next]');
+      const fin = Chargement(b, 120);
+      try{ await photoEnCours; } finally{ fin(); }
+    }
+    return validateStep2();
+  }
+  if(numero === 3) return validateContact();
+  return true;
+}
+
+async function avancer(){
+  if(!(await validerVolet(volet()))) return;
+  if(idx < parcours().length - 1){ idx++; paint(); }
+}
+
+function reculer(){
+  if(idx > 0){ idx--; paint(); }
+}
+
+/* Va droit a un volet donne, s'il figure dans le parcours courant. Sert au
+   bouton « Modifier mes informations » : il ramene la ou on saisit les noms. */
+function allerAuVolet(numero){
+  const rang = parcours().indexOf(numero);
+  if(rang >= 0){ idx = rang; paint(); }
 }
 
 /* Recopie les informations saisies dans le recapitulatif de paiement. C'est
@@ -1546,11 +1669,11 @@ function fillPayRecap(){
   montre('s-noms',enGroupe());
   montre('s-row-nom',!enGroupe());
 
-  // Le telephone et l'email se saisissent sur CET ecran quand l'achat est
-  // groupe : les repeter juste en dessous des champs afficherait une valeur
-  // deja perimee au moment ou on la tape.
-  montre('s-row-tel',!enGroupe());
-  montre('s-row-email',!enGroupe());
+  // Le telephone et l'email sont saisis a l'etape precedente : les rappeler
+  // ici a tout son sens, c'est le dernier moment pour rattraper une faute
+  // sur l'adresse qui portera les codes.
+  montre('s-row-tel',true);
+  montre('s-row-email',true);
 
   const ligneNb=document.getElementById('s-nb');
   const listeNoms=document.getElementById('s-noms');
@@ -1752,14 +1875,6 @@ function appliquerNombre(n){
   showErr('photos', false);
 }
 
-/* Les intitules de la barre d'etapes suivent le parcours reellement suivi. */
-function majEtapes(){
-  const labels = enGroupe()
-    ? ['Billets', 'Photos', 'Paiement']
-    : ['Infos', 'Photo', 'Paiement'];
-  document.querySelectorAll('#progress .p-label').forEach((el, i) => { el.textContent = labels[i]; });
-}
-
 /* Montant total, partout ou il s'affiche. */
 function majMontant(){
   if(typeof CFG === 'undefined' || !CFG.amount) return;
@@ -1768,6 +1883,8 @@ function majMontant(){
     el.innerHTML = total.toLocaleString('fr-FR') + ' <small>' + CFG.currency + '</small>';
   });
 }
+
+majEtapes();
 
 elQty.addEventListener('click', e => {
   const b = e.target.closest('.qty-opt');
@@ -1872,18 +1989,14 @@ function validateStep2(){
   document.querySelector('[data-err="photo"]').classList.remove('show');return true;
 }
 
-document.querySelectorAll('[data-next]').forEach(b=>b.addEventListener('click',async()=>{
-  const from=+b.dataset.next;
-  if(from===1&&!validateStep1())return;
-  if(from===2){
-    // Seuil de 120 ms : une petite photo est compressee avant meme que les
-    // points aient a paraitre, une grosse photo les affiche le temps qu'il faut.
-    if(photoEnCours){const fin=Chargement(b,120);try{await photoEnCours;}finally{fin();}}
-    if(!validateStep2())return;
-  }
-  step=from+1;paint();
-}));
-document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>{step=+b.dataset.back-1;paint();}));
+/* Delegue : les volets sont engendres ou deplaces, un ecouteur pose une fois
+   pour toutes sur la feuille survit a ces remaniements. */
+document.getElementById('sheet-participer').addEventListener('click', e => {
+  if(e.target.closest('[data-next]')) { avancer(); return; }
+  if(e.target.closest('[data-back]')) { reculer(); return; }
+  // « Modifier mes informations » ramene a la saisie des noms, pas d'un cran.
+  if(e.target.closest('[data-edit]')) allerAuVolet(1);
+});
 
 /* ============================================================
    PHOTO DU PARTICIPANT – compression canvas
@@ -1977,11 +2090,6 @@ async function launchPayment(){
   const email=document.getElementById('email').value.trim();
   const pays=document.getElementById('pays').value;
   const launchBtn=document.getElementById('launchBtn');
-
-  // En achat groupe, le telephone et l'email se saisissent sur CET ecran :
-  // sans ce controle, on partirait payer avec une adresse vide et le
-  // participant ne recevrait jamais ses billets.
-  if(enGroupe() && !validateContact()) return;
 
   const finLaunch=Chargement(launchBtn);
 
@@ -2154,7 +2262,7 @@ function resetForm(){
   document.getElementById('reg-header').style.display='';
   const lb=document.getElementById('launchBtn');if(lb){lb.disabled=false;lb.textContent='Payer en toute sécurité →';}
   pollState={participantId:null,transactionId:null};
-  step=1;paint();
+  idx=0;paint();
 }
 document.getElementById('againBtn').addEventListener('click',resetForm);
 
