@@ -293,6 +293,30 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
    un vide qui se payait en defilement. */
 body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 
+/* Moyens de paiement cliquables : au Benin, c'est ici qu'on choisit son
+   reseau, la demande part ensuite sur le telephone. */
+.pay-ops{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.pay-op{
+  display:flex;align-items:center;gap:9px;padding:12px 12px;border-radius:14px;cursor:pointer;
+  background:var(--glass);border:1px solid var(--stroke);color:var(--cream-72);
+  font-size:.86rem;font-weight:700;text-align:left;position:relative;
+  transition:background .22s var(--ease),border-color .22s var(--ease),
+             color .22s var(--ease),transform .22s var(--ease);
+}
+.pay-op img,.pay-op svg{width:26px;height:20px;object-fit:contain;flex:0 0 auto}
+.pay-op:hover{background:var(--glass-2);transform:translateY(-1px)}
+.pay-op:active{transform:scale(.97)}
+.pay-op.on{
+  background:color-mix(in oklab,var(--gold) 18%,transparent);
+  border-color:var(--stroke-gd);color:var(--cream);
+}
+.pay-op::after{
+  content:"";position:absolute;top:6px;right:6px;width:14px;height:14px;border-radius:50%;
+  background:var(--gold) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23241a04' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 13 4 4L19 7'/%3E%3C/svg%3E") center/9px no-repeat;
+  opacity:0;transform:scale(.5);transition:opacity .2s var(--ease),transform .2s var(--ease);
+}
+.pay-op.on::after{opacity:1;transform:none}
+
 /* Indication de geste, sous un choix : sur un telephone, rien ne distingue une
    pastille cliquable d'un simple encadre tant qu'on ne l'a pas touchee. */
 .tap-note{font-size:.74rem;color:var(--cream-52);margin:10px 0 0;text-align:center}
@@ -679,6 +703,12 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
    remontant, il descend depuis le haut. Sans cela, remonter la page donnait
    l'impression que tout repartait dans le mauvais sens.
    La variable --dir porte ce sens, chaque animation s'en sert. */
+/* L'attribut hidden doit l'emporter sur le `display` propre de l'element.
+   Sans cette regle, masquer un bloc dependait de l'ordre des regles : une
+   liste en `display:grid` restait affichee malgre hidden, et il fallait s'en
+   apercevoir a l'ecran plutot que de pouvoir s'y fier. */
+[hidden]{display:none!important}
+
 body{--dir:34px;--tilt:10deg}
 body.scroll-up{--dir:-34px;--tilt:-10deg}
 
@@ -1058,14 +1088,17 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
             <button type="button" class="pr-edit" data-edit>Modifier mes informations</button>
           </div>
 
-          <div class="pay-brands">
+          <!-- Moyens de paiement. Passifs quand le paiement passe par la page
+               hébergée, cliquables quand le pays permet de payer sur place. -->
+          <div class="pay-brands" id="payBrands">
             <span class="pb"><img src="/moov.png" alt="" onerror="this.remove()"> Moov</span>
             <span class="pb"><img src="/MTN.svg" alt="" onerror="this.remove()"> MTN</span>
             <span class="pb"><img src="/celtiiscash.png" alt="" onerror="this.remove()"> Celtiis</span>
             <span class="pb"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> Carte bancaire</span>
           </div>
+          <div class="pay-ops" id="payOps" hidden></div>
 
-          <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Redirection vers la <b>page de paiement sécurisée</b>, puis retour ici avec ton code.</span></p>
+          <p class="note" id="payNote"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span id="payNoteTexte">Redirection vers la <b>page de paiement sécurisée</b>, puis retour ici avec ton code.</span></p>
 
           <div class="reg-actions"><button class="btn btn-back" data-back>← Retour</button></div>
         </div>
@@ -1653,7 +1686,7 @@ function paint(){
   // l'ouverture : sans ca, passer a l'etape suivante semblait brutal a cote.
   staggerIn(document.querySelector('.pane.show'));
 
-  if(courant === 4) fillPayRecap();
+  if(courant === 4){ fillPayRecap(); majMoyensPaiement(); }
   majBarrePaiement();
 }
 
@@ -1952,6 +1985,102 @@ function majTextesGuides(){
   }
 }
 
+/* ============================================================
+   MOYEN DE PAIEMENT
+   Selon le pays, deux chemins. Au Benin la demande part sur le telephone du
+   client et il ne quitte jamais le site ; ailleurs, seule la page hebergee
+   couvre tous les reseaux et la carte bancaire.
+   ============================================================ */
+let operateurChoisi = '';          // vide = page hebergee (carte, autres pays)
+
+const LOGOS_OPERATEURS = {
+  mtn:     '/MTN.svg',
+  moov:    '/moov.png',
+  celtiis: '/celtiiscash.png',
+};
+
+const ICONE_CARTE = '<svg width="26" height="20" fill="none" stroke="currentColor" stroke-width="1.9" '
+  + 'viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>';
+
+function paysChoisi(){
+  const sel = document.getElementById('pays');
+  return sel ? sel.value : '';
+}
+
+/* Le pays permet-il de payer sans quitter le site ? */
+function paiementSurPlace(){
+  const cfg = (CFG && CFG.paiementDirect) || null;
+  return !!(cfg && (cfg.pays || []).includes(paysChoisi()));
+}
+
+/* Reconstruit les moyens de paiement offerts. Appelee a l'arrivee sur l'ecran
+   de paiement et a chaque changement de pays : l'indicatif se choisit deux
+   ecrans plus tot, on ne peut pas figer la liste une fois pour toutes. */
+function majMoyensPaiement(){
+  const passifs = document.getElementById('payBrands');
+  const actifs  = document.getElementById('payOps');
+  if(!passifs || !actifs) return;
+
+  const surPlace = paiementSurPlace();
+  passifs.hidden = surPlace;
+  actifs.hidden  = !surPlace;
+
+  if(!surPlace){
+    // Hors des pays servis, tout passe par la page hebergee : aucun choix a
+    // faire ici, il se fera la-bas.
+    operateurChoisi = '';
+    majBoutonPayer();
+    return;
+  }
+
+  const ops = ((CFG.paiementDirect && CFG.paiementDirect.operateurs) || []);
+  actifs.innerHTML = ops.map(o =>
+    '<button type="button" class="pay-op" data-op="' + o.code + '">' +
+    (LOGOS_OPERATEURS[o.code]
+      ? '<img src="' + LOGOS_OPERATEURS[o.code] + '" alt="" onerror="this.remove()">'
+      : '') +
+    '<span>' + o.label + '</span></button>').join('')
+    + '<button type="button" class="pay-op" data-op="">' + ICONE_CARTE + '<span>Carte bancaire</span></button>';
+
+  // Le premier reseau est retenu d'office : c'est le cas courant, et un ecran
+  // de paiement sans rien de coche laisse croire qu'il manque une etape.
+  if(!ops.some(o => o.code === operateurChoisi)) operateurChoisi = ops.length ? ops[0].code : '';
+  peindreOperateur();
+  majBoutonPayer();
+}
+
+function peindreOperateur(){
+  document.querySelectorAll('#payOps .pay-op').forEach(b => {
+    b.classList.toggle('on', b.dataset.op === operateurChoisi);
+  });
+}
+
+/* Le bouton dit ce qui va se passer, et la note dit ou. */
+function majBoutonPayer(){
+  const b = document.getElementById('launchBtn');
+  const note = document.getElementById('payNoteTexte');
+  if(!b) return;
+
+  const direct = paiementSurPlace() && operateurChoisi;
+  const nom = ((CFG.paiementDirect && CFG.paiementDirect.operateurs) || [])
+    .find(o => o.code === operateurChoisi);
+
+  b.textContent = direct && nom ? 'Payer avec ' + nom.label + ' →' : 'Payer en toute sécurité →';
+  if(note){
+    note.innerHTML = direct
+      ? "La demande arrive <b>sur ton téléphone</b>. Tu tapes ton code secret, sans quitter cette page."
+      : "Redirection vers la <b>page de paiement sécurisée</b>, puis retour ici avec ton code.";
+  }
+}
+
+document.getElementById('payOps').addEventListener('click', e => {
+  const b = e.target.closest('.pay-op');
+  if(!b) return;
+  operateurChoisi = b.dataset.op;
+  peindreOperateur();
+  majBoutonPayer();
+});
+
 /* Montant total, partout ou il s'affiche. */
 function majMontant(){
   if(typeof CFG === 'undefined' || !CFG.amount) return;
@@ -2190,13 +2319,13 @@ async function launchPayment(){
       method:'POST',headers:{'Content-Type':'application/json'},
       // Un billet par personne, toujours sous la meme forme : le serveur n'a
       // pas a distinguer l'achat simple de l'achat groupe.
-      body:JSON.stringify({telephone,email,pays,billets:Array.from({length:nbBillets},(_,i)=>({
-        nom:nomDuBillet(i), photo_base64:photos[i]||''
-      }))})
+      body:JSON.stringify({telephone,email,pays,operateur:operateurChoisi,
+        billets:Array.from({length:nbBillets},(_,i)=>({
+          nom:nomDuBillet(i), photo_base64:photos[i]||''
+        }))})
     });
     const createData=await createRes.json();
     if(!createRes.ok)throw new Error(createData.error||'Création impossible.');
-    if(!createData.checkout_url)throw new Error("La page de paiement n'a pas pu être ouverte. Réessaie.");
 
     // Repère de secours : si le retour automatique échoue (onglet fermé,
     // réseau coupé), la page d'accueil pourra reprendre la vérification.
@@ -2208,6 +2337,17 @@ async function launchPayment(){
       }));
     }catch(e){}
 
+    // Le serveur dit quel chemin il a pris. Il peut avoir retenu la page
+    // hébergée alors qu'on demandait le paiement sur place — par exemple si
+    // l'opérateur n'a pas répondu : on suit sa décision, pas notre intention.
+    if(createData.mode==='direct'){
+      pollState={participantId:createData.participant.id,
+                 transactionId:String((createData.transaction||{}).id||'')};
+      attendreValidation(createData.demo===true);
+      return;
+    }
+
+    if(!createData.checkout_url)throw new Error("La page de paiement n'a pas pu être ouverte. Réessaie.");
     window.location.href=createData.checkout_url;
   }catch(e){
     finLaunch();
@@ -2221,6 +2361,11 @@ async function resumePendingPayment(){
   let pending=null;
   try{pending=JSON.parse(localStorage.getItem('adja_pending_payment')||'null');}catch(e){}
   if(!pending||!pending.participantId)return;
+
+  // Rattrapage pour qui ARRIVE sur le site, pas pour qui est en train de
+  // remplir le formulaire : surgir au milieu d'une nouvelle inscription pour
+  // annoncer un ancien paiement detournerait l'ecran sans prevenir.
+  if(document.body.classList.contains('sheet-open'))return;
 
   // Au-delà de 2 h le repère n'a plus de sens.
   if(Date.now()-(pending.at||0)>2*60*60*1000){localStorage.removeItem('adja_pending_payment');return;}
@@ -2265,6 +2410,15 @@ async function pollPaymentStatus(manual=false){
 
     if(data.status==='approved'&&data.participant){
       stopPolling();
+      try{localStorage.removeItem('adja_pending_payment');}catch(e){}
+
+      // Cet écran ne montre qu'un billet. Un achat groupé en compte plusieurs,
+      // et la page de retour est la seule à savoir les aligner et les faire
+      // télécharger.
+      if((data.billets||[]).length>1){
+        location.href='/retour-paiement.html?p='+encodeURIComponent(data.participant.id);
+        return;
+      }
       showConfirm(data.participant);
     }else if(data.status&&data.status!=='pending'&&data.status!=='approved'){
       // declined / expired / canceled
@@ -2320,6 +2474,34 @@ function launchConfetti(){
       setTimeout(()=>c.remove(),(delay+dur+0.5)*1000);
     }
   },400);
+}
+
+/* Attente de la validation sur le telephone.
+   L'interrogation est automatique : demander au client d'appuyer lui-meme sur
+   « Vérifier » apres avoir tape son code ferait croire a un blocage. Le bouton
+   reste la pour qui veut forcer. */
+function attendreValidation(demo){
+  pollAttempts=0;
+  showWaitingScreen();
+  setStatus(demo
+    ? 'Démonstration : validation automatique dans un instant…'
+    : 'Vérification automatique toutes les 6 s…');
+  setError('');
+
+  stopPolling();
+  // En démonstration le serveur valide dès la première interrogation : inutile
+  // de faire patienter six secondes pour rien.
+  pollPaymentStatus();
+  pollTimer=setInterval(()=>{
+    pollAttempts++;
+    if(pollAttempts>MAX_POLL){
+      stopPolling();
+      setStatus('');
+      setError("Toujours rien reçu. Si le montant a été débité, ton code arrivera par email.");
+      return;
+    }
+    pollPaymentStatus();
+  },6000);
 }
 
 function showConfirm(p){

@@ -71,6 +71,11 @@ const DEFAULT_SETTINGS = {
   payment_public_key: "",
   payment_secret_key: "",
   payment_environment: "sandbox",
+  // Pays dont les clients paient SANS quitter le site : la demande part en
+  // USSD sur leur telephone. Ailleurs, la page hebergee de l'operateur reste
+  // le seul moyen de couvrir tous les reseaux et la carte bancaire.
+  paiement_direct_pays: "BJ",
+  paiement_direct_actif: "1",
   fedapay_webhook_secret: "",
   public_base_url: "",
   wachap_instance_id: "",
@@ -224,6 +229,8 @@ const SETTINGS_KEY_MAP = {
   adminPassword:        "admin_password",
   scanPassword:         "scan_password",
   paymentSecretKey:     "payment_secret_key",
+  paiementDirectPays:   "paiement_direct_pays",
+  paiementDirectActif:  "paiement_direct_actif",
   paymentEnvironment:   "payment_environment",
   fedapayWebhookSecret: "fedapay_webhook_secret",
   publicBaseUrl:        "public_base_url",
@@ -1310,6 +1317,11 @@ function publicSettings(settings = getSettings()) {
     email:       settings.vendeur_email || "",
     logoUrl:     settings.logo_url || "",
     demoMode:    isDemoMode(settings),
+    // Le formulaire s'en sert pour savoir quel chemin proposer selon le pays.
+    paiementDirect: {
+      pays: paysPaiementDirect(settings),
+      operateurs: Object.entries(OPERATEURS_DIRECTS).map(([code, o]) => ({ code, label: o.label })),
+    },
     heroMedia:   buildHeroMedia(settings),
     theme:       resolveTheme(settings),
     chiefs,
@@ -1368,6 +1380,51 @@ function normalizePhoneNumber(value) {
 function getParticipationAmount(settings) {
   const raw = Number(settings.participation_fee);
   return Number.isFinite(raw) && raw > 0 ? raw : 10000;
+}
+
+/* Operateurs joignables sans redirection.
+ *
+ * La route est le segment d'API de l'operateur chez FedaPay : on y poste le
+ * jeton de la transaction et le numero, et le client recoit la demande sur son
+ * telephone. Si l'un de ces noms changeait, la creation retomberait d'elle-meme
+ * sur la page hebergee (voir /api/payments/create) : personne ne reste bloque.
+ */
+const OPERATEURS_DIRECTS = {
+  mtn:     { label: "MTN",     route: "mtn_open" },
+  moov:    { label: "Moov",    route: "moov" },
+  celtiis: { label: "Celtiis", route: "celtiis_bj" },
+};
+
+/* Pays qui paient sans quitter le site. */
+function paysPaiementDirect(settings) {
+  if (String(settings.paiement_direct_actif || "1") !== "1") return [];
+  return String(settings.paiement_direct_pays || "")
+    .split(/[,;\s]+/)
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function paiementDirectPossible(pays, operateur, settings) {
+  if (!OPERATEURS_DIRECTS[operateur]) return false;
+  return paysPaiementDirect(settings).includes(String(pays || "").toUpperCase());
+}
+
+/* Envoie la demande de paiement sur le telephone du client.
+ *
+ * Le numero part sans indicatif : FedaPay attend le numero local et le pays
+ * separement. Coller les deux ferait echouer la demande sans message clair.
+ */
+async function demanderPaiementMobile(settings, jeton, operateur, telephone, pays) {
+  const op = OPERATEURS_DIRECTS[operateur];
+  if (!op) throw new Error("Operateur inconnu.");
+
+  const numero = String(telephone || "").replace(/\D/g, "");
+  if (numero.length < 8) throw new Error("Numero de telephone invalide.");
+
+  return fedapayRequest(settings, "POST", `/${op.route}`, {
+    token: jeton,
+    phone_number: { number: numero, country: String(pays || "BJ").toLowerCase() },
+  });
 }
 
 function getOperatorMeta(settings, operator) {
@@ -3755,8 +3812,15 @@ async function handleApi(request, response, url) {
         // page de retour interroge, et c'est par elle qu'on retrouve le groupe.
         const demoParticipant = demos[0];
 
+        const operateurDemo = String(body.operateur || "").trim();
+        const directDemo = paiementDirectPossible(body.pays || body.country, operateurDemo, settings);
+
         sendJson(response, 201, {
           demo: true,
+          // En demonstration on simule les deux chemins, pour pouvoir essayer
+          // l'attente sur place sans cle de paiement.
+          mode: directDemo ? "direct" : "redirect",
+          operateur: directDemo ? operateurDemo : null,
           participant: resume(demoParticipant),
           billets: demos.map(resume),
           transaction: { id: `demo-${demoParticipant.id}`, reference: `DEMO-${demoParticipant.id}`, status: "pending" },
@@ -3792,12 +3856,39 @@ async function handleApi(request, response, url) {
         insertParticipant(ligne);
       });
 
-      // Redirection totale : on renvoie l'URL de la page FedaPay hebergee,
-      // le navigateur y envoie le client et FedaPay le ramene sur
-      // /retour-paiement.html une fois le paiement termine.
+      // Le jeton sert aux deux chemins : la page hebergee s'ouvre avec lui, et
+      // la demande envoyee au telephone le porte aussi.
       const checkout = await createPaymentToken(settings, transactionId);
 
+      // Paiement sans redirection. Le client recoit la demande sur son
+      // telephone et valide avec son code : il ne quitte jamais le site.
+      const operateur = String(body.operateur || "").trim();
+      if (paiementDirectPossible(body.pays || body.country, operateur, settings)) {
+        try {
+          await demanderPaiementMobile(settings, checkout.token, operateur, telephone, body.pays || body.country);
+
+          sendJson(response, 201, {
+            mode: "direct",
+            operateur,
+            participant: resume(participant),
+            billets: groupe.map(resume),
+            transaction: {
+              id: transactionId,
+              reference: participant.fedapay_reference,
+              status: participant.fedapay_status,
+            },
+          });
+          return;
+        } catch (erreur) {
+          // On ne laisse jamais un acheteur sans issue : la page hebergee
+          // couvre les memes operateurs. L'echec est journalise pour qu'une
+          // route d'operateur devenue fausse finisse par se voir.
+          console.warn("Paiement direct impossible, retour a la page hebergee:", erreur.message);
+        }
+      }
+
       sendJson(response, 201, {
+        mode: "redirect",
         participant: resume(participant),
         billets: groupe.map(resume),
         transaction: {
