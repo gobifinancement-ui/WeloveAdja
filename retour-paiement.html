@@ -82,32 +82,30 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
 .muted{font-size:.74rem;color:var(--cream-32);margin:0 0 10px;line-height:1.45}
 /* Le retour a l'accueil est une sortie secondaire : un lien suffit, un second
    bouton pleine largeur coutait 48px pour rien. */
-.grp{display:flex;flex-direction:column;gap:8px;width:100%;max-height:46vh;overflow-y:auto;padding-right:2px}
-.grp-row{
-  display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:13px;
+/* Telechargement des billets. Un bloc par personne : son nom en titre, ses
+   deux formats juste dessous. A plusieurs billets, une seule paire de boutons
+   ne dirait pas de qui elle parle. */
+/* Pas de plafond tant que la liste tient : un ascenseur sur un seul bloc
+   donne l'impression qu'on cache quelque chose. */
+.dl-list{display:flex;flex-direction:column;gap:12px;width:100%}
+.dl-list.longue{max-height:52vh;overflow-y:auto;padding-right:4px}
+.dl-item{
+  padding:11px 12px 12px;border-radius:14px;
   background:var(--surface);border:1px solid var(--surface-border);
-  animation:grp-in .38s cubic-bezier(.22,.9,.28,1) both;
+  animation:dl-in .38s cubic-bezier(.22,.9,.28,1) both;
 }
-@keyframes grp-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-.grp-row i{
-  flex:0 0 auto;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
-  font-style:normal;font-size:.66rem;font-weight:800;
+@keyframes dl-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.dl-titre{margin:0 0 9px;font-size:.85rem;line-height:1.4;color:var(--cream-72);display:flex;align-items:center;gap:8px}
+.dl-titre i{
+  flex:0 0 auto;width:21px;height:21px;border-radius:50%;display:grid;place-items:center;
+  font-style:normal;font-size:.64rem;font-weight:800;
   background:color-mix(in oklab,var(--gold) 22%,transparent);color:var(--gold-lt);
 }
-.grp-id{flex:1;min-width:0}
-.grp-id b{display:block;font-size:.82rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.grp-id span{font-size:.76rem;font-weight:800;letter-spacing:.14em;color:var(--gold-lt);font-variant-numeric:tabular-nums}
-.grp-act{display:flex;gap:6px;flex:0 0 auto}
-.grp-act button{
-  padding:6px 9px;border-radius:9px;cursor:pointer;font-size:.67rem;font-weight:700;
-  background:var(--surface-strong);border:1px solid var(--surface-border);color:var(--text);
-  transition:transform .18s ease,background .18s ease;
-}
-.grp-act button:hover{background:var(--surface);transform:translateY(-1px)}
-.grp-act button:active{transform:scale(.95)}
-.grp-titre{font-size:.78rem;color:var(--cream-52);margin:0 0 2px}
-.dl-choix{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}
-.dl-choix .btn{margin-top:0}
+.dl-titre b{color:var(--text);font-weight:800}
+.dl-titre em{font-style:normal;font-weight:800;letter-spacing:.12em;color:var(--gold-lt);font-variant-numeric:tabular-nums}
+.dl-paire{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.dl-paire .btn{margin-top:0}
+.dl-entete{font-size:.78rem;color:var(--cream-52);margin:0 0 2px;width:100%}
 .dl-msg{font-size:.78rem;color:var(--cream-52);margin-top:9px;min-height:1.1em;line-height:1.5}
 .dl-msg.ko{color:var(--ko)}
 .home-link{display:inline-block;margin-top:10px;color:var(--cream-52);font-size:.8rem;font-weight:700;text-decoration:none}
@@ -153,11 +151,6 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
     </h1>
 
     <div class="ok-body">
-    <!-- Achat groupe : un billet par personne, chacun telechargeable. Le grand
-         code et le QR de l'ecran a un billet ne s'y pretent pas, on ne peut
-         pas en mettre un en avant plutot qu'un autre. -->
-    <div class="grp hidden" id="grp"></div>
-
     <div class="ticket">
       <span class="tk-lbl">Ton code d'accès</span>
       <div class="tk-code">
@@ -166,7 +159,6 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
           <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         </button>
       </div>
-      <img class="qr hidden" id="oQr" alt="QR code d'accès">
     </div>
 
     <div class="ok-side">
@@ -176,12 +168,11 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
       <div class="row" id="rowPlace"><span>Lieu</span><b id="oPlace">—</b></div>
     </div>
 
-    <p class="muted" id="mailNote">Un email de confirmation t'a été envoyé avec ce QR code.</p>
-    <button class="btn btn-gold" id="dlOpen" type="button">🎟️ Télécharger mon billet</button>
-    <div class="dl-choix" id="dlChoix" hidden>
-      <button class="btn btn-ghost" id="dlPdf" type="button">En PDF</button>
-      <button class="btn btn-ghost" id="dlImg" type="button">En image</button>
-    </div>
+    <p class="muted" id="mailNote">Un email de confirmation t'a été envoyé avec ton billet.</p>
+
+    <!-- Un bloc par billet : le nom de son porteur, puis les deux formats.
+         Rempli par peindreBillets(). -->
+    <div class="dl-list" id="dlList"></div>
     <div class="dl-msg" id="dlMsg"></div>
     <a class="btn btn-ghost" id="verifyLink" href="/verification.html">Vérifier mon code</a>
     <a class="home-link" href="/">Retour à l'accueil</a>
@@ -256,8 +247,6 @@ async function check() {
       const lieu = p.lieu_retrait || '';
       $('oPlace').textContent = lieu || '—';
       $('rowPlace').classList.toggle('hidden', !lieu);
-      if (p.qr_code_url) { $('oQr').src = p.qr_code_url; $('oQr').classList.remove('hidden'); }
-
       // Le bouton emmene sur la page de verification AVEC le code deja rempli :
       // le participant voit son billet sans rien retaper.
       if (code) $('verifyLink').href = '/verification.html?code=' + encodeURIComponent(code);
@@ -276,12 +265,11 @@ async function check() {
         lieu: b.lieu_retrait, qr: b.qr_code_url,
       });
       billetCourant = enBillet(p);
-      $('dlOpen').style.display = jetonBillet ? '' : 'none';
 
       // Un achat peut couvrir plusieurs personnes : on les aligne toutes
       // plutot que de n'en montrer qu'une.
       const billets = (data.billets || []).map(enBillet);
-      if (billets.length > 1) peindreGroupe(billets);
+      peindreBillets(billets.length ? billets : [billetCourant]);
 
       // L'email n'est promis que s'il est reellement parti. Le promettre a tort
       // ferait attendre pour rien un message qui n'arrivera jamais.
@@ -343,12 +331,6 @@ function direDl(texte, type) {
   el.className = 'dl-msg' + (type ? ' ' + type : '');
 }
 
-$('dlOpen').addEventListener('click', () => {
-  const choix = $('dlChoix');
-  choix.hidden = !choix.hidden;
-  direDl('');
-});
-
 /* Remet un fichier au visiteur. Le lien est cree, clique et retire : le
    navigateur n'offre pas d'autre moyen de nommer un fichier telecharge. */
 function remettre(blob, nom) {
@@ -397,39 +379,56 @@ async function telechargerImage(billet, bouton) {
   }
 }
 
-$('dlPdf').addEventListener('click', (e) => telechargerPdf(billetCourant, e.currentTarget));
-$('dlImg').addEventListener('click', (e) => telechargerImage(billetCourant, e.currentTarget));
-
-/* Achat groupe : une ligne par personne, chacune avec ses deux formats.
-   Les lignes entrent l'une apres l'autre, comme les champs du formulaire. */
-function peindreGroupe(billets) {
-  const hote = $('grp');
-  hote.innerHTML = '<p class="grp-titre">' + billets.length + ' billets — un par personne</p>';
+/* Un bloc de telechargement par billet.
+   A un billet le titre s'adresse a l'acheteur, a plusieurs il nomme chaque
+   porteur : une seule paire de boutons ne dirait pas de qui elle parle. */
+function peindreBillets(billets) {
+  const hote = $('dlList');
+  const groupe = billets.length > 1;
+  // Au-dela de trois, la liste depasse l'ecran : on la fait defiler elle-meme
+  // plutot que toute la page.
+  hote.classList.toggle('longue', billets.length > 3);
+  hote.innerHTML = groupe
+    ? '<p class="dl-entete">' + billets.length + ' billets — un par personne</p>'
+    : '';
 
   billets.forEach((billet, i) => {
-    const l = document.createElement('div');
-    l.className = 'grp-row';
-    l.style.animationDelay = (90 + i * 70) + 'ms';
-    l.innerHTML = '<i></i><div class="grp-id"><b></b><span></span></div>' +
-      '<div class="grp-act"><button type="button" data-f="pdf">PDF</button>' +
-      '<button type="button" data-f="img">Image</button></div>';
-    l.querySelector('i').textContent = i + 1;
-    l.querySelector('.grp-id b').textContent = billet.nom || 'Participant ' + (i + 1);
-    l.querySelector('.grp-id span').textContent = billet.code || '——';
-    l.querySelector('[data-f="pdf"]').addEventListener('click', (e) => telechargerPdf(billet, e.currentTarget));
-    l.querySelector('[data-f="img"]').addEventListener('click', (e) => telechargerImage(billet, e.currentTarget));
-    hote.appendChild(l);
+    const bloc = document.createElement('div');
+    bloc.className = 'dl-item';
+    bloc.style.animationDelay = (90 + i * 70) + 'ms';
+    bloc.innerHTML =
+      '<p class="dl-titre">' + (groupe ? '<i></i>' : '') + '<span></span></p>' +
+      '<div class="dl-paire">' +
+      '<button class="btn btn-ghost" type="button" data-f="pdf">En PDF</button>' +
+      '<button class="btn btn-ghost" type="button" data-f="img">En image</button>' +
+      '</div>';
+
+    const titre = bloc.querySelector('.dl-titre span');
+    if (groupe) {
+      bloc.querySelector('.dl-titre i').textContent = i + 1;
+      // textContent sur un noeud separe : le nom vient d'un formulaire public,
+      // l'inserer en HTML ouvrirait une injection.
+      const nom = document.createElement('b');
+      nom.textContent = billet.nom || 'Participant ' + (i + 1);
+      titre.append('Télécharge le ticket de ', nom);
+      if (billet.code) {
+        const code = document.createElement('em');
+        code.textContent = billet.code;
+        titre.append(' — ', code);
+      }
+    } else {
+      titre.textContent = 'Télécharge ton ticket ici';
+    }
+
+    bloc.querySelector('[data-f="pdf"]').addEventListener('click', (e) => telechargerPdf(billet, e.currentTarget));
+    bloc.querySelector('[data-f="img"]').addEventListener('click', (e) => telechargerImage(billet, e.currentTarget));
+    hote.appendChild(bloc);
   });
 
-  // L'ecran a un billet met un code et un QR en avant : on ne peut pas
-  // designer celui d'une personne plutot que celui d'une autre.
-  // .hidden, et non l'attribut hidden : chacun de ces blocs porte un `display`
-  // dans la feuille de styles, qui l'emporterait sur l'attribut.
-  hote.classList.remove('hidden');
-  document.querySelector('.ticket').classList.add('hidden');
-  document.querySelector('.ok-side .box').classList.add('hidden');
-  $('dlOpen').classList.add('hidden');
-  $('dlChoix').classList.add('hidden');
+  // A plusieurs billets, le grand code en tete ne peut designer personne : on
+  // ne va pas mettre celui d'un porteur en avant plutot qu'un autre.
+  document.querySelector('.ticket').classList.toggle('hidden', groupe);
+  document.querySelector('.ok-side .box').classList.toggle('hidden', groupe);
 }
 
 /* Copie du code. navigator.clipboard exige un contexte securise : en HTTP sur
