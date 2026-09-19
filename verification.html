@@ -18,6 +18,7 @@
   --stroke:rgba(246,241,230,.12);--stroke-gd:rgba(240,198,79,.36);
   --red:#e08a6a;
   --shadow:0 40px 90px -34px rgba(0,0,0,.78);
+  --brand-green:#0a8f4f;--brand-green-br:#14b563;--brand-green-stroke:rgba(10,143,79,.5);
   --display:"Bricolage Grotesque",system-ui,sans-serif;
   --body:"Hanken Grotesk",system-ui,sans-serif;
   --ease:cubic-bezier(.32,.72,0,1);
@@ -36,8 +37,8 @@ body{font-family:var(--body);background:var(--bg);color:var(--cream);min-height:
 .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--cream)}
 .brand .mark{width:38px;height:38px;flex:none}
 .brand b{font-family:var(--display);font-weight:700;font-size:1.1rem}
-.back-btn{display:inline-flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;color:var(--cream-52);text-decoration:none;border:1px solid var(--stroke);padding:8px 14px;border-radius:100px;transition:.2s}
-.back-btn:hover{color:var(--cream);border-color:var(--stroke-gd)}
+.back-btn{display:inline-flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;color:var(--cream-52);text-decoration:none;border:1px solid var(--brand-green-stroke);padding:8px 14px;border-radius:100px;transition:.2s}
+.back-btn:hover{color:var(--cream);border-color:var(--brand-green)}
 
 /* Search */
 .search-zone{padding:22px 26px;border-bottom:1px solid var(--stroke)}
@@ -48,15 +49,20 @@ body{font-family:var(--body);background:var(--bg);color:var(--cream);min-height:
 .code-input{flex:1;min-width:0;font-family:var(--display);font-weight:700;font-size:1.2rem;letter-spacing:.18em;text-align:center;text-transform:uppercase;color:var(--cream);background:rgba(0,0,0,.28);border:1px solid var(--stroke);border-radius:14px;padding:14px;min-height:54px;transition:.25s}
 .code-input::placeholder{color:var(--cream-32);letter-spacing:.1em}
 .code-input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 4px color-mix(in oklab,var(--gold) 14%,transparent)}
-.check-btn{background:linear-gradient(135deg,var(--gold-lt),var(--gold) 56%,var(--gold-dp));color:#2a1d05;font-family:var(--body);font-weight:700;font-size:.95rem;border:none;border-radius:14px;padding:14px 20px;cursor:pointer;transition:.2s;white-space:nowrap}
+.check-btn{position:relative;overflow:hidden;background:linear-gradient(135deg,var(--brand-green-br),var(--brand-green) 56%,color-mix(in oklab,var(--brand-green) 70%,black));color:var(--cream);font-family:var(--body);font-weight:700;font-size:.95rem;border:none;border-radius:14px;padding:14px 20px;cursor:pointer;transition:.2s;white-space:nowrap}
 .check-btn:hover{opacity:.9}
+.check-btn::after{content:"";position:absolute;top:0;left:-60%;width:45%;height:100%;
+  background:linear-gradient(115deg,transparent,rgba(255,255,255,.65),transparent);
+  transform:skewX(-18deg);animation:btn-shine 3.6s ease-in-out infinite}
+@keyframes btn-shine{0%,18%{left:-60%}55%,100%{left:130%}}
+@media (prefers-reduced-motion:reduce){.check-btn::after{animation:none;display:none}}
 .check-btn:disabled{opacity:.5;cursor:not-allowed}
-.scan-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;background:transparent;color:var(--gold-lt);font-family:var(--body);font-weight:700;font-size:.9rem;border:1px solid var(--gold-dp);border-radius:14px;padding:12px 16px;cursor:pointer;transition:.2s}
-.scan-btn:hover{background:color-mix(in oklab,var(--gold) 12%,transparent)}
+.scan-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;background:transparent;color:var(--brand-green-br);font-family:var(--body);font-weight:700;font-size:.9rem;border:1px solid var(--brand-green);border-radius:14px;padding:12px 16px;cursor:pointer;transition:.2s}
+.scan-btn:hover{background:color-mix(in oklab,var(--brand-green) 12%,transparent)}
 .scanner{display:none;position:relative;margin-top:14px;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:1/1}
 .scanner.show{display:block}
 .scanner video{width:100%;height:100%;object-fit:cover;display:block}
-.scan-frame{position:absolute;inset:18%;border:2px solid var(--gold);border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.35);pointer-events:none}
+.scan-frame{position:absolute;inset:18%;border:2px solid var(--brand-green-br);border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.35);pointer-events:none}
 .scan-close{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:10px;padding:7px 12px;font-size:.82rem;font-weight:700;cursor:pointer}
 .scan-hint{position:absolute;left:0;right:0;bottom:10px;text-align:center;color:var(--cream-52,#cfc7b5);font-size:.8rem;text-shadow:0 1px 3px #000}
 
@@ -152,7 +158,7 @@ footer.mini{border-top:1px solid var(--stroke);padding:16px 26px;text-align:cent
 
     <!-- Chargement -->
     <div class="loading" id="loading" style="display:none">
-      <svg width="36" height="36" fill="none" stroke="var(--gold)" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      <svg width="36" height="36" fill="none" stroke="var(--brand-green-br)" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
       Vérification en cours…
     </div>
 

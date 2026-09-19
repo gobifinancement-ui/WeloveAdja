@@ -15,6 +15,7 @@
   --cream-72:rgba(246,241,230,.74);--cream-52:rgba(246,241,230,.52);--cream-32:rgba(246,241,230,.32);
   --glass:rgba(255,255,255,.05);--stroke:rgba(246,241,230,.12);--stroke-gd:rgba(231,187,70,.36);
   --red:#e08a6a;--ok:#3fc189;--ko:#e0604a;
+  --brand-green:#0a8f4f;--brand-green-br:#14b563;--brand-green-stroke:rgba(10,143,79,.5);
   --display:"Fraunces",Georgia,serif;--body:"Hanken Grotesk",system-ui,sans-serif;
 }
 *{box-sizing:border-box}
@@ -72,9 +73,14 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
 @media(prefers-reduced-motion:reduce){.confetti-piece{display:none}}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:13px;padding:14px;font-weight:800;font-size:.9rem;cursor:pointer;text-decoration:none;font-family:inherit;margin-top:8px;transition:transform .18s}
 .btn:active{transform:scale(.97);transition-duration:.09s}
-.btn-gold{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#231a06}
-.btn-ghost{background:var(--glass);border:1px solid var(--stroke);color:var(--cream)}
-.spin{width:44px;height:44px;border:3px solid var(--stroke);border-top-color:var(--gold);border-radius:50%;margin:0 auto 18px;animation:spin .9s linear infinite}
+.btn-gold{position:relative;overflow:hidden;background:linear-gradient(135deg,var(--brand-green-br),var(--brand-green));color:var(--cream)}
+.btn-gold::after{content:"";position:absolute;top:0;left:-60%;width:45%;height:100%;
+  background:linear-gradient(115deg,transparent,rgba(255,255,255,.65),transparent);
+  transform:skewX(-18deg);animation:btn-shine 3.6s ease-in-out infinite}
+@keyframes btn-shine{0%,18%{left:-60%}55%,100%{left:130%}}
+@media (prefers-reduced-motion:reduce){.btn-gold::after{animation:none;display:none}}
+.btn-ghost{background:var(--glass);border:1px solid var(--brand-green-stroke);color:var(--cream)}
+.spin{width:44px;height:44px;border:3px solid var(--stroke);border-top-color:var(--brand-green-br);border-radius:50%;margin:0 auto 18px;animation:spin .9s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* Classe utilitaire : elle doit l'emporter sur le `display` propre de
    l'element, sinon masquer un bloc depend de l'ordre des regles. */
