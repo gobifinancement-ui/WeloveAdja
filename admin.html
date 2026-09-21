@@ -656,7 +656,7 @@ button{font-family:var(--body);cursor:pointer}
             <label style="display:block;margin-top:14px;font-size:.8rem;font-weight:700">Assombrissement du fond</label>
             <span class="desc">Si la vidéo est trop claire et gêne la lecture du titre, monte cette valeur.</span>
             <div class="veil-row">
-              <input type="range" id="heroVeil" min="20" max="95" step="5" value="70">
+              <input type="range" id="heroVeil" min="20" max="99" step="1" value="70">
               <output id="heroVeilOut">70 %</output>
             </div>
           </div>
@@ -775,7 +775,7 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Secret webhook paiement</label><span class="desc">Pour vérifier la signature des webhooks</span>
             <div class="ipwrap"><input class="in" data-set="fedapayWebhookSecret" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
-          <div class="f"><label>URL publique du site</label><span class="desc">Ex. https://weloveadja.bj (pour les webhooks)</span>
+          <div class="f"><label>URL publique du site</label><span class="desc">Ex. https://fejafestival.com (pour les webhooks)</span>
             <input class="in" data-set="publicBaseUrl" placeholder="https://…">
           </div>
           <div class="f"><label>Clé API WaChap</label><span class="desc">Notifications WhatsApp à l'organisateur</span>
@@ -784,7 +784,7 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Clé API Resend</label><span class="desc">Envoi des emails de confirmation</span>
             <div class="ipwrap"><input class="in" data-set="resendKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
-          <div class="f"><label>Email expéditeur Resend</label><span class="desc">Ex. WeloveAdja &lt;noreply@weloveadja.bj&gt;</span>
+          <div class="f"><label>Email expéditeur Resend</label><span class="desc">Ex. FEJA &lt;noreply@fejafestival.com&gt;</span>
             <input class="in" data-set="resendFrom" placeholder="WeloveAdja &lt;noreply@…&gt;">
           </div>
           <div class="f" style="margin-bottom:6px">

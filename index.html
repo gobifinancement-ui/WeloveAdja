@@ -42,8 +42,8 @@ img{display:block;max-width:100%}
 .bg-mesh{position:fixed;inset:0;z-index:-2;pointer-events:none;transition:background .5s}
 .bg-grain{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.05;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 .wrap{width:100%;max-width:var(--maxw);margin-inline:auto;padding-inline:clamp(18px,5vw,44px)}
-.eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:.74rem;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-lt);text-shadow:0 2px 10px rgba(0,0,0,.55)}
-.eyebrow::before{content:"";width:28px;height:1px;background:var(--gold)}
+.eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:.74rem;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--brand-green-br);text-shadow:0 2px 10px rgba(0,0,0,.55)}
+.eyebrow::before{content:"";width:28px;height:1px;background:var(--brand-green-br)}
 .eyebrow.solo::before{display:none}
 .gold{color:var(--gold)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;font-family:var(--body);font-weight:700;font-size:1rem;padding:15px 28px;border-radius:100px;border:none;cursor:pointer;text-decoration:none;white-space:nowrap;min-height:52px;transition:transform .25s var(--ease),box-shadow .25s,background .25s,border-color .25s}
@@ -106,7 +106,6 @@ header.scrolled{background:color-mix(in oklab,var(--bg) 72%,transparent);backdro
 }
 /* Le rayonnement decoratif ferait doublon par-dessus une video : on l'attenue
    fortement plutot que de le retirer, il garde un lien avec le reste du site. */
-.hero.has-media .sunburst{opacity:.10}
 /* Mouvement reduit : une video de fond en boucle est exactement ce que ce
    reglage cherche a eviter. On garde la premiere image d'un GIF, on met la
    video en pause. */
@@ -115,8 +114,6 @@ header.scrolled{background:color-mix(in oklab,var(--bg) 72%,transparent);backdro
 }
 .hero{position:relative;text-align:center;padding-block:clamp(44px,8vw,96px) clamp(30px,6vw,56px);overflow:hidden}
 .hero.has-media{margin-top:calc(-1 * var(--hdr-h,0px));padding-top:calc(clamp(44px,8vw,96px) + var(--hdr-h,0px))}
-.sunburst{position:absolute;top:-4%;left:50%;transform:translateX(-50%);width:min(720px,120vw);height:min(720px,120vw);z-index:-1;opacity:.32;pointer-events:none;animation:spin 110s linear infinite}
-@keyframes spin{to{transform:translateX(-50%) rotate(360deg)}}
 .hero .inner{max-width:760px;margin-inline:auto;display:flex;flex-direction:column;align-items:center}
 .hero h1{font-family:var(--display);font-weight:300;font-size:clamp(3rem,12vw,7rem);line-height:.9;letter-spacing:-.02em;margin:20px 0 10px}
 .hero h1 .em{font-style:italic;font-weight:500;color:var(--gold)}
@@ -164,6 +161,7 @@ html[data-display="bricolage"] .section-head h2{font-weight:600;letter-spacing:-
 .s-txt{min-width:0}
 .step h3{font-family:var(--display);font-weight:500;font-size:1.08rem;margin:2px 0 3px}
 .step p{color:var(--cream-72);font-size:.88rem;line-height:1.5;margin:0}
+.legal-note{text-align:center;font-size:.74rem;color:var(--cream-32);margin:22px auto 0;max-width:52ch;line-height:1.6}
 
 /* Entree en cascade au defilement, reutilisable : le conteneur porte
    .reveal-group, ses enfants entrent l'un apres l'autre quand il arrive a
@@ -738,7 +736,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
 /* Definition du sigle, juste sous le titre : discrete, elle explique FEJA
    sans voler la vedette au nom lui-meme. */
 .acronym{font-size:clamp(.84rem,2.6vw,1rem);font-weight:700;letter-spacing:.05em;text-transform:uppercase;
-  color:var(--gold-lt);margin:0 auto 16px;max-width:34ch;line-height:1.55;
+  color:var(--brand-green-br);margin:0 auto 16px;max-width:34ch;line-height:1.55;
   text-shadow:0 2px 12px rgba(0,0,0,.6)}
 /* Curseur du titre qui s'ecrit. inline-block pour qu'il garde sa hauteur
    meme quand le texte est vide, sinon la ligne sursaute a chaque cycle. */
@@ -796,7 +794,6 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
 <main id="top">
   <section class="hero">
     <div class="hero-media" id="heroMedia" hidden aria-hidden="true"></div>
-    <svg class="sunburst" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g stroke="var(--gold)" stroke-width="1"><g id="rays"></g></g><circle cx="100" cy="100" r="42" fill="none" stroke="var(--gold)" stroke-width="1"/><circle cx="100" cy="100" r="30" fill="none" stroke="var(--green-br)" stroke-width="1"/></svg>
     <div class="wrap">
       <div class="inner">
         <span class="eyebrow solo anim a1">Festival Adja • Édition <span data-year>2026</span></span>
@@ -825,7 +822,36 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
     </div>
   </section>
 
-  <div class="wrap"><div class="divider"><span class="line"></span><span></span><span></span><span></span><span class="line"></span></div></div>
+  <section class="section" id="objectifs">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow solo" style="display:inline-flex;justify-content:center">L'association FEJA</span>
+        <h2>Les objectifs de l'association</h2>
+      </div>
+      <ol class="steps reveal-group">
+        <li class="step">
+          <span class="s-num"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+          <div class="s-txt"><p>Promouvoir le communautarisme, la fraternité, la solidarité et l'esprit d'entraide.</p></div>
+        </li>
+        <li class="step">
+          <span class="s-num"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.86L12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg></span>
+          <div class="s-txt"><p>Organiser le Festival des jeunes pour les Arts et la culture Adja et des activités saines de jeux, sports et loisirs.</p></div>
+        </li>
+        <li class="step">
+          <span class="s-num"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
+          <div class="s-txt"><p>Contribuer à l'entrepreneuriat, à la formation professionnelle et à l'insertion sociale.</p></div>
+        </li>
+        <li class="step">
+          <span class="s-num"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>
+          <div class="s-txt"><p>Agir ensemble pour un cadre de vie meilleur, la promotion de l'excellence, l'éducation à la justice, la cohésion sociale et la santé de reproduction.</p></div>
+        </li>
+        <li class="step">
+          <span class="s-num"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
+          <div class="s-txt"><p>Promouvoir les valeurs humaines, l'égalité du genre et la sécurité alimentaire.</p></div>
+        </li>
+      </ol>
+    </div>
+  </section>
 
   <section class="section" id="etapes">
     <div class="wrap">
@@ -895,13 +921,14 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
       <div class="foot-col">
         <h4>Contact</h4>
         <a id="footWa" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.94.36 1.86.7 2.74a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.34-1.34a2 2 0 0 1 2.11-.45c.88.34 1.8.57 2.74.7A2 2 0 0 1 22 16.92z"/></svg> WhatsApp officiel</a>
-        <a id="footMail" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg> <span data-cfg="email">contact@weloveadja.bj</span></a>
+        <a id="footMail" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg> <span data-cfg="email">contact@fejafestival.com</span></a>
       </div>
     </div>
     <div class="foot-bottom">
       <span>© <span data-year>2026</span> <span data-cfg="eventName">FEJA</span>. Tous droits réservés.</span>
       <span>Paiement sécurisé · Mobile Money</span>
     </div>
+    <p class="legal-note">Récépissé n°6PDC/2024A/482/PDC/SGD/SAG/SA du 23 octobre 2024 · Réf. Journal Officiel n°21 du 1ᵉʳ novembre 2024</p>
   </div>
 </footer>
 </div><!-- /#home -->
@@ -1306,10 +1333,10 @@ function renderHeroMedia(){
 
   // Intensite du voile. Le bas reste plus dense que le haut : sous le titre
   // se trouvent le sous-titre, les pastilles et le compte a rebours.
-  const v = Math.min(95, Math.max(20, Number(media.veil) || 70));
+  const v = Math.min(99, Math.max(20, Number(media.veil) || 70));
   hote.style.setProperty('--veil-haut', v + '%');
   hote.style.setProperty('--veil-milieu', Math.max(15, v - 7) + '%');
-  hote.style.setProperty('--veil-bas', Math.min(98, v + 26) + '%');
+  hote.style.setProperty('--veil-bas', Math.min(99, v + 26) + '%');
 
   hote.hidden = false;
   hero.classList.add('has-media');
@@ -1388,7 +1415,6 @@ applyTweaks();
 const hdr=document.getElementById('hdr');
 addEventListener('scroll',()=>hdr.classList.toggle('scrolled',scrollY>20));
 
-(function(){const g=document.getElementById('rays');if(!g)return;let s='';for(let i=0;i<48;i++){const a=(i/48)*Math.PI*2;const x1=100+Math.cos(a)*46,y1=100+Math.sin(a)*46;const x2=100+Math.cos(a)*(i%2?96:80),y2=100+Math.sin(a)*(i%2?96:80);s+=`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;}g.innerHTML=s;})();
 
 /* ---- Annee courante -------------------------------------------------------
    Ecrite a chaque chargement plutot qu'en dur : le 1er janvier 2027, le site

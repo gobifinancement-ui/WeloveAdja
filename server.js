@@ -1285,10 +1285,11 @@ function buildHeroMedia(settings) {
   // reimporter pour faire marche arriere.
   if (String(settings.hero_media_active || "1") !== "1") return null;
 
-  // Voile : borne entre 20 et 95. En dessous de 20 le texte devient illisible
-  // sur un media clair, au-dela de 95 le media ne se voit plus du tout.
+  // Voile : borne entre 20 et 99. En dessous de 20 le texte devient illisible
+  // sur un media clair ; 99 plutot que 100 pour qu'un reste de mouvement du
+  // media transparaisse toujours derriere le voile.
   const brut = Number(settings.hero_media_veil);
-  const veil = Number.isFinite(brut) ? Math.min(95, Math.max(20, Math.round(brut))) : 70;
+  const veil = Number.isFinite(brut) ? Math.min(99, Math.max(20, Math.round(brut))) : 70;
   const extension = (url.split("?")[0].match(/\.(\w+)$/) || [])[1] || "";
   return {
     url,
