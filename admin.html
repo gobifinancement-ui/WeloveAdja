@@ -555,7 +555,7 @@ button{font-family:var(--body);cursor:pointer}
 
       <div class="viz-root">
         <div class="card-viz">
-          <div class="viz-head"><b>Taux de présence</b><span>Part des billets validés effectivement scannés à l'entrée</span></div>
+          <div class="viz-head"><b>Taux de présence</b><span>Part des badges validés effectivement scannés à l'entrée</span></div>
           <div id="meterPresence"></div>
         </div>
 
@@ -624,8 +624,8 @@ button{font-family:var(--body);cursor:pointer}
         </div>
 
         <div class="f" style="margin-bottom:22px">
-          <label>Bandeau du billet</label>
-          <span class="desc">L'image « FESTIVAL ADJA » placée entre les deux logos sur le billet PDF. Sans elle, le nom de l'événement est écrit en toutes lettres.</span>
+          <label>Bandeau du badge</label>
+          <span class="desc">L'image « FESTIVAL ADJA » placée entre les deux logos sur le badge PDF. Sans elle, le nom de l'événement est écrit en toutes lettres.</span>
           <div class="logo-zone">
             <div class="logo-pv" id="wmPv"><span class="none">Aucun bandeau</span></div>
             <div class="logo-acts">
@@ -663,15 +663,15 @@ button{font-family:var(--body);cursor:pointer}
         </div>
 
         <div class="f" style="margin-bottom:22px">
-          <label>Photo de fond du billet</label>
-          <span class="desc">Apparaît en arrière-plan du billet PDF, sous un voile clair pour que le QR code et les textes restent lisibles. Convertie en JPEG pour ne pas alourdir l'email.</span>
+          <label>Photo de fond du badge</label>
+          <span class="desc">Apparaît en arrière-plan du badge PDF, sous un voile clair pour que le QR code et les textes restent lisibles. Convertie en JPEG pour ne pas alourdir l'email.</span>
           <div class="logo-zone">
             <div class="logo-pv" id="bgPv"><span class="none">Aucune photo</span></div>
             <div class="logo-acts">
               <input type="file" id="bgFile" accept="image/png,image/jpeg,image/webp" hidden>
               <button class="btn btn-gold btn-sm" id="bgPick" type="button">Choisir une photo</button>
               <button class="btn btn-ghost btn-sm" id="bgDel" type="button" style="display:none">Retirer</button>
-              <span class="hint">Sans photo, le billet garde son fond clair.</span>
+              <span class="hint">Sans photo, le badge garde son fond clair.</span>
             </div>
           </div>
         </div>
@@ -977,7 +977,7 @@ async function render() {
     <td>${p.code ? `<span class="code-chip">${esc(p.code)}</span>` : '<span style="color:var(--cream-32)">—</span>'}</td>
     <td><div class="row-actions">
       <button class="mini" data-proof="${esc(p.ref)}">Voir photo</button>
-      ${p.code ? `<button class="mini" data-ticket="${esc(p.ref)}">Billet PDF</button>` : ''}
+      ${p.code ? `<button class="mini" data-ticket="${esc(p.ref)}">Badge PDF</button>` : ''}
       ${validateBtn(p)}
       ${p.status === 'validated' && !p.codeUsed ? `<button class="mini" data-use="${esc(p.ref)}">Marquer utilisé</button>` : ''}
     </div></td>
@@ -997,7 +997,7 @@ async function render() {
     </div>
     <div class="row-actions" style="justify-content:flex-start">
       <button class="mini" data-proof="${esc(p.ref)}">Voir photo</button>
-      ${p.code ? `<button class="mini" data-ticket="${esc(p.ref)}">Billet PDF</button>` : ''}
+      ${p.code ? `<button class="mini" data-ticket="${esc(p.ref)}">Badge PDF</button>` : ''}
       ${validateBtn(p)}
       ${p.status === 'validated' && !p.codeUsed ? `<button class="mini" data-use="${esc(p.ref)}">Marquer utilisé</button>` : ''}
     </div>
@@ -1051,7 +1051,7 @@ document.addEventListener('click', async e => {
     const fin = Chargement(tk);
     try {
       const res = await apiFetch('/api/admin/ticket.pdf?id=' + encodeURIComponent(tk.dataset.ticket));
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Billet indisponible');
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Badge indisponible');
       const url = URL.createObjectURL(await res.blob());
       if (onglet) onglet.location = url;
       else window.location = url;   // onglet bloque : on ouvre sur place
@@ -1059,7 +1059,7 @@ document.addEventListener('click', async e => {
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
       if (onglet) onglet.close();
-      alert(err.message || 'Impossible de générer le billet.');
+      alert(err.message || 'Impossible de générer le badge.');
     } finally {
       fin();
     }
@@ -1330,7 +1330,7 @@ function renderStats(d) {
   document.getElementById('meterPresence').innerHTML =
     '<div class="meter"><i style="width:' + d.taux_presence + '%"></i></div>' +
     '<div class="meter-legend"><span><b>' + d.taux_presence + '%</b> présents</span>' +
-    '<span>' + nb(t.utilises) + ' sur ' + nb(t.valides) + ' billets validés</span></div>';
+    '<span>' + nb(t.utilises) + ' sur ' + nb(t.valides) + ' badges validés</span></div>';
 
   const jours = (d.par_jour || []).map(j => ({
     x: j.date.slice(8) + '/' + j.date.slice(5, 7),

@@ -41,18 +41,18 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
 .row:last-child{border-bottom:0}
 .row span{color:var(--cream-52)}
 .row b{font-weight:700;text-align:right}
-.code{font-family:ui-monospace,monospace;letter-spacing:.14em;color:var(--gold-lt);font-size:1.05rem}
+.code{font-family:ui-monospace,monospace;letter-spacing:.14em;color:var(--brand-green-br);font-size:1.05rem}
 .lead{margin-bottom:14px}
 /* Le billet : ce que le participant est venu chercher, groupe en un seul bloc
    au lieu d'un code noye dans un tableau et d'un QR flottant plus bas. */
-.ticket{background:color-mix(in oklab,var(--gold) 9%,transparent);border:1px dashed var(--stroke-gd);border-radius:18px;padding:14px;margin:0 0 12px;
+.ticket{background:color-mix(in oklab,var(--brand-green) 9%,transparent);border:1px dashed var(--stroke-gd);border-radius:18px;padding:14px;margin:0 0 12px;
   display:flex;flex-direction:column;align-items:center;min-height:0}
-.tk-lbl{display:block;font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-lt);margin-bottom:8px}
+.tk-lbl{display:block;font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;color:var(--brand-green-br);margin-bottom:8px}
 .tk-code{display:flex;align-items:center;justify-content:center;gap:10px}
-.tk-code b{font-family:var(--display);font-size:clamp(1.8rem,9vw,2.4rem);font-weight:700;letter-spacing:.16em;color:var(--gold-lt);line-height:1.1}
+.tk-code b{font-family:var(--display);font-size:clamp(1.8rem,9vw,2.4rem);font-weight:700;letter-spacing:.16em;color:var(--brand-green-br);line-height:1.1}
 .tk-code button{flex:none;width:38px;height:38px;display:grid;place-items:center;border-radius:11px;cursor:pointer;
-  background:var(--glass);border:1px solid var(--stroke-gd);color:var(--gold-lt);transition:.18s}
-.tk-code button:hover{background:color-mix(in oklab,var(--gold) 18%,transparent)}
+  background:var(--glass);border:1px solid var(--stroke-gd);color:var(--brand-green-br);transition:.18s}
+.tk-code button:hover{background:color-mix(in oklab,var(--brand-green) 18%,transparent)}
 .tk-code button:active{transform:scale(.92)}
 .tk-code button.done{color:var(--ok);border-color:var(--ok)}
 /* Le QR est la seule piece elastique : il prend ce qui reste en hauteur.
@@ -105,10 +105,10 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
 .dl-titre i{
   flex:0 0 auto;width:21px;height:21px;border-radius:50%;display:grid;place-items:center;
   font-style:normal;font-size:.64rem;font-weight:800;
-  background:color-mix(in oklab,var(--gold) 22%,transparent);color:var(--gold-lt);
+  background:color-mix(in oklab,var(--brand-green) 22%,transparent);color:var(--brand-green-br);
 }
 .dl-titre b{color:var(--text);font-weight:800}
-.dl-titre em{font-style:normal;font-weight:800;letter-spacing:.12em;color:var(--gold-lt);font-variant-numeric:tabular-nums}
+.dl-titre em{font-style:normal;font-weight:800;letter-spacing:.12em;color:var(--brand-green-br);font-variant-numeric:tabular-nums}
 .dl-paire{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .dl-paire .btn{margin-top:0}
 .dl-entete{font-size:.78rem;color:var(--cream-52);margin:0 0 2px;width:100%}
@@ -174,7 +174,7 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
       <div class="row" id="rowPlace"><span>Lieu</span><b id="oPlace">—</b></div>
     </div>
 
-    <p class="muted" id="mailNote">Un email de confirmation t'a été envoyé avec ton billet.</p>
+    <p class="muted" id="mailNote">Un email de confirmation t'a été envoyé avec ton badge.</p>
 
     <!-- Un bloc par billet : le nom de son porteur, puis les deux formats.
          Rempli par peindreBillets(). -->
@@ -286,7 +286,7 @@ async function check() {
       // Mode compact : c'est le seul ecran dense, les autres tiennent large.
       document.querySelector('.card').classList.add('compact');
       if (billets.length > 1) {
-        $('mailNote').textContent = "Tous les billets sont partis par email à " + (p.email || 'ton adresse') + ".";
+        $('mailNote').textContent = "Tous les badges sont partis par email à " + (p.email || 'ton adresse') + ".";
       }
       show('ok');
       // Confettis ici, a l'instant ou le code apparait : c'est le moment de
@@ -354,8 +354,8 @@ async function telechargerPdf(billet, bouton) {
     const res = await fetch('/api/public/ticket/pdf?token=' + encodeURIComponent(jetonBillet) +
       '&id=' + encodeURIComponent(billet.id));
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Téléchargement impossible');
-    remettre(await res.blob(), 'billet-' + (billet.code || 'feja') + '.pdf');
-    direDl('Billet PDF téléchargé' + (billet.nom ? ' — ' + billet.nom : '') + '.');
+    remettre(await res.blob(), 'badge-' + (billet.code || 'feja') + '.pdf');
+    direDl('Badge PDF téléchargé' + (billet.nom ? ' — ' + billet.nom : '') + '.');
   } catch (err) {
     direDl(err.message || 'Téléchargement impossible.', 'ko');
   } finally {
@@ -373,11 +373,11 @@ async function telechargerImage(billet, bouton) {
 
     await new Promise((resolve) => {
       $('dlCanvas').toBlob((blob) => {
-        remettre(blob, 'billet-' + (billet.code || 'feja') + '.png');
+        remettre(blob, 'badge-' + (billet.code || 'feja') + '.png');
         resolve();
       }, 'image/png');
     });
-    direDl('Billet image téléchargé' + (billet.nom ? ' — ' + billet.nom : '') + '.');
+    direDl('Badge image téléchargé' + (billet.nom ? ' — ' + billet.nom : '') + '.');
   } catch (err) {
     direDl(err.message || 'Téléchargement impossible.', 'ko');
   } finally {
@@ -395,7 +395,7 @@ function peindreBillets(billets) {
   // plutot que toute la page.
   hote.classList.toggle('longue', billets.length > 3);
   hote.innerHTML = groupe
-    ? '<p class="dl-entete">' + billets.length + ' billets — un par personne</p>'
+    ? '<p class="dl-entete">' + billets.length + ' badges — un par personne</p>'
     : '';
 
   billets.forEach((billet, i) => {
@@ -416,14 +416,14 @@ function peindreBillets(billets) {
       // l'inserer en HTML ouvrirait une injection.
       const nom = document.createElement('b');
       nom.textContent = billet.nom || 'Participant ' + (i + 1);
-      titre.append('Télécharge le ticket de ', nom);
+      titre.append('Télécharge le badge de ', nom);
       if (billet.code) {
         const code = document.createElement('em');
         code.textContent = billet.code;
         titre.append(' — ', code);
       }
     } else {
-      titre.textContent = 'Télécharge ton ticket ici';
+      titre.textContent = 'Télécharge ton badge ici';
     }
 
     bloc.querySelector('[data-f="pdf"]').addEventListener('click', (e) => telechargerPdf(billet, e.currentTarget));

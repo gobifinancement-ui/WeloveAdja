@@ -36,16 +36,16 @@ html[data-display="bricolage"]{--display:"Bricolage Grotesque",system-ui,sans-se
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;overflow-x:hidden;width:100%}
 body{font-family:var(--body);background:var(--bg);color:var(--cream);line-height:1.6;overflow-x:hidden;min-height:100vh;letter-spacing:.1px;-webkit-font-smoothing:antialiased;max-width:100vw;position:relative}
-::selection{background:var(--gold);color:var(--bg)}
+::selection{background:var(--brand-green);color:var(--cream)}
 img{display:block;max-width:100%}
-.mesh{background:radial-gradient(58% 48% at 84% 6%,color-mix(in oklab,var(--gold) 18%,transparent),transparent 60%),radial-gradient(54% 44% at 10% 20%,color-mix(in oklab,var(--green-br) 20%,transparent),transparent 62%),radial-gradient(72% 60% at 50% 112%,color-mix(in oklab,var(--green) 26%,transparent),transparent 60%),linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 46%,var(--bg) 100%)}
+.mesh{background:radial-gradient(58% 48% at 84% 6%,color-mix(in oklab,var(--brand-green-br) 18%,transparent),transparent 60%),radial-gradient(54% 44% at 10% 20%,color-mix(in oklab,var(--green-br) 20%,transparent),transparent 62%),radial-gradient(72% 60% at 50% 112%,color-mix(in oklab,var(--green) 26%,transparent),transparent 60%),linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 46%,var(--bg) 100%)}
 .bg-mesh{position:fixed;inset:0;z-index:-2;pointer-events:none;transition:background .5s}
 .bg-grain{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.05;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 .wrap{width:100%;max-width:var(--maxw);margin-inline:auto;padding-inline:clamp(18px,5vw,44px)}
 .eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:.74rem;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--brand-green-br);text-shadow:0 2px 10px rgba(0,0,0,.55)}
 .eyebrow::before{content:"";width:28px;height:1px;background:var(--brand-green-br)}
 .eyebrow.solo::before{display:none}
-.gold{color:var(--gold)}
+.gold{color:var(--brand-green-br)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;font-family:var(--body);font-weight:700;font-size:1rem;padding:15px 28px;border-radius:100px;border:none;cursor:pointer;text-decoration:none;white-space:nowrap;min-height:52px;transition:transform .25s var(--ease),box-shadow .25s,background .25s,border-color .25s}
 .btn-gold{position:relative;overflow:hidden;background:linear-gradient(135deg,var(--brand-green-br),var(--brand-green) 56%,color-mix(in oklab,var(--brand-green) 70%,black));color:var(--cream);box-shadow:0 14px 34px -12px color-mix(in oklab,var(--brand-green) 70%,transparent),inset 0 1px 0 rgba(255,255,255,.45)}
 .btn-gold:hover{transform:translateY(-3px);box-shadow:0 22px 46px -14px color-mix(in oklab,var(--brand-green) 85%,transparent)}
@@ -112,11 +112,11 @@ header.scrolled{background:color-mix(in oklab,var(--bg) 72%,transparent);backdro
 @media(prefers-reduced-motion:reduce){
   .hero-media video{display:none}
 }
-.hero{position:relative;text-align:center;padding-block:clamp(44px,8vw,96px) clamp(30px,6vw,56px);overflow:hidden}
-.hero.has-media{margin-top:calc(-1 * var(--hdr-h,0px));padding-top:calc(clamp(44px,8vw,96px) + var(--hdr-h,0px))}
+.hero{position:relative;text-align:center;padding-block:clamp(18px,3.5vw,44px) clamp(30px,6vw,56px);overflow:hidden}
+.hero.has-media{margin-top:calc(-1 * var(--hdr-h,0px));padding-top:calc(clamp(18px,3.5vw,44px) + var(--hdr-h,0px))}
 .hero .inner{max-width:760px;margin-inline:auto;display:flex;flex-direction:column;align-items:center}
 .hero h1{font-family:var(--display);font-weight:300;font-size:clamp(3rem,12vw,7rem);line-height:.9;letter-spacing:-.02em;margin:20px 0 10px}
-.hero h1 .em{font-style:italic;font-weight:500;color:var(--gold)}
+.hero h1 .em{font-style:italic;font-weight:500;color:var(--brand-green-br)}
 html[data-display="bricolage"] .hero h1{font-weight:600;letter-spacing:-.03em}
 html[data-display="bricolage"] .hero h1 .em{font-style:normal;font-weight:800}
 .hero .lead{font-family:var(--display);font-weight:500;font-size:clamp(1.12rem,2.4vw,1.45rem);color:var(--cream);max-width:42ch;margin-bottom:8px;line-height:1.5;text-shadow:0 2px 14px rgba(0,0,0,.55)}
@@ -132,14 +132,30 @@ html[data-display="bricolage"] .hero .lead{font-family:var(--body)}
 .cd-label{display:flex;align-items:center;justify-content:center;gap:9px;font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:var(--cream-52);margin-bottom:14px}
 .cd-label svg{color:var(--brand-green-br)}
 .cd-grid{display:flex;gap:10px}
-.cd-cell{flex:1;text-align:center;background:var(--glass);border:1px solid var(--stroke);border-radius:16px;padding:16px 8px 12px;backdrop-filter:blur(10px);position:relative;overflow:hidden}
-.cd-cell::after{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.55}
-.cd-cell .n{font-family:var(--display);font-size:clamp(1.8rem,7vw,2.5rem);font-weight:500;line-height:1;font-variant-numeric:tabular-nums}
+.cd-cell{flex:1;text-align:center;background:var(--glass);border:1px solid var(--stroke);border-radius:16px;padding:16px 8px 12px;backdrop-filter:blur(10px);position:relative;overflow:hidden;perspective:240px}
+.cd-cell::after{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--brand-green-br),transparent);opacity:.55}
+.cd-cell .n{font-family:var(--display);font-size:clamp(1.8rem,7vw,2.5rem);font-weight:500;line-height:1;font-variant-numeric:tabular-nums;display:inline-block;position:relative;transform-origin:50% 50%}
+/* La ligne de pli, comme sur un vrai bloc de calendrier a palettes. */
+.cd-cell .n::after{content:"";position:absolute;left:-6px;right:-6px;top:50%;height:1px;background:rgba(0,0,0,.32)}
+/* Anime seulement le chiffre qui vient reellement de changer (voir tick()
+   dans startCountdown) : rejouer l'animation sur les 4 cases a chaque
+   seconde aurait distrait l'oeil pour rien la plupart du temps. La palette
+   bascule vers le bas, comme une page de calendrier qui tombe. */
+.cd-cell .n.tick{animation:digit-flip .5s cubic-bezier(.3,.1,.3,1)}
+@keyframes digit-flip{
+  0%{transform:rotateX(-100deg);opacity:0}
+  50%{opacity:1}
+  100%{transform:rotateX(0)}
+}
+@media(prefers-reduced-motion:reduce){.cd-cell .n.tick{animation:none}}
 .cd-cell .u{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cream-52);margin-top:8px}
-.divider{display:flex;align-items:center;justify-content:center;gap:14px;padding-block:clamp(30px,5vw,52px) 0;color:var(--gold);opacity:.7}
+.divider{display:flex;align-items:center;justify-content:center;gap:14px;padding-block:clamp(30px,5vw,52px) 0;color:var(--brand-green-br);opacity:.7}
 .divider span{width:6px;height:6px;background:currentColor;transform:rotate(45deg)}
 .divider .line{width:min(120px,22vw);height:1px;background:linear-gradient(90deg,transparent,currentColor,transparent)}
 .section{padding-block:clamp(46px,8vw,88px)}
+/* Objectifs suit le decompte sans rien entre les deux : l'espacement standard
+   des sections (jusqu'a 88px) les eloignait trop l'un de l'autre. */
+#objectifs{padding-top:clamp(10px,2vw,20px)}
 .section-head{text-align:center;max-width:640px;margin:0 auto clamp(34px,5vw,52px)}
 .section-head h2{font-family:var(--display);font-weight:400;font-size:clamp(2rem,5.4vw,3.2rem);line-height:1.04;letter-spacing:-.01em;margin:16px 0 12px}
 html[data-display="bricolage"] .section-head h2{font-weight:600;letter-spacing:-.02em}
@@ -159,9 +175,12 @@ html[data-display="bricolage"] .section-head h2{font-weight:600;letter-spacing:-
   background:color-mix(in oklab,var(--brand-green) 18%,transparent);
   border:1px solid var(--brand-green-stroke);color:var(--brand-green-br)}
 .s-txt{min-width:0}
+.obj-icon{flex:none;width:64px;height:64px}
+.obj-icon img{width:100%;height:100%;object-fit:contain;display:block}
+.obj-steps .step{align-items:center}
 .step h3{font-family:var(--display);font-weight:500;font-size:1.08rem;margin:2px 0 3px}
 .step p{color:var(--cream-72);font-size:.88rem;line-height:1.5;margin:0}
-.legal-note{text-align:center;font-size:.74rem;color:var(--cream-32);margin:22px auto 0;max-width:52ch;line-height:1.6}
+.legal-note{text-align:center;font-size:.78rem;color:var(--cream-52);margin:22px auto 0;max-width:52ch;line-height:1.6}
 
 /* Entree en cascade au defilement, reutilisable : le conteneur porte
    .reveal-group, ses enfants entrent l'un apres l'autre quand il arrive a
@@ -233,11 +252,11 @@ html[data-display="bricolage"] .section-head h2{font-weight:600;letter-spacing:-
 .committee{display:grid;grid-template-columns:1fr;gap:34px;justify-items:center}
 .chiefs{display:flex;flex-wrap:wrap;justify-content:center;gap:clamp(24px,6vw,64px)}
 .chief{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;width:180px}
-.chief .ring{padding:5px;border-radius:50%;background:conic-gradient(from 210deg,var(--gold),var(--green-br),var(--gold));box-shadow:0 18px 40px -18px rgba(0,0,0,.6)}
+.chief .ring{padding:5px;border-radius:50%;background:conic-gradient(from 210deg,var(--brand-green),var(--green-br),var(--brand-green));box-shadow:0 18px 40px -18px rgba(0,0,0,.6)}
 .chief .cphoto{display:block;width:130px;height:130px;border-radius:50%;border:2px solid var(--bg);object-fit:cover;background:var(--bg-2)}
-.chief .cphoto.ph{display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:2.2rem;color:var(--gold-lt);background:radial-gradient(circle at 35% 30%,color-mix(in oklab,var(--green) 40%,transparent),var(--bg-2))}
+.chief .cphoto.ph{display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:2.2rem;color:var(--brand-green-br);background:radial-gradient(circle at 35% 30%,color-mix(in oklab,var(--green) 40%,transparent),var(--bg-2))}
 .chief .nm{font-family:var(--display);font-weight:500;font-size:1.15rem;line-height:1.1}
-.chief .role{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-lt)}
+.chief .role{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--brand-green-br)}
 .partners{text-align:center}
 .partners .pcap{font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;color:var(--cream-52);margin-bottom:26px}
 .plogos{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:clamp(20px,5vw,52px)}
@@ -251,11 +270,11 @@ footer{border-top:1px solid var(--stroke);margin-top:clamp(40px,7vw,72px);paddin
 .foot-brand p{color:var(--cream-72);font-size:.92rem;max-width:34ch;margin-inline:auto}
 .foot-col h4{font-size:.74rem;letter-spacing:.2em;text-transform:uppercase;color:var(--cream-52);margin-bottom:14px}
 .foot-col a,.foot-col p{display:inline-flex;align-items:center;gap:9px;color:var(--cream-72);text-decoration:none;font-size:.94rem;margin-bottom:11px;transition:color .2s}
-.foot-col a:hover{color:var(--gold-lt)}
+.foot-col a:hover{color:var(--brand-green-br)}
 .foot-col svg{color:var(--brand-green-br);flex:none}
 .foot-bottom{border-top:1px solid var(--stroke);margin-top:30px;padding-top:24px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;color:var(--cream-52);font-size:.82rem;text-align:center}
 .admin-link{color:var(--cream-32);text-decoration:none;transition:color .2s}
-.admin-link:hover{color:var(--gold-lt)}
+.admin-link:hover{color:var(--brand-green-br)}
 .mobile-cta{position:fixed;left:0;right:0;bottom:0;z-index:60;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(180deg,transparent,color-mix(in oklab,var(--bg) 88%,transparent) 32%);display:none;transform:translateY(120%);transition:transform .35s var(--ease);pointer-events:none}
 .mobile-cta.show{transform:translateY(0);pointer-events:auto}
 .mobile-cta .btn{box-shadow:0 -2px 30px -8px rgba(0,0,0,.6),0 14px 34px -12px color-mix(in oklab,var(--brand-green) 70%,transparent)}
@@ -295,7 +314,7 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .pay-bar-in{max-width:620px;margin-inline:auto;display:flex;align-items:center;gap:14px}
 .pb-total{display:flex;flex-direction:column;gap:1px;flex:0 0 auto}
 .pb-total span{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-52)}
-.pb-total b{font-size:1.12rem;font-weight:800;color:var(--gold-lt);white-space:nowrap}
+.pb-total b{font-size:1.12rem;font-weight:800;color:var(--brand-green-br);white-space:nowrap}
 .pb-total b small{font-size:.62em;font-weight:600;color:var(--cream-52)}
 .pay-bar .btn{flex:1;margin:0}
 /* Place laissee sous le contenu pour que la barre ne recouvre jamais la fin du
@@ -317,12 +336,12 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .pay-op:hover{background:var(--glass-2);transform:translateY(-1px)}
 .pay-op:active{transform:scale(.97)}
 .pay-op.on{
-  background:color-mix(in oklab,var(--gold) 18%,transparent);
+  background:color-mix(in oklab,var(--brand-green) 18%,transparent);
   border-color:var(--stroke-gd);color:var(--cream);
 }
 .pay-op::after{
   content:"";position:absolute;top:6px;right:6px;width:14px;height:14px;border-radius:50%;
-  background:var(--gold) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23241a04' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 13 4 4L19 7'/%3E%3C/svg%3E") center/9px no-repeat;
+  background:var(--brand-green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 13 4 4L19 7'/%3E%3C/svg%3E") center/9px no-repeat;
   opacity:0;transform:scale(.5);transition:opacity .2s var(--ease),transform .2s var(--ease);
 }
 .pay-op.on::after{opacity:1;transform:none}
@@ -336,7 +355,7 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .qty-opt{position:relative}
 .qty-opt::after{
   content:"";position:absolute;top:6px;right:6px;width:15px;height:15px;border-radius:50%;
-  background:var(--gold) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23241a04' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 13 4 4L19 7'/%3E%3C/svg%3E") center/9px no-repeat;
+  background:var(--brand-green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 13 4 4L19 7'/%3E%3C/svg%3E") center/9px no-repeat;
   opacity:0;transform:scale(.5);transition:opacity .2s var(--ease),transform .2s var(--ease);
 }
 .qty-opt.on::after{opacity:1;transform:none}
@@ -348,7 +367,11 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .pane-intro b{display:block;font-family:var(--display);font-weight:500;font-size:1.24rem;margin-bottom:5px}
 .pane-intro span{font-size:.84rem;line-height:1.55;color:var(--cream-72)}
 
-.progress{display:flex;align-items:center;justify-content:center;gap:10px;padding:24px clamp(22px,5vw,38px) 6px}
+/* Plus d'indicateur "1 2 3 4" visible pendant l'inscription : la logique de
+   suivi de l'etape courante (majEtapes/peindreEtapes) reste utile ailleurs
+   (calage de idx quand solo/groupe change le nombre d'etapes), donc on la
+   laisse tourner et on masque juste son rendu. */
+.progress{display:none}
 .p-node{display:flex;align-items:center;gap:10px;flex:none}
 .p-dot{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:.92rem;flex:none;background:var(--glass);border:1px solid var(--stroke);color:var(--cream-52);transition:.3s}
 .p-label{font-size:.8rem;color:var(--cream-52);font-weight:600;transition:.3s}
@@ -358,8 +381,8 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .progress.serre .p-dot{width:30px;height:30px;font-size:.8rem}
 .progress.serre .p-bar{width:clamp(12px,4vw,44px)}
 .p-bar{width:clamp(20px,8vw,64px);height:2px;background:var(--stroke);border-radius:2px;overflow:hidden}
-.p-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--green-br));transition:width .4s}
-.p-node.active .p-dot{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#2a1d05;border-color:transparent}
+.p-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brand-green),var(--green-br));transition:width .4s}
+.p-node.active .p-dot{background:linear-gradient(135deg,var(--brand-green-br),var(--brand-green));color:var(--cream);border-color:transparent}
 .p-node.active .p-label{color:var(--cream)}
 .p-node.done .p-dot{background:var(--green);color:var(--cream);border-color:transparent}
 @media(max-width:560px){.p-label{display:none}}
@@ -387,7 +410,7 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
   background-position:calc(100% - 17px) 24px,calc(100% - 12px) 24px;
   background-size:5px 5px,5px 5px;background-repeat:no-repeat;
 }
-.tel-cc:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 4px color-mix(in oklab,var(--gold) 14%,transparent)}
+.tel-cc:focus{outline:none;border-color:var(--brand-green);box-shadow:0 0 0 4px var(--brand-green-stroke)}
 /* La liste deroulee est rendue par le systeme : sur fond clair, du texte clair
    serait illisible. On force donc un contraste sur les options. */
 .tel-cc option{background:var(--bg-2);color:var(--cream)}
@@ -395,16 +418,16 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .tel-wrap input{padding-left:16px}
 .field input{width:100%;font-family:var(--body);font-size:1rem;color:var(--cream);background:rgba(0,0,0,.24);border:1px solid var(--stroke);border-radius:14px;padding:15px 16px 15px 46px;transition:.25s;min-height:52px}
 .field input::placeholder{color:var(--cream-32)}
-.field input:focus{outline:none;border-color:var(--gold);background:rgba(0,0,0,.34);box-shadow:0 0 0 4px color-mix(in oklab,var(--gold) 14%,transparent)}
+.field input:focus{outline:none;border-color:var(--brand-green);background:rgba(0,0,0,.34);box-shadow:0 0 0 4px var(--brand-green-stroke)}
 .field input.bad{border-color:var(--red);box-shadow:0 0 0 4px rgba(224,138,106,.16)}
 .err{display:none;color:#f0a98c;font-size:.8rem;margin-top:7px}
 .err.show{display:block}
 /* Recapitulatif de paiement : montant en tete, informations saisies dessous,
    dans un seul bloc. Avant, le montant flottait seul et les mentions se
    dispersaient sous les boutons. */
-.pay-recap{background:color-mix(in oklab,var(--gold) 7%,transparent);border:1px solid var(--stroke-gd);border-radius:18px;padding:18px;margin-bottom:18px}
+.pay-recap{background:color-mix(in oklab,var(--brand-green) 7%,transparent);border:1px solid var(--stroke-gd);border-radius:18px;padding:18px;margin-bottom:18px}
 .pr-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px dashed var(--stroke-gd)}
-.pr-head .lbl{font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-lt)}
+.pr-head .lbl{font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--brand-green-br)}
 .pr-head .amt{font-family:var(--display);font-size:1.9rem;font-weight:600;line-height:1}
 .pr-head .amt small{font-size:.9rem;color:var(--cream-52);font-weight:600;font-family:var(--body)}
 .pr-rows{padding-top:6px}
@@ -415,8 +438,8 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .pr-edit{display:block;width:100%;margin-top:12px;background:transparent;border:1px solid var(--stroke);border-radius:11px;color:var(--cream-72);font-family:var(--body);font-size:.82rem;font-weight:700;padding:10px;cursor:pointer;transition:.2s}
 .pr-edit:hover{border-color:var(--stroke-gd);color:var(--cream)}
 .pr-edit:active{transform:scale(.98);transition-duration:.09s}
-.amount-box{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:color-mix(in oklab,var(--gold) 8%,transparent);border:1px solid var(--stroke-gd);border-radius:16px;padding:18px 20px;margin-bottom:22px}
-.amount-box .lbl{font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-lt)}
+.amount-box{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:color-mix(in oklab,var(--brand-green) 8%,transparent);border:1px solid var(--stroke-gd);border-radius:16px;padding:18px 20px;margin-bottom:22px}
+.amount-box .lbl{font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--brand-green-br)}
 .amount-box .amt{font-family:var(--display);font-size:2rem;font-weight:600;line-height:1}
 .amount-box .amt small{font-size:1rem;color:var(--cream-52);font-weight:600;font-family:var(--body)}
 .pay-brands{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
@@ -425,7 +448,7 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .method-tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px}
 .method{cursor:pointer;border:1px solid var(--stroke);border-radius:14px;padding:10px 12px;background:var(--glass);transition:.25s;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:0;text-align:center}
 .method:hover{border-color:var(--stroke-gd)}
-.method.sel{border-color:var(--gold);background:color-mix(in oklab,var(--gold) 10%,transparent);box-shadow:0 0 0 3px color-mix(in oklab,var(--gold) 14%,transparent)}
+.method.sel{border-color:var(--brand-green);background:color-mix(in oklab,var(--brand-green) 10%,transparent);box-shadow:0 0 0 3px var(--brand-green-stroke)}
 .method .logo{width:48px;height:30px;border-radius:8px;display:grid;place-items:center;font-weight:800;font-size:.68rem;color:#fff;flex:none;overflow:hidden}
 .method .logo img{width:100%;height:100%;object-fit:contain}
 .method .logo.moov{background:linear-gradient(135deg,#0a84ff,#0a5bd0)}
@@ -510,7 +533,7 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .tk-nom span{color:var(--cream-52);font-size:.8rem;font-variant-numeric:tabular-nums}
 .tk-actions{display:flex;gap:10px}
 .tk-actions .btn{flex:1;min-width:0}
-.tk-utilise{margin:8px 2px 0;font-size:.78rem;color:var(--gold-lt);text-align:left}
+.tk-utilise{margin:8px 2px 0;font-size:.78rem;color:var(--cream-72);text-align:left}
 
 /* Verify sheet */
 .verify-shell{max-width:520px;margin-inline:auto;text-align:center}
@@ -520,7 +543,7 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .code-input{display:flex;gap:10px;max-width:420px;margin:0 auto 6px}
 .code-input input{flex:1;font-family:var(--display);font-size:1.3rem;font-weight:600;letter-spacing:.16em;text-align:center;text-transform:uppercase;color:var(--cream);background:rgba(0,0,0,.26);border:1px solid var(--stroke);border-radius:14px;padding:16px;min-height:58px;transition:.25s}
 .code-input input::placeholder{color:var(--cream-32);letter-spacing:.1em}
-.code-input input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 4px color-mix(in oklab,var(--gold) 14%,transparent)}
+.code-input input:focus{outline:none;border-color:var(--brand-green);box-shadow:0 0 0 4px var(--brand-green-stroke)}
 .verify-result{display:none;margin-top:26px;text-align:left;border-radius:18px;padding:22px;animation:fadeUp .4s both}
 .verify-result.show{display:block}
 .verify-result.ok{background:color-mix(in oklab,var(--green) 14%,transparent);border:1px solid var(--green)}
@@ -548,13 +571,13 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .tk-swatches{display:flex;gap:10px}
 .tk-sw{flex:1;cursor:pointer;border:1px solid var(--stroke);border-radius:13px;padding:8px;background:rgba(255,255,255,.03);transition:.2s}
 .tk-sw:hover{border-color:var(--stroke-gd)}
-.tk-sw.sel{border-color:var(--gold);box-shadow:0 0 0 3px color-mix(in oklab,var(--gold) 18%,transparent)}
+.tk-sw.sel{border-color:var(--brand-green);box-shadow:0 0 0 3px color-mix(in oklab,var(--brand-green) 18%,transparent)}
 .tk-sw .dots{display:flex;gap:4px;margin-bottom:7px}
 .tk-sw .dots i{width:14px;height:14px;border-radius:50%;display:block}
 .tk-sw span{font-size:.68rem;color:var(--cream-72);font-weight:600}
 .tk-segs{display:flex;gap:6px;background:rgba(0,0,0,.26);border:1px solid var(--stroke);border-radius:12px;padding:5px}
 .tk-seg{flex:1;cursor:pointer;border:none;background:none;color:var(--cream-52);font-family:var(--body);font-weight:700;font-size:.78rem;padding:9px 4px;border-radius:8px;transition:.2s}
-.tk-seg.sel{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#2a1d05}
+.tk-seg.sel{background:linear-gradient(135deg,var(--brand-green-br),var(--brand-green));color:var(--cream)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:translateY(0)}}
 
 /* ============ ANIMATION PARTICIPER ============ */
@@ -629,12 +652,17 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .qty-opt span{font-size:.62rem;letter-spacing:.06em;text-transform:uppercase}
 .qty-opt:hover{background:var(--glass-2);transform:translateY(-1px)}
 .qty-opt.on{
-  background:color-mix(in oklab,var(--gold) 18%,transparent);
+  background:color-mix(in oklab,var(--brand-green) 18%,transparent);
   border-color:var(--stroke-gd);color:var(--cream);
 }
-.qty-opt.on b{color:var(--gold-lt)}
-.qty-libre{margin-top:10px}
-.qty-libre input{width:100%}
+.qty-opt.on b{color:var(--brand-green-br)}
+.qty-libre{margin-top:10px;text-align:center}
+.qty-libre input{width:100px;font-family:var(--body);font-size:1.05rem;font-weight:700;text-align:center;
+  color:var(--cream);background:rgba(0,0,0,.24);border:1px solid var(--stroke);border-radius:12px;
+  padding:10px 12px;transition:.25s;min-height:auto}
+.qty-libre input:focus{outline:none;border-color:var(--brand-green);box-shadow:0 0 0 4px var(--brand-green-stroke)}
+.qty-libre input::-webkit-outer-spin-button,.qty-libre input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.qty-libre input{-moz-appearance:textfield}
 
 /* La liste des noms anime ses enfants un a un, comme les champs d'un volet. */
 .field-list.stagger>*{animation:field-in .38s cubic-bezier(.22,.9,.28,1) both}
@@ -662,7 +690,7 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .ph-meta{display:flex;align-items:baseline;gap:8px;min-width:0}
 .ph-meta b{flex:1;min-width:0;font-size:.86rem;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ph-meta span{flex:0 0 auto;font-size:.66rem;color:var(--cream-52)}
-.ph-item.ok .ph-meta span{color:var(--gold-lt)}
+.ph-item.ok .ph-meta span{color:var(--brand-green-br)}
 .ph-acts{display:flex;gap:6px;flex-wrap:wrap}
 .ph-acts button{
   padding:7px 9px;border-radius:10px;cursor:pointer;font-size:.68rem;font-weight:700;
@@ -750,7 +778,13 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){.caret{display:none}}
 .hero .a1{animation-delay:.05s}.hero .a2{animation-delay:.18s}.hero .a3{animation-delay:.31s}
 .hero .a4{animation-delay:.44s}.hero .a5{animation-delay:.57s}
-@media(min-width:760px){.steps{grid-template-columns:repeat(3,1fr);gap:14px}.foot-grid{grid-template-columns:1.6fr 1fr 1fr;text-align:left}.foot-brand .brand{justify-content:flex-start}.foot-brand p{margin-inline:0}.foot-col a,.foot-col p{display:flex}.foot-bottom{justify-content:space-between}}
+@media(min-width:760px){.steps{grid-template-columns:repeat(3,1fr);gap:14px}.foot-grid{grid-template-columns:1.6fr 1fr 1fr;text-align:left}.foot-brand .brand{justify-content:flex-start}.foot-brand p{margin-inline:0}.foot-col a,.foot-col p{display:flex}.foot-bottom{justify-content:space-between}
+  /* 5 objectifs sur 3 colonnes : la derniere ligne (2 cartes) s'alignait a
+     gauche par defaut. Le flex centre centre pour ne pas faire penser a une
+     carte manquante. */
+  .obj-steps{display:flex;flex-wrap:wrap;justify-content:center}
+  .obj-steps .step{flex:0 1 calc(33.333% - 9.34px)}
+}
 /* Tablette : formulaire d'inscription plus confortable */
 @media(min-width:600px){
   .reg-shell{max-width:680px}
@@ -799,18 +833,18 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <span class="eyebrow solo anim a1">Festival Adja • Édition <span data-year>2026</span></span>
         <h1 class="anim a2"><span id="typedName" data-cfg="eventName">FEJA</span><span class="caret" aria-hidden="true"></span></h1>
         <p class="acronym anim a3">Fraternité pour l'Épanouissement de la Jeunesse d'Aplahoué</p>
-        <p class="lead anim a3">Trois jours qui rassemblent la jeunesse d'Adja et de tout le Bénin. Tournoi de football, caravane à travers la ville et grandes réceptions.</p>
+        <p class="lead anim a3">FEJA rassemble la jeunesse d'Adja et du Bénin autour de la fraternité, de la solidarité et de l'esprit d'entraide, à travers l'art, la culture et des activités saines, pour un cadre de vie meilleur, ensemble.</p>
         <div class="hero-actions anim a4">
           <button class="btn btn-gold" data-open="participer">Participer →</button>
-          <button class="btn btn-ghost" data-open="verifier">J'ai déjà un code</button>
+          <button class="btn btn-ghost" data-open="verifier">J'ai perdu mon badge</button>
         </div>
         <div class="facts anim a4">
           <div class="fact"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><div><span class="k">Date</span><span class="v" data-cfg="dateLabel">28 Déc. 2026</span></div></div>
-          <div class="fact"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg><div><span class="k">Lieu</span><span class="v" data-cfg="lieu">Terrain Omnisports CEG2 AZOVÈ</span></div></div>
           <div class="fact"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 9.5V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2.5a2 2 0 0 0 0 5V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.5a2 2 0 0 0 0-5z"/></svg><div><span class="k">Participation</span><span class="v" data-amount>5 000 <small>XOF</small></span></div></div>
+          <div class="fact"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg><div><span class="k">Lieu</span><span class="v" data-cfg="lieu">Terrain Omnisports CEG2 AZOVÈ</span></div></div>
         </div>
         <div class="countdown anim a5">
-          <div class="cd-label"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg> Ouverture dans</div>
+          <div class="cd-label"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg> Rendez-vous dans</div>
           <div class="cd-grid">
             <div class="cd-cell"><div class="n" id="cd-d">00</div><div class="u">Jours</div></div>
             <div class="cd-cell"><div class="n" id="cd-h">00</div><div class="u">Heures</div></div>
@@ -828,25 +862,25 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <span class="eyebrow solo" style="display:inline-flex;justify-content:center">L'association FEJA</span>
         <h2>Les objectifs de l'association</h2>
       </div>
-      <ol class="steps reveal-group">
+      <ol class="steps obj-steps reveal-group">
         <li class="step">
-          <span class="s-num"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+          <span class="obj-icon"><img src="/img/objectifs/objectif-1.png" alt="" width="64" height="64" loading="lazy"></span>
           <div class="s-txt"><p>Promouvoir le communautarisme, la fraternité, la solidarité et l'esprit d'entraide.</p></div>
         </li>
         <li class="step">
-          <span class="s-num"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.86L12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg></span>
+          <span class="obj-icon"><img src="/img/objectifs/objectif-2.png" alt="" width="64" height="64" loading="lazy"></span>
           <div class="s-txt"><p>Organiser le Festival des jeunes pour les Arts et la culture Adja et des activités saines de jeux, sports et loisirs.</p></div>
         </li>
         <li class="step">
-          <span class="s-num"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
+          <span class="obj-icon"><img src="/img/objectifs/objectif-3.png" alt="" width="64" height="64" loading="lazy"></span>
           <div class="s-txt"><p>Contribuer à l'entrepreneuriat, à la formation professionnelle et à l'insertion sociale.</p></div>
         </li>
         <li class="step">
-          <span class="s-num"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>
+          <span class="obj-icon"><img src="/img/objectifs/objectif-4.png" alt="" width="64" height="64" loading="lazy"></span>
           <div class="s-txt"><p>Agir ensemble pour un cadre de vie meilleur, la promotion de l'excellence, l'éducation à la justice, la cohésion sociale et la santé de reproduction.</p></div>
         </li>
         <li class="step">
-          <span class="s-num"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
+          <span class="obj-icon"><img src="/img/objectifs/objectif-5.png" alt="" width="64" height="64" loading="lazy"></span>
           <div class="s-txt"><p>Promouvoir les valeurs humaines, l'égalité du genre et la sécurité alimentaire.</p></div>
         </li>
       </ol>
@@ -911,7 +945,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
     <div class="foot-grid">
       <div class="foot-brand">
         <a href="#top" class="brand"><img class="mark" data-brand-logo src="/api/branding/default-icon.svg" alt="" style="object-fit:contain"><span class="txt"><b data-cfg="eventName">WeloveAdja</b><span>2026</span></span></a>
-        <p>Fraternité pour l'Épanouissement de la Jeunesse d'Aplahoué – trois jours de sport, de caravane et de retrouvailles.</p>
+        <p>Fraternité pour l'Épanouissement de la Jeunesse d'Aplahoué – communautarisme, solidarité et esprit d'entraide, par l'art et la culture.</p>
       </div>
       <div class="foot-col">
         <h4>Paiement</h4>
@@ -924,11 +958,11 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <a id="footMail" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg> <span data-cfg="email">contact@fejafestival.com</span></a>
       </div>
     </div>
+    <p class="legal-note">Récépissé n°6PDC/2024A/482/PDC/SGD/SAG/SA du 23 octobre 2024 · Réf. Journal Officiel n°21 du 1ᵉʳ novembre 2024</p>
     <div class="foot-bottom">
       <span>© <span data-year>2026</span> <span data-cfg="eventName">FEJA</span>. Tous droits réservés.</span>
       <span>Paiement sécurisé · Mobile Money</span>
     </div>
-    <p class="legal-note">Récépissé n°6PDC/2024A/482/PDC/SGD/SAG/SA du 23 octobre 2024 · Réf. Journal Officiel n°21 du 1ᵉʳ novembre 2024</p>
   </div>
 </footer>
 </div><!-- /#home -->
@@ -959,7 +993,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
     <div class="reg-shell">
       <div class="reg-top" id="reg-header">
         <span class="eyebrow solo" style="display:inline-flex">Participation 2026</span>
-        <h2>Réserve ta place</h2>
+        <h2>Combien de badges voulez-vous ?</h2>
       </div>
       <!-- Engendree par majEtapes() : le nombre d'etapes change avec le
            nombre de billets. -->
@@ -968,21 +1002,16 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <!-- ÉTAPE 1 – INFOS -->
         <!-- ÉTAPE 0 – COMBIEN DE BILLETS -->
         <div class="pane show" data-pane="0">
-          <div class="pane-intro">
-            <b>Combien de billets ?</b>
-            <span>Choisis le nombre de personnes qui viennent. 10 au maximum pour un seul achat.</span>
-          </div>
-
-          <div class="qty" id="qty" role="group" aria-label="Nombre de billets">
-            <button type="button" class="qty-opt on" data-qty="1"><b>1</b><span>billet</span></button>
-            <button type="button" class="qty-opt" data-qty="2"><b>2</b><span>billets</span></button>
-            <button type="button" class="qty-opt" data-qty="3"><b>3</b><span>billets</span></button>
+          <div class="qty" id="qty" role="group" aria-label="Nombre de badges">
+            <button type="button" class="qty-opt on" data-qty="1"><b>1</b><span>badge</span></button>
+            <button type="button" class="qty-opt" data-qty="2"><b>2</b><span>badges</span></button>
+            <button type="button" class="qty-opt" data-qty="3"><b>3</b><span>badges</span></button>
             <button type="button" class="qty-opt" data-qty="0"><b>+</b><span>autre</span></button>
           </div>
           <p class="tap-note">Touche un chiffre, ou « autre » pour en saisir un.</p>
 
           <div class="qty-libre" id="qtyLibre" hidden>
-            <label for="qtyNb">Nombre de billets</label>
+            <label for="qtyNb">Nombre de badges</label>
             <input id="qtyNb" type="number" min="2" max="10" step="1" inputmode="numeric" placeholder="Ex. 5">
           </div>
           <div class="err" data-err="qty">Choisis un nombre entre 2 et 10.</div>
@@ -994,7 +1023,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <div class="pane" data-pane="1">
           <div class="pane-intro">
             <b id="introNomTitre">Tes informations</b>
-            <span id="introNomTexte">Le billet sera établi à ce nom.</span>
+            <span id="introNomTexte">Le badge sera établi à ce nom.</span>
           </div>
 
           <div id="nomSolo">
@@ -1107,7 +1136,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
 
           <div class="pay-recap">
             <div class="pr-rows">
-              <div class="pr-row" id="s-nb" style="display:none"><span>Billets</span><b>—</b></div>
+              <div class="pr-row" id="s-nb" style="display:none"><span>Badges</span><b>—</b></div>
               <div class="pr-noms" id="s-noms" style="display:none"></div>
               <div class="pr-row" id="s-row-nom"><span>Nom</span><b id="s-nom">—</b></div>
               <div class="pr-row" id="s-row-tel"><span>Téléphone</span><b id="s-tel">—</b></div>
@@ -1167,8 +1196,8 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
       <div class="verify-result" id="vResult"></div>
 
       <div class="tk-sep"><span>ou</span></div>
-      <button class="btn btn-ghost btn-block" id="tkStart" type="button">🎟️ Télécharger mon ticket</button>
-      <p class="tk-hint">Tu as perdu ton code ? Récupère ton billet avec ton adresse email.</p>
+      <button class="btn btn-ghost btn-block" id="tkStart" type="button">🎟️ Télécharger mon badge</button>
+      <p class="tk-hint">Tu as perdu ton code ? Récupère ton badge avec ton adresse email.</p>
     </div>
 
     <!-- Récupération du billet : e-mail, puis code à 6 chiffres, puis billet -->
@@ -1193,13 +1222,13 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <div class="field"><div class="input-wrap">
           <input id="tkCode" type="text" placeholder="000000" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
         </div></div>
-        <button class="btn btn-gold btn-block" id="tkCheck" type="button">Voir mon billet</button>
+        <button class="btn btn-gold btn-block" id="tkCheck" type="button">Voir mon badge</button>
         <button class="btn btn-ghost btn-block" id="tkResend" type="button" style="margin-top:10px">Renvoyer le code</button>
         <div class="tk-msg" id="tkMsg2"></div>
       </div>
 
       <div class="tk-step" id="tkStep3" hidden>
-        <h2 id="tkTitre">Ton billet</h2>
+        <h2 id="tkTitre">Ton badge</h2>
         <p class="sub" id="tkSousTitre"></p>
         <div id="tkListe"></div>
         <div class="tk-msg" id="tkMsg3"></div>
@@ -1498,7 +1527,16 @@ function startCountdown(){
   if(bloc) bloc.style.display='';
   const el={d:document.getElementById('cd-d'),h:document.getElementById('cd-h'),m:document.getElementById('cd-m'),s:document.getElementById('cd-s')};
   const pad=n=>String(Math.max(0,n)).padStart(2,'0');
-  function tick(){const diff=target-Date.now();if(isNaN(target)||diff<=0){el.d.textContent=el.h.textContent=el.m.textContent=el.s.textContent='00';return;}el.d.textContent=pad(Math.floor(diff/86400000));el.h.textContent=pad(Math.floor(diff%86400000/3600000));el.m.textContent=pad(Math.floor(diff%3600000/60000));el.s.textContent=pad(Math.floor(diff%60000/1000));}
+  // Ne touche au DOM et ne rejoue l'animation que si la valeur a reellement
+  // change : sinon les 4 cases clignoteraient inutilement chaque seconde.
+  function maj(cellule,valeur){
+    if(cellule.textContent===valeur)return;
+    cellule.textContent=valeur;
+    cellule.classList.remove('tick');
+    void cellule.offsetWidth; // force le navigateur a relire le DOM avant de rajouter la classe, sinon l'animation ne rejoue pas
+    cellule.classList.add('tick');
+  }
+  function tick(){const diff=target-Date.now();if(isNaN(target)||diff<=0){maj(el.d,'00');maj(el.h,'00');maj(el.m,'00');maj(el.s,'00');return;}maj(el.d,pad(Math.floor(diff/86400000)));maj(el.h,pad(Math.floor(diff%86400000/3600000)));maj(el.m,pad(Math.floor(diff%3600000/60000)));maj(el.s,pad(Math.floor(diff%60000/1000)));}
   tick();clearInterval(cdTimer);cdTimer=setInterval(tick,1000);
 }
 
@@ -1645,6 +1683,8 @@ function openSheet(name){
 function closeSheet(){
   const sh=activeSheet;if(!sh)return;
   stopPolling();
+  const waiting = document.getElementById('waitingScreen');
+  if(sh.id === 'sheet-participer' && waiting && waiting.style.display !== 'none') hideWaitingScreen();
   sh.classList.add('leave');
   document.body.classList.remove('sheet-open');
   majBarrePaiement();
@@ -1666,8 +1706,8 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&activeSheet)closeSheet();});
    ordre. Renumeroter a chaque changement d'achat serait ingerable. */
 const PARCOURS   = { solo:   [0, 1, 2, 4],
                      groupe: [0, 1, 2, 3, 4] };
-const ETIQUETTES = { solo:   ['Billets', 'Infos', 'Photo', 'Paiement'],
-                     groupe: ['Billets', 'Noms', 'Photos', 'Contact', 'Paiement'] };
+const ETIQUETTES = { solo:   ['Badges', 'Infos', 'Photo', 'Paiement'],
+                     groupe: ['Badges', 'Noms', 'Photos', 'Contact', 'Paiement'] };
 
 let idx = 0;                       // rang dans le parcours, pas numero de volet
 const panes = document.querySelectorAll('.pane');
@@ -1705,6 +1745,13 @@ function paint(){
   const courant = volet();
   panes.forEach(p => p.classList.toggle('show', +p.dataset.pane === courant));
   peindreEtapes();
+
+  // Le titre "Combien de badges ?" ne vaut que pour l'etape des badges :
+  // chaque etape suivante a deja son propre intitule dans le volet, le
+  // repeter en haut donnait l'impression que le site posait deux fois la
+  // meme question.
+  const regHeader = document.getElementById('reg-header');
+  if(regHeader) regHeader.style.display = courant === 0 ? '' : 'none';
 
   const sb = document.querySelector('#sheet-participer');
   if(sb) sb.scrollTop = 0;
@@ -1994,8 +2041,8 @@ function majTextesGuides(){
   const dire = (id, texte) => { const el = document.getElementById(id); if(el) el.textContent = texte; };
 
   if(enGroupe()){
-    dire('introNomTitre', 'À qui sont les billets ?');
-    dire('introNomTexte', "Écris le nom de chaque personne. C'est le nom qui figurera sur son billet, "
+    dire('introNomTitre', 'À qui sont les badges ?');
+    dire('introNomTexte', "Écris le nom de chaque personne. C'est le nom qui figurera sur son badge, "
       + "et celui qu'on vérifiera à l'entrée.");
     dire('introPhotoTitre', 'La photo de chacun');
     dire('introPhotoTexte', "Choisis la photo des personnes concernées. Si tu n'as pas la photo de "
@@ -2004,7 +2051,7 @@ function majTextesGuides(){
       + "Elles ne seront jamais publiées.");
   }else{
     dire('introNomTitre', 'Tes informations');
-    dire('introNomTexte', 'Le billet sera établi à ce nom.');
+    dire('introNomTexte', 'Le badge sera établi à ce nom.');
     dire('introPhotoTitre', 'Ta photo');
     dire('introPhotoTexte', "Elle sert à vérifier ton identité à l'entrée. Visage clair, bien éclairé.");
     dire('noteVieP', "Ta photo est utilisée uniquement pour vérifier ton identité le jour J. "
@@ -2327,6 +2374,20 @@ function showWaitingScreen(){
   document.getElementById('sheet-participer').scrollTop=0;
 }
 
+// Sans ca, fermer le volet pendant l'attente d'un paiement puis rouvrir
+// "Participer" retombait sur l'ecran d'attente fige au lieu du formulaire :
+// rien ne remettait ces affichages a leur etat de depart.
+function hideWaitingScreen(){
+  const header = document.getElementById('reg-header');
+  if(header) header.style.display = volet() === 0 ? '' : 'none';
+  const progress = document.getElementById('progress');
+  if(progress) progress.style.display = '';
+  const body = document.querySelector('#sheet-participer .reg-body');
+  if(body) body.style.display = '';
+  const waiting = document.getElementById('waitingScreen');
+  if(waiting) waiting.style.display = 'none';
+}
+
 document.getElementById('launchBtn').addEventListener('click',launchPayment);
 document.getElementById('checkBtn').addEventListener('click',()=>{pollPaymentStatus(true);});
 
@@ -2614,11 +2675,11 @@ function attendreValidation(demo){
     const hote = $$('tkListe');
     if(!billets.length){
       hote.innerHTML = '';
-      dire('tkMsg3', "Aucun billet validé n'est rattaché à cette adresse.", 'ko');
+      dire('tkMsg3', "Aucun badge validé n'est rattaché à cette adresse.", 'ko');
       return;
     }
     dire('tkMsg3','');
-    $$('tkTitre').textContent = billets.length > 1 ? 'Tes billets' : 'Ton billet';
+    $$('tkTitre').textContent = billets.length > 1 ? 'Tes badges' : 'Ton badge';
     $$('tkSousTitre').textContent = billets.length > 1
       ? billets.length + ' inscriptions sont rattachées à cette adresse.'
       : 'Garde-le : il te sera demandé à l\u2019entrée.';
@@ -2635,7 +2696,7 @@ function attendreValidation(demo){
       <div class="tk-carte">
         <canvas id="tkCv${i}"></canvas>
         <div class="tk-nom"><b>${escHtml(b.nom||'')}</b><span>${escHtml(b.code||'')}</span></div>
-        ${b.utilise ? '<p class="tk-utilise">Ce billet a déjà été scanné à l\u2019entrée.</p>' : ''}
+        ${b.utilise ? '<p class="tk-utilise">Ce badge a déjà été scanné à l\u2019entrée.</p>' : ''}
         <div class="tk-actions">
           <button class="btn btn-gold btn-sm" data-pdf="${escHtml(b.id)}">PDF</button>
           <button class="btn btn-ghost btn-sm" data-img="${i}">Image</button>
@@ -2657,7 +2718,7 @@ function attendreValidation(demo){
         if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error || 'Téléchargement impossible');
         const url = URL.createObjectURL(await res.blob());
         const a = document.createElement('a');
-        a.href = url; a.download = 'billet-feja.pdf';
+        a.href = url; a.download = 'badge-feja.pdf';
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
       }catch(err){ dire('tkMsg3', err.message, 'ko'); }
@@ -2673,7 +2734,7 @@ function attendreValidation(demo){
       $$('tkCv'+i).toBlob(blob => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = 'billet-' + (billets[i].code || 'feja') + '.png';
+        a.href = url; a.download = 'badge-' + (billets[i].code || 'feja') + '.png';
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
         fin();

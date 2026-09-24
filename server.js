@@ -5,11 +5,12 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
+const { Worker } = require("worker_threads");
 const initSqlJs = require("sql.js");
 const QRCode = require("qrcode");
 const PDFDocument = require("pdfkit");
-const { PNG } = require("pngjs");
 const mail = require("./lib/mail");
+const { getTicketLogoPath, MAX_TICKET_LOGO_BYTES } = require("./lib/ticket-pdf");
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
@@ -972,9 +973,9 @@ function buildThemeCss(settings = getSettings()) {
   --cream:${c.cream};
   --cream-72:${rgba(c.cream, 0.74)};--cream-52:${rgba(c.cream, 0.52)};--cream-32:${rgba(c.cream, 0.32)};
   --glass:rgba(255,255,255,.05);--glass-2:rgba(255,255,255,.08);
-  --stroke:${rgba(c.cream, 0.12)};--stroke-gd:${rgba(c.gold, 0.36)};
+  --stroke:${rgba(c.cream, 0.12)};--stroke-gd:rgba(10,143,79,.5);
   --red:${c.red};
-  --surface:${rgba(c.cream, 0.08)};--surface-strong:${rgba(c.cream, 0.12)};--surface-border:${rgba(c.gold, 0.12)};
+  --surface:${rgba(c.cream, 0.08)};--surface-strong:${rgba(c.cream, 0.12)};--surface-border:rgba(10,143,79,.14);
   --text:${c.cream};--muted:${rgba(c.cream, 0.85)};--sand:${c.goldLt};--bg-soft:${c.bg2};
 }
 body{background:
@@ -1098,7 +1099,7 @@ function getConfigHealth(settings = getSettings()) {
   }
 
   if (!settings.pickup_location) {
-    add("warn", "pickup", "Lieu de retrait non renseigné", "Il apparaît sur le billet et dans l'email.");
+    add("warn", "pickup", "Lieu de retrait non renseigné", "Il apparaît sur le badge et dans l'email.");
   } else {
     add("ok", "pickup", `Lieu : ${settings.pickup_location}`, null);
   }
@@ -1149,10 +1150,10 @@ function getConfigHealth(settings = getSettings()) {
     let taille = 0;
     try { taille = fs.statSync(logoFile).size; } catch {}
     if (taille > MAX_TICKET_LOGO_BYTES) {
-      add("warn", "logo_poids", "Logo trop lourd pour le billet PDF",
-        `Il pèse ${Math.round(taille / 1024)} Ko. Il n'est donc pas placé sur le billet, qui ferait sinon plus d'un méga-octet par participant. Réimporte-le depuis Apparence : il sera réduit automatiquement.`);
+      add("warn", "logo_poids", "Logo trop lourd pour le badge PDF",
+        `Il pèse ${Math.round(taille / 1024)} Ko. Il n'est donc pas placé sur le badge, qui ferait sinon plus d'un méga-octet par participant. Réimporte-le depuis Apparence : il sera réduit automatiquement.`);
     } else {
-      add("ok", "logo_poids", "Logo utilisable sur le billet PDF", null);
+      add("ok", "logo_poids", "Logo utilisable sur le badge PDF", null);
     }
   }
 
@@ -1167,7 +1168,7 @@ function getConfigHealth(settings = getSettings()) {
       "Fonctionne, mais les messages ne partent pas de ton propre domaine. Renseigne le SMTP pour une identité d'expéditeur cohérente.");
   } else {
     add("error", "mail", "Aucun moyen d'envoi d'e-mail",
-      "Ni SMTP ni clé Resend. Le billet et le code de récupération ne partiront pas.");
+      "Ni SMTP ni clé Resend. Le badge et le code de récupération ne partiront pas.");
   }
 
   if (!String(settings.alert_email || process.env.MAIL_ALERT_TO || "").trim()) {
@@ -1546,7 +1547,7 @@ function saveParticipantPhoto(dataUrl, participantId) {
 const BRANDING_ASSETS = {
   logo:      { fichier: "logo",     reglage: "logo_url",      svg: true,  label: "Logo" },
   wordmark:  { fichier: "wordmark", reglage: "wordmark_url",  svg: false, label: "Bandeau du titre" },
-  "ticket-bg": { fichier: "ticket-bg", reglage: "ticket_bg_url", svg: false, label: "Photo de fond du billet" },
+  "ticket-bg": { fichier: "ticket-bg", reglage: "ticket_bg_url", svg: false, label: "Photo de fond du badge" },
 };
 
 // Efface les caches reduits d'une ressource : sans cela, le billet
@@ -1657,155 +1658,9 @@ function removeBrandingLogo(base = "logo") {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Billet PDF
-//
-// Envoye en piece jointe avec l'email de validation, et telechargeable depuis
-// l'admin pour etre montre ou imprime devant le participant.
-//
-// Tout est vectoriel sauf le logo et le QR : le billet reste net a
-// l'impression quelle que soit la taille, et le fichier pese quelques dizaines
-// de kilo-octets au lieu de plusieurs mega.
-// ---------------------------------------------------------------------------
-// Au-dela, le logo n'est pas embarque dans le billet : voir buildTicketPdf.
-const MAX_TICKET_LOGO_BYTES = 400 * 1024;
-const TICKET_WIDTH = 600;   // points PDF, soit un rapport 3:2 comme la maquette
-const TICKET_HEIGHT = 400;
-
-// ---------------------------------------------------------------------------
-// Reduction du logo pour le billet
-//
-// pdfkit embarque une image A SA TAILLE D'ORIGINE, meme affichee en 68 points :
-// le logo de 1254x1254 pesait 1,3 Mo et donnait des billets de 1,5 Mo. On en
-// fabrique donc une version reduite, gardee en cache sur le disque et refaite
-// seulement quand le logo change.
-// ---------------------------------------------------------------------------
-// Tailles visees pour les images du billet. Chacune est largement suffisante
-// pour un rendu net a 300 points par pouce a la taille ou elle est affichee.
-// Tailles choisies sur mesure et non au juge : au-dela, le poids grimpe vite
-// sans gain visible a la taille ou l'image est affichee.
-//   bandeau 720px -> 144 Ko | 520px -> 62 Ko, pour un affichage de 300 pt
-//   logo    220px ->  64 Ko | 200px -> 55 Ko, pour un affichage de 76 pt
-const TICKET_IMAGE_SIZES = {
-  logo: 200,
-  wordmark: 520,
-  bg: 1000,
-};
-
-// Reechantillonnage par moyenne de bloc. Le voisin le plus proche donnerait
-// des bords en escalier tres visibles sur un logo circulaire.
-function downscalePng(source, cible) {
-  const ratio = Math.min(cible / source.width, cible / source.height, 1);
-  const w = Math.max(1, Math.round(source.width * ratio));
-  const h = Math.max(1, Math.round(source.height * ratio));
-  const sortie = new PNG({ width: w, height: h });
-
-  const blocX = source.width / w;
-  const blocY = source.height / h;
-
-  for (let y = 0; y < h; y += 1) {
-    const y0 = Math.floor(y * blocY);
-    const y1 = Math.max(y0 + 1, Math.floor((y + 1) * blocY));
-
-    for (let x = 0; x < w; x += 1) {
-      const x0 = Math.floor(x * blocX);
-      const x1 = Math.max(x0 + 1, Math.floor((x + 1) * blocX));
-
-      let r = 0, g = 0, b = 0, a = 0, n = 0;
-      for (let sy = y0; sy < y1 && sy < source.height; sy += 1) {
-        for (let sx = x0; sx < x1 && sx < source.width; sx += 1) {
-          const i = (source.width * sy + sx) << 2;
-          const alpha = source.data[i + 3];
-          // Moyenne ponderee par l'alpha : sans cela, les pixels totalement
-          // transparents (souvent noirs) assombriraient les bords du logo.
-          r += source.data[i] * alpha;
-          g += source.data[i + 1] * alpha;
-          b += source.data[i + 2] * alpha;
-          a += alpha;
-          n += 1;
-        }
-      }
-
-      const j = (w * y + x) << 2;
-      if (a > 0) {
-        sortie.data[j] = Math.round(r / a);
-        sortie.data[j + 1] = Math.round(g / a);
-        sortie.data[j + 2] = Math.round(b / a);
-      }
-      sortie.data[j + 3] = Math.round(a / Math.max(1, n));
-    }
-  }
-
-  return sortie;
-}
-
-// Renvoie le chemin d'une image de marque reduite pour le billet, ou null.
-// `nom` sert a nommer le fichier de cache et a choisir la taille visee.
-function getTicketImagePath(settings, cleReglage, nom) {
-  const source = localFileFromUrl(settings[cleReglage]);
-  if (!source) return null;
-
-  // Le SVG n'est pas embarquable par pdfkit.
-  if (!/\.(png|jpe?g)$/i.test(source)) return null;
-
-  const taille = TICKET_IMAGE_SIZES[nom] || 400;
-  const cache = path.join(BRANDING_DIR, `${nom}-ticket.png`);
-
-  // Un JPEG est deja compresse : pdfkit le reprend tel quel. On ne le reduit
-  // pas, mais on refuse ceux qui alourdiraient trop le billet.
-  if (/\.jpe?g$/i.test(source)) {
-    try { return fs.statSync(source).size <= MAX_TICKET_LOGO_BYTES ? source : null; } catch { return null; }
-  }
-
-  try {
-    const infoSource = fs.statSync(source);
-    // Cache encore valable : on ne refait pas le calcul a chaque billet.
-    if (fs.existsSync(cache) && fs.statSync(cache).mtimeMs >= infoSource.mtimeMs) {
-      return cache;
-    }
-
-    const reduit = downscalePng(PNG.sync.read(fs.readFileSync(source)), taille);
-
-    // Une image entierement opaque n'a pas besoin de son canal alpha : le
-    // retirer enleve un quart des octets avant compression. Mesure sur le
-    // bandeau FESTIVAL ADJA : 144 -> 121 Ko a taille egale.
-    let opaque = true;
-    for (let i = 3; i < reduit.data.length; i += 4) {
-      if (reduit.data[i] !== 255) { opaque = false; break; }
-    }
-
-    const options = opaque
-      ? { deflateLevel: 9, colorType: 2, inputColorType: 6 }
-      : { deflateLevel: 9 };
-    fs.writeFileSync(cache, PNG.sync.write(reduit, options));
-    console.log(`Image du billet regeneree (${nom}) : ${Math.round(fs.statSync(cache).size / 1024)} Ko`);
-    return cache;
-  } catch (error) {
-    console.warn(`Reduction de l'image ${nom} impossible:`, error.message);
-    return null;
-  }
-}
-
-// Dimensions d'un PNG, lues dans son en-tete IHDR (octets 16 a 24). Evite de
-// decoder toute l'image juste pour connaitre son rapport largeur/hauteur.
-function readPngSize(filePath) {
-  try {
-    const fd = fs.openSync(filePath, "r");
-    const tete = Buffer.alloc(24);
-    fs.readSync(fd, tete, 0, 24, 0);
-    fs.closeSync(fd);
-    if (tete.toString("latin1", 1, 4) !== "PNG") return null;
-    return { width: tete.readUInt32BE(16), height: tete.readUInt32BE(20) };
-  } catch {
-    return null;
-  }
-}
-
-function getTicketLogoPath(settings) {
-  return getTicketImagePath(settings, "logo_url", "logo");
-}
-
-// Chemin sur disque d'une image servie par une URL du site, ou null.
+// Chemin sur disque d'une image servie par une URL du site, ou null. Utilisee
+// ici pour le controle de sante de la config (logo trop lourd) ; la version
+// dont se sert la construction du badge vit desormais dans lib/ticket-pdf.js.
 function localFileFromUrl(url) {
   const clean = String(url || "").split("?")[0].replace(/^\/+/, "");
   if (!clean) return null;
@@ -1815,204 +1670,55 @@ function localFileFromUrl(url) {
   return fs.existsSync(filePath) ? filePath : null;
 }
 
-// Palette du billet, VOLONTAIREMENT fixe et non liee au theme du site.
-// Le site change de couleur chaque jour ; un billet, lui, doit rester
-// reconnaissable et s'accorder au logo, qui est vert.
-const TICKET_COLORS = {
-  clair: "#f4f7f2",
-  vert: "#2fa84f",
-  vertFonce: "#12662c",
-  sombre: "#0c2b17",
-  blanc: "#ffffff",
-  creme: "#dceadf",
-};
+// ---------------------------------------------------------------------------
+// Badge PDF
+//
+// La construction elle-meme (pdfkit, reduction des images de marque) vit
+// dans lib/ticket-pdf.js, executee dans un thread separe : elle est
+// synchrone, et executee ici dans le thread principal elle gelerait tout le
+// site pour tous les visiteurs pendant qu'un badge se dessine. Un seul
+// worker persistant suffit a l'echelle de ce projet ; il est relance
+// automatiquement s'il plante.
+// ---------------------------------------------------------------------------
+let ticketWorker = null;
+let ticketWorkerReqId = 0;
+const ticketWorkerPending = new Map();
 
-function buildTicketPdf(participant, settings = getSettings()) {
-  const t = TICKET_COLORS;
-  const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
-  const annee = getDatePartsBenin().year;
+function spawnTicketWorker() {
+  const worker = new Worker(path.join(__dirname, "lib", "ticket-pdf-worker.js"));
 
-  const W = TICKET_WIDTH, H = TICKET_HEIGHT;
-  const milieu = W / 2;
-
-  const doc = new PDFDocument({
-    size: [W, H],
-    margin: 0,
-    info: { Title: `Billet ${eventName} - ${participant.code_unique || ""}`, Author: eventName },
+  worker.on("message", (msg) => {
+    const pending = ticketWorkerPending.get(msg.id);
+    if (!pending) return;
+    ticketWorkerPending.delete(msg.id);
+    if (msg.error) pending.reject(new Error(msg.error));
+    else pending.resolve(Buffer.from(msg.buffer));
   });
 
-  doc.rect(0, 0, W, H).fill(t.clair);
+  worker.on("error", (error) => {
+    console.error("Worker badge PDF en erreur:", error.message);
+    // Le worker ne repondra plus : les demandes encore en attente sur lui
+    // echouent, et le prochain badge en relancera un nouveau.
+    for (const pending of ticketWorkerPending.values()) pending.reject(error);
+    ticketWorkerPending.clear();
+    ticketWorker = null;
+  });
 
-  // Photo de fond, si l'organisateur en a televerse une. Elle est recouverte
-  // d'un voile clair : sans lui, une photo contrastee rendrait le QR et les
-  // textes illisibles, et un QR illisible est un participant bloque a l'entree.
-  const fondPath = getTicketImagePath(settings, "ticket_bg_url", "bg");
-  let aFond = false;
-  if (fondPath) {
-    try {
-      doc.save();
-      doc.rect(0, 0, W, H).clip();
-      // valign "bottom" et non "center" : sur une photo de concert, la foule
-      // est en bas et le haut n'est que du ciel sombre. Centre, le cadrage
-      // tombait pile dans la zone vide et le billet paraissait uni.
-      doc.image(fondPath, 0, 0, { cover: [W, H], align: "center", valign: "bottom" });
-      doc.restore();
+  worker.on("exit", (code) => {
+    if (code !== 0) console.warn(`Worker badge PDF arrete (code ${code}), relance a la prochaine demande.`);
+    ticketWorker = null;
+  });
 
-      // Voile en degrade plutot qu'uniforme : opaque en haut, ou se trouvent
-      // le QR et le code qui doivent rester parfaitement lisibles, puis
-      // s'effacant vers le bas pour laisser voir la foule.
-      const voile = doc.linearGradient(0, 0, 0, H);
-      voile.stop(0, t.clair, 0.95);
-      voile.stop(0.55, t.clair, 0.9);
-      voile.stop(0.78, t.clair, 0.55);
-      voile.stop(1, t.clair, 0.12);
-      doc.rect(0, 0, W, H).fill(voile);
-
-      aFond = true;
-    } catch { /* photo illisible : on garde le fond uni */ }
-  }
-
-  // Coins verts en biais, en haut a gauche et a droite.
-  doc.moveTo(0, 0).lineTo(148, 0).lineTo(0, 94).closePath().fill(t.vert);
-  doc.moveTo(W, 0).lineTo(W - 148, 0).lineTo(W, 94).closePath().fill(t.vert);
-
-  // Bandeau du bas. La courbe PLONGE au milieu : bombee, elle recouvrait la
-  // mention "Scannez pour vos infos", qui est centree.
-  // Avec une photo, le bandeau est translucide : la foule reste visible
-  // derriere, comme sur la maquette, tout en gardant le texte lisible.
-  if (aFond) doc.fillOpacity(0.62);
-  doc.moveTo(0, H - 64)
-     .bezierCurveTo(W * 0.33, H - 24, W * 0.67, H - 24, W, H - 64)
-     .lineTo(W, H).lineTo(0, H).closePath().fill(t.sombre);
-  doc.fillOpacity(1);
-
-  // -- Les deux logos, de part et d'autre du titre.
-  const logoPath = getTicketLogoPath(settings);
-  const L = 70;
-  let aLogo = false;
-  if (logoPath) {
-    try {
-      doc.image(logoPath, 22, 10, { fit: [L, L] });
-      doc.image(logoPath, W - 22 - L, 10, { fit: [L, L] });
-      aLogo = true;
-    } catch { /* image illisible : le billet reste valable sans logo */ }
-  }
-
-  // -- Cartouche du titre. Le bandeau "FESTIVAL ADJA" fourni par l'organisateur
-  //    remplace le texte quand il existe ; sinon on dessine le nom.
-  const cx = aLogo ? 144 : 96;
-  const cw = W - cx * 2;
-  const bandeauPath = getTicketImagePath(settings, "wordmark_url", "wordmark");
-  let bandeauPose = false;
-
-  if (bandeauPath) {
-    try {
-      const ch = 54;
-      const dim = readPngSize(bandeauPath);
-
-      // Coins arrondis : l'image fournie a des angles droits, alors que le
-      // reste du billet (cadre du QR, cadre du code) est arrondi.
-      //
-      // La decoupe doit porter sur les bornes REELLES de l'image, pas sur le
-      // cadre qui l'accueille : avec `fit`, une image en 3:1 posee dans un
-      // cadre en 5:1 n'occupe que le centre, et arrondir le cadre laissait
-      // les vrais angles bien carres.
-      if (dim) {
-        const echelle = Math.min(cw / dim.width, ch / dim.height);
-        const lg = dim.width * echelle;
-        const ht = dim.height * echelle;
-        const x = cx + (cw - lg) / 2;
-        const y = 12 + (ch - ht) / 2;
-        const rayon = Math.min(14, ht / 2);
-
-        doc.save();
-        doc.roundedRect(x, y, lg, ht, rayon).clip();
-        doc.image(bandeauPath, x, y, { width: lg, height: ht });
-        doc.restore();
-      } else {
-        // Dimensions inconnues : on pose l'image sans arrondi plutot que de
-        // risquer une decoupe fausse.
-        doc.image(bandeauPath, cx, 12, { fit: [cw, ch], align: "center", valign: "center" });
-      }
-      bandeauPose = true;
-    } catch { /* image illisible : on retombe sur le cartouche texte */ }
-  }
-
-  if (!bandeauPose) {
-    doc.roundedRect(cx, 12, cw, 54, 13).fill(t.sombre);
-    doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(21)
-       .text(eventName.toUpperCase(), cx, 28, { width: cw, align: "center", characterSpacing: 1 });
-  }
-
-  // -- "Edition <annee>" entre deux filets.
-  const yEdition = 76;
-  doc.fillColor(t.sombre).font("Helvetica-Bold").fontSize(11.5)
-     .text(`Édition ${annee}`, 0, yEdition, { width: W, align: "center", characterSpacing: 1.2 });
-  doc.lineWidth(1.6).strokeColor(t.vert);
-  doc.moveTo(milieu - 112, yEdition + 6).lineTo(milieu - 56, yEdition + 6).stroke();
-  doc.moveTo(milieu + 56, yEdition + 6).lineTo(milieu + 112, yEdition + 6).stroke();
-
-  // -- QR au centre. Sombre sur blanc : c'est la seule combinaison que TOUS
-  //    les lecteurs savent lire, y compris les capteurs bas de gamme.
-  const qrPath = localFileFromUrl(participant.qr_code_url);
-  // 150 pt au lieu de 116, soit 53 mm : le cas difficile n'est pas le billet
-  // imprime mais le PDF presente sur l'ecran d'un telephone a l'entree, ou
-  // reflets et moire mangent du contraste. Chaque millimetre compte.
-  const qr = 150;
-  const qrX = milieu - qr / 2, qrY = 98;
-  doc.roundedRect(qrX - 10, qrY - 10, qr + 20, qr + 20, 12)
-     .lineWidth(2.4).fillAndStroke(t.blanc, t.vert);
-  if (qrPath) {
-    try { doc.image(qrPath, qrX, qrY, { fit: [qr, qr] }); } catch {}
-  }
-
-  // -- Code d'acces.
-  const yCode = qrY + qr + 20;          // 268
-  const cwCode = 220, chCode = 42;
-  doc.roundedRect(milieu - cwCode / 2, yCode, cwCode, chCode, 11)
-     .lineWidth(2).fillAndStroke(t.sombre, t.vert);
-  doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(24)
-     .text(participant.code_unique || "------", milieu - cwCode / 2, yCode + 11,
-           { width: cwCode, align: "center", characterSpacing: 4 });
-
-  // -- Mention, posee AU-DESSUS du creux du bandeau.
-  const yScan = yCode + chCode + 11;    // 321
-  doc.fillColor(t.vertFonce).font("Helvetica-Bold").fontSize(8)
-     .text("SCANNEZ POUR VOS INFOS", 0, yScan, { width: W, align: "center", characterSpacing: 2 });
-  doc.lineWidth(1.2).strokeColor(t.vert);
-  doc.moveTo(milieu - 148, yScan + 4).lineTo(milieu - 86, yScan + 4).stroke();
-  doc.moveTo(milieu + 86, yScan + 4).lineTo(milieu + 148, yScan + 4).stroke();
-
-  // -- Pied : les deux informations que le controleur verifie a l'entree.
-  const yPied = H - 34;
-  doc.fillColor(t.vert).font("Helvetica-Bold").fontSize(7)
-     .text("PARTICIPANT", 28, yPied, { characterSpacing: 1.6 });
-  doc.fillColor(t.blanc).font("Helvetica-Bold").fontSize(11.5)
-     .text(texteP(participant.nom) || "-", 28, yPied + 10, { width: W / 2 - 44, height: 15, ellipsis: true });
-
-  const lieu = participant.lieu_retrait || settings.pickup_location || "-";
-  doc.fillColor(t.vert).font("Helvetica-Bold").fontSize(7)
-     .text("LIEU", W / 2, yPied, { width: W / 2 - 28, align: "right", characterSpacing: 1.6 });
-  doc.fillColor(t.creme).font("Helvetica-Bold").fontSize(9.5)
-     .text(texteP(lieu), W / 2, yPied + 11, { width: W / 2 - 28, align: "right", height: 14, ellipsis: true });
-
-  return doc;
+  return worker;
 }
 
-// Rend le PDF en memoire. Il pese quelques dizaines de Ko : le garder en
-// tampon evite d'ecrire un fichier temporaire par participant.
 function renderTicketPdf(participant, settings = getSettings()) {
+  if (!ticketWorker) ticketWorker = spawnTicketWorker();
+
+  const id = ++ticketWorkerReqId;
   return new Promise((resolve, reject) => {
-    try {
-      const doc = buildTicketPdf(participant, settings);
-      const morceaux = [];
-      doc.on("data", (m) => morceaux.push(m));
-      doc.on("end", () => resolve(Buffer.concat(morceaux)));
-      doc.on("error", reject);
-      doc.end();
-    } catch (error) {
-      reject(error);
-    }
+    ticketWorkerPending.set(id, { resolve, reject });
+    ticketWorker.postMessage({ id, participant, settings });
   });
 }
 
@@ -2725,7 +2431,7 @@ async function createPaymentTransaction(settings, participant, customer, nombreB
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
   const body = {
     description: nombreBillets > 1
-      ? `${nombreBillets} billets ${eventName} ${settings.event_year || DEFAULT_SETTINGS.event_year}`
+      ? `${nombreBillets} badges ${eventName} ${settings.event_year || DEFAULT_SETTINGS.event_year}`
       : `Participation ${eventName} ${settings.event_year || DEFAULT_SETTINGS.event_year}`,
     amount,
     currency: { iso: "XOF" },
@@ -3140,7 +2846,7 @@ async function sendValidationEmail(participantOuGroupe, settings) {
     // partir : le code y figure deja, le billet est un confort.
     try {
       attachments.push({
-        filename: `billet-${nomFichier}-${billet.code_unique}.pdf`,
+        filename: `badge-${nomFichier}-${billet.code_unique}.pdf`,
         content: await renderTicketPdf(billet, settings),
       });
     } catch (error) {
@@ -3168,7 +2874,7 @@ function alerterInscriptionPayee(participantOuGroupe, settings) {
   if (billets.length > 1) {
     // Un achat groupe se lit mal en une seule ligne : on liste chaque nom avec
     // son code, c'est ce qu'on aura sous les yeux a l'entree.
-    lignes.push(["Billets", String(billets.length)]);
+    lignes.push(["Badges", String(billets.length)]);
     lignes.push(["Total", formatMontant(getParticipationAmount(settings) * billets.length)]);
     billets.forEach((b, i) => {
       lignes.push([`${i + 1}. ${b.nom || "—"}`, b.code_unique || "—"]);
@@ -3181,7 +2887,7 @@ function alerterInscriptionPayee(participantOuGroupe, settings) {
   lignes.push(["Référence", acheteur.groupe_id || acheteur.id || "—"]);
 
   sendInternalAlert(
-    billets.length > 1 ? `Nouvel achat de ${billets.length} billets` : "Nouvelle inscription payée",
+    billets.length > 1 ? `Nouvel achat de ${billets.length} badges` : "Nouvelle inscription payée",
     lignes,
     settings,
   ).catch(() => { /* deja journalise dans sendInternalAlert */ });
@@ -3705,14 +3411,14 @@ async function handleApi(request, response, url) {
       if (resultat.erreur) {
         // Meme reponse pour "introuvable", "interdit" et "non valide" : dire
         // que le billet existe mais appartient a un autre serait deja trop.
-        sendJson(response, 404, { error: "Billet introuvable." });
+        sendJson(response, 404, { error: "Badge introuvable." });
         return;
       }
 
       const pdf = await renderTicketPdf(resultat.participant);
       response.writeHead(200, {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="billet-${resultat.participant.code_unique}.pdf"`,
+        "Content-Disposition": `attachment; filename="badge-${resultat.participant.code_unique}.pdf"`,
         "Content-Length": pdf.length,
         "Cache-Control": "no-store",
       });
@@ -3737,13 +3443,13 @@ async function handleApi(request, response, url) {
       const billetsDemandes = lireBilletsDemandes(body);
 
       if (!billetsDemandes.length) {
-        sendJson(response, 400, { error: "Aucun billet demande." });
+        sendJson(response, 400, { error: "Aucun badge demande." });
         return;
       }
 
       if (billetsDemandes.length > MAX_BILLETS_PAR_ACHAT) {
         sendJson(response, 400, {
-          error: "Maximum " + MAX_BILLETS_PAR_ACHAT + " billets par achat. Pour un groupe plus grand, contacte l'organisation.",
+          error: "Maximum " + MAX_BILLETS_PAR_ACHAT + " badges par achat. Pour un groupe plus grand, contacte l'organisation.",
         });
         return;
       }
@@ -3757,7 +3463,7 @@ async function handleApi(request, response, url) {
       // permet de verifier a l'entree que le porteur est bien la personne.
       for (let i = 0; i < billetsDemandes.length; i += 1) {
         const b = billetsDemandes[i];
-        const rang = billetsDemandes.length > 1 ? " du billet " + (i + 1) : "";
+        const rang = billetsDemandes.length > 1 ? " du badge " + (i + 1) : "";
         if (!b.nom || !b.photo) {
           sendJson(response, 400, { error: "Nom et photo" + rang + " sont obligatoires." });
           return;
@@ -3770,7 +3476,7 @@ async function handleApi(request, response, url) {
           // Le rang est indispensable des qu'il y a plusieurs noms : sans lui,
           // l'acheteur de cinq billets ne sait pas lequel corriger.
           sendJson(response, 400, {
-            error: billetsDemandes.length > 1 ? "Billet " + (i + 1) + " : " + invalid : invalid,
+            error: billetsDemandes.length > 1 ? "Badge " + (i + 1) + " : " + invalid : invalid,
             billet: i + 1,
           });
           return;
@@ -4333,7 +4039,7 @@ async function handleApi(request, response, url) {
         }
 
         const pdf = await renderTicketPdf(participant);
-        const nom = `billet-${participant.code_unique}.pdf`;
+        const nom = `badge-${participant.code_unique}.pdf`;
         response.writeHead(200, {
           "Content-Type": "application/pdf",
           // inline : le billet s'ouvre dans l'onglet, donc montrable tout de
@@ -4819,6 +4525,10 @@ initDatabase()
     // grossir la base, et un code perime ne doit pas trainer.
     purgeTicketAccess();
     setInterval(purgeTicketAccess, 15 * 60 * 1000).unref();
+    // Demarre tout de suite : sinon le tout premier badge genere paierait le
+    // cout de lancement du thread (chargement des polices, etc.) en plus de
+    // son propre dessin.
+    ticketWorker = spawnTicketWorker();
     listen(PORT);
   })
   .catch((error) => {
