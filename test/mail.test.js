@@ -114,14 +114,33 @@ test("paiement confirmé : destinataire, sujet, code et pièce jointe", async ()
 
   const m = envoyes[0];
   assert.equal(m.to, "kossi@exemple.test");
-  assert.match(m.subject, /9872A6/, "le sujet doit porter le code");
-  assert.match(m.subject, /FEJA/);
+  assert.equal(m.subject, "Bingo KOSSI ADJAVON 🎉 Votre badge est prêt !");
+  assert.match(m.html, /<h1[^>]*font-weight:bold[^>]*>Bingo KOSSI ADJAVON 🎉 Votre badge est prêt !<\/h1>/, "le nom suit Bingo, en gras");
+  assert.match(m.html, /Kwabô ! Génial !/);
+  assert.match(m.html, /Détails de l&#39;achat/);
   assert.match(m.html, /9872A6/, "le code doit figurer dans le corps");
   assert.match(m.html, /Kossi Adjavon/);
-  assert.match(m.html, /verification\.html\?code=9872A6/, "le bouton doit mener a la verification");
+  assert.match(m.html, /Festival Adja 2027 · 15e édition/, "l'evenement vient des reglages du badge");
+  assert.match(m.html, /Rendez-vous les 12, 13, 14 &amp; 15 Août 2027 à Azovè/);
+  assert.match(m.html, /retour-paiement\.html\?p=WLA-20260906-ABCDEF123456/, "le bouton doit mener au telechargement");
   assert.match(m.text, /9872A6/, "la version texte doit aussi porter le code");
-  assert.equal(m.attachments.length, 1);
-  assert.equal(m.attachments[0].filename, "billet.pdf");
+  // Logo integre (cid) + badge PDF.
+  assert.match(m.html, /src="cid:logo-festival-adja"/);
+  assert.ok(m.attachments.some((a) => a.cid === "logo-festival-adja" && a.contentDisposition === "inline"));
+  assert.ok(m.attachments.some((a) => a.filename === "billet.pdf"));
+});
+
+test("paiement confirmé à plusieurs : un code par personne et le montant total", async () => {
+  const billets = [
+    Object.assign({}, PARTICIPANT, { montant_valeur: 10000 }),
+    Object.assign({}, PARTICIPANT, { id: "WLA-2", nom: "Afi Adjavon", code_unique: "Z85Y72", montant_valeur: 10000 }),
+  ];
+  await new PaiementConfirmeEmail(Object.assign({ participant: billets[0], billets }, CTX)).send();
+  const m = envoyes[0];
+  assert.equal(m.subject, "Bingo KOSSI ADJAVON 🎉 Vos 2 badges sont prêts !");
+  assert.match(m.html, /Badge 2 — Afi Adjavon/);
+  assert.match(m.html, /Z85Y72/);
+  assert.match(m.html, /20 000 F CFA/);
 });
 
 /* ------------------------------------------------ 2. code de verification */
@@ -138,8 +157,9 @@ test("code de vérification : destinataire, sujet et code à 6 chiffres", async 
   assert.match(m.html, /418302/);
   assert.match(m.html, /10 minutes/, "la duree de validite doit etre annoncee");
   assert.match(m.text, /418302/);
-  // Le billet lui-meme ne doit surtout pas voyager avec le code.
-  assert.equal((m.attachments || []).length, 0);
+  // Le billet lui-meme ne doit surtout pas voyager avec le code : seul le
+  // logo integre accompagne le message.
+  assert.deepEqual((m.attachments || []).filter((a) => !a.cid), []);
 });
 
 /* -------------------------------------------------------- 3. paiement echoue */

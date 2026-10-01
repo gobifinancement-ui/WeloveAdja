@@ -352,6 +352,24 @@ button{font-family:var(--body);cursor:pointer}
 /* éditeurs répétables (chefs / sponsors) */
 .rep-row{display:flex;gap:12px;align-items:center;background:rgba(0,0,0,.2);border:1px solid var(--stroke);border-radius:14px;padding:12px;margin-bottom:12px}
 .rep-row .in{min-height:46px;padding:11px 14px}
+/* Journal de securite */
+.sec-tete{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px}
+.sec-journal{max-height:420px;overflow-y:auto;border:1px solid var(--stroke);border-radius:14px}
+.sec-ligne{padding:10px 14px;border-bottom:1px solid var(--stroke);font-size:.82rem;line-height:1.45}
+.sec-ligne:last-child{border-bottom:0}
+.sec-ligne .g{display:inline-block;font-size:.66rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:6px;margin-right:6px;vertical-align:1px}
+.sec-ligne .g.critique{background:rgba(224,96,74,.22);color:#ff8a73}
+.sec-ligne .g.alerte{background:rgba(231,187,70,.2);color:#f0c64f}
+.sec-ligne .g.info{background:rgba(255,255,255,.08);color:var(--cream-72)}
+.sec-ligne .q{color:var(--cream-52);font-size:.74rem}
+.sec-ligne .d{color:var(--cream-52);font-size:.74rem;margin-top:3px;word-break:break-word}
+.sec-vide{padding:14px;color:var(--cream-52);font-size:.84rem;margin:0}
+/* Reglages du badge : champs a gauche, apercu a droite ; empiles sur mobile. */
+.badge-reglages{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:22px;align-items:start}
+.badge-apercu{margin:0;text-align:center;position:sticky;top:16px}
+.badge-apercu canvas{width:100%;max-width:230px;height:auto;display:block;margin:0 auto;border-radius:10px;background:#fff;box-shadow:0 14px 34px -14px rgba(0,0,0,.65)}
+.badge-apercu figcaption{font-size:.74rem;color:var(--cream-52);margin-top:9px;line-height:1.45}
+@media (max-width:760px){.badge-reglages{grid-template-columns:1fr}.badge-apercu{position:static}}
 .chief-photo{width:58px;height:58px;border-radius:50%;flex:none;position:relative;overflow:hidden;border:1px solid var(--stroke-gd);background:radial-gradient(circle at 35% 30%,color-mix(in oklab,var(--green) 40%,transparent),var(--bg-2));display:grid;place-items:center;cursor:pointer}
 .chief-photo img{width:100%;height:100%;object-fit:cover}
 .chief-photo .ph{font-family:var(--display);font-weight:600;color:var(--gold-lt);font-size:1.1rem}
@@ -437,6 +455,8 @@ button{font-family:var(--body);cursor:pointer}
 <meta name="apple-mobile-web-app-capable" content="yes">
 <script src="/js/branding.js" defer></script>
 <script src="/js/chargement.js"></script>
+<script src="/js/badge-layout.js"></script>
+<script src="/js/ticket-canvas.js"></script>
 </head>
 <body>
 
@@ -606,6 +626,26 @@ button{font-family:var(--body);cursor:pointer}
       </div>
 
       <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><circle cx="12" cy="9" r="3"/><path d="M8 17h8"/></svg> Badge</h3>
+        <p class="gsub">Textes imprimés sur le badge de chaque participant (PDF et image). La photo, le nom et le code de chacun sont ajoutés automatiquement. Un champ laissé vide reprend le texte de la maquette.</p>
+        <div class="badge-reglages">
+          <div class="grid2">
+            <div class="f"><label>Titre</label><input class="in" data-set="badgeTitre" placeholder="FESTIVAL ADJA"></div>
+            <div class="f"><label>Année (à côté du titre)</label><input class="in" data-set="badgeAnnee" placeholder="2027"></div>
+            <div class="f"><label>Numéro d'édition</label><span class="desc">« 15 » donne « 15e EDITION »</span><input class="in" data-set="badgeEdition" placeholder="15" inputmode="numeric"></div>
+            <div class="f"><label>Lieu</label><input class="in" data-set="badgeLieu" placeholder="Azovè"></div>
+            <div class="f" style="grid-column:1/-1"><label>Passage automatique à l'édition suivante</label><span class="desc">Le lendemain de cette date (JJ/MM), l'année et l'édition du badge avancent toutes seules, l'année des dates aussi. Pense ensuite à vérifier les jours du festival.</span><input class="in" data-set="badgeBascule" placeholder="30/08" maxlength="5" style="max-width:140px"></div>
+            <div class="f" style="grid-column:1/-1"><label>Dates</label><span class="desc">Mets entre ** ce qui doit être en gras. Ex. <code>Les **12,13, 14** &amp; **15 Août 2027**</code></span><input class="in" data-set="badgeDates" placeholder="Les **12,13, 14** & **15 Août 2027**"></div>
+            <div class="f" style="grid-column:1/-1"><label>Activités (bandeau du bas)</label><span class="desc">Une ligne par ligne du bandeau, quatre au plus.</span><textarea class="in" data-set="badgeActivites" rows="4" style="resize:vertical"></textarea></div>
+          </div>
+          <figure class="badge-apercu">
+            <canvas id="badgePv" aria-label="Aperçu du badge"></canvas>
+            <figcaption>Aperçu avec un participant fictif. Enregistre pour l'appliquer aux badges.</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <div class="set-group">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="13" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="10" cy="20" r="2.5"/><path d="M12 2a10 10 0 1 0 0 20c1 0 1.5-.6 1.5-1.3 0-1.5-1.5-1.6-1.5-3.2 0-1 .8-1.5 2-1.5h1.5A6.5 6.5 0 0 0 22 9.5C22 5.4 17.5 2 12 2z"/></svg> Apparence du site</h3>
         <p class="gsub">Le logo et les couleurs choisis ici s'appliquent <b class="gold">immédiatement</b> sur le site public, l'admin, la page de vérification et l'app de scan.</p>
 
@@ -619,20 +659,6 @@ button{font-family:var(--body);cursor:pointer}
               <button class="btn btn-gold btn-sm" id="logoPick" type="button">Choisir un logo</button>
               <button class="btn btn-ghost btn-sm" id="logoDel" type="button" style="display:none">Retirer le logo</button>
               <span class="hint" id="logoHint">Sans logo, le marquage par défaut est affiché.</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="f" style="margin-bottom:22px">
-          <label>Bandeau du badge</label>
-          <span class="desc">L'image « FESTIVAL ADJA » placée entre les deux logos sur le badge PDF. Sans elle, le nom de l'événement est écrit en toutes lettres.</span>
-          <div class="logo-zone">
-            <div class="logo-pv" id="wmPv"><span class="none">Aucun bandeau</span></div>
-            <div class="logo-acts">
-              <input type="file" id="wmFile" accept="image/png,image/jpeg,image/webp" hidden>
-              <button class="btn btn-gold btn-sm" id="wmPick" type="button">Choisir une image</button>
-              <button class="btn btn-ghost btn-sm" id="wmDel" type="button" style="display:none">Retirer</button>
-              <span class="hint">Image large, réduite automatiquement.</span>
             </div>
           </div>
         </div>
@@ -658,20 +684,6 @@ button{font-family:var(--body);cursor:pointer}
             <div class="veil-row">
               <input type="range" id="heroVeil" min="20" max="99" step="1" value="70">
               <output id="heroVeilOut">70 %</output>
-            </div>
-          </div>
-        </div>
-
-        <div class="f" style="margin-bottom:22px">
-          <label>Photo de fond du badge</label>
-          <span class="desc">Apparaît en arrière-plan du badge PDF, sous un voile clair pour que le QR code et les textes restent lisibles. Convertie en JPEG pour ne pas alourdir l'email.</span>
-          <div class="logo-zone">
-            <div class="logo-pv" id="bgPv"><span class="none">Aucune photo</span></div>
-            <div class="logo-acts">
-              <input type="file" id="bgFile" accept="image/png,image/jpeg,image/webp" hidden>
-              <button class="btn btn-gold btn-sm" id="bgPick" type="button">Choisir une photo</button>
-              <button class="btn btn-ghost btn-sm" id="bgDel" type="button" style="display:none">Retirer</button>
-              <span class="hint">Sans photo, le badge garde son fond clair.</span>
             </div>
           </div>
         </div>
@@ -719,7 +731,22 @@ button{font-family:var(--body);cursor:pointer}
         <div class="grid2">
           <div class="f"><label>Lien WhatsApp</label><span class="desc">Ex. https://wa.me/229…</span><input class="in" data-set="waLink"></div>
           <div class="f"><label>Email de contact</label><input class="in" data-set="email"></div>
+          <div class="f"><label>Vidéo TikTok — comment obtenir son badge</label><span class="desc">Lien vers la vidéo. Vide = pas de bouton affiché sur le site.</span><input class="in" data-set="tiktokUrl" placeholder="https://www.tiktok.com/@…/video/…"></div>
         </div>
+      </div>
+
+      <div class="set-group" id="securiteGroup">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4M12 16h.01"/></svg> Sécurité & alertes</h3>
+        <p class="gsub">Le site se surveille en continu : tentatives de fraude au paiement, fausses notifications FedaPay, mots de passe admin devinés, robots qui cherchent des failles, codes devinés, badges présentés deux fois à l'entrée, réglages sensibles modifiés, pannes FedaPay ou d'e-mail, disque plein… Chaque alerte part par e-mail et reste dans le journal ci-dessous.</p>
+        <div class="grid2">
+          <div class="f"><label>Adresse des alertes de sécurité</label><span class="desc">Vide = adresse des alertes internes. Une adresse définie dans le fichier .env l'emporte.</span><input class="in" data-set="securiteEmail" type="email" placeholder="securite@exemple.com"></div>
+          <div class="f"><label>Envoi des alertes</label><span class="desc" id="secDest">…</span>
+            <button class="btn btn-ghost btn-sm" id="secTest" type="button" style="margin-top:6px">Envoyer une alerte de test</button>
+            <span class="desc" id="secTestMsg" style="margin-top:6px"></span>
+          </div>
+        </div>
+        <div class="sec-tete"><b>Journal</b><button class="btn btn-ghost btn-sm" id="secRefresh" type="button">Actualiser</button></div>
+        <div class="sec-journal" id="secJournal"><p class="sec-vide">Chargement…</p></div>
       </div>
 
       <div class="set-group">
@@ -814,6 +841,7 @@ button{font-family:var(--body);cursor:pointer}
             <div class="mail-diag-acts">
               <button class="btn btn-ghost btn-sm" id="mailVerify" type="button">Tester la connexion</button>
               <button class="btn btn-gold btn-sm" id="mailTest" type="button">Envoyer un e-mail de test</button>
+              <button class="btn btn-ghost btn-sm" id="mailExemple" type="button">Recevoir un exemple de l'e-mail de confirmation</button>
             </div>
             <div class="mail-diag-out" id="mailDiag">Enregistre d'abord tes réglages, puis teste la connexion.</div>
           </div>
@@ -1229,16 +1257,18 @@ document.getElementById('mailVerify').addEventListener('click', async e => {
   finally{ fin(); }
 });
 
-document.getElementById('mailTest').addEventListener('click', async e => {
+/* « modele » : vide pour l'e-mail de test, "confirmation" pour recevoir
+   l'e-mail exact d'un participant (avec un badge d'exemple en PDF). */
+async function envoyerEssaiMail(bouton, modele) {
   const defaut = (document.querySelector('[data-set="alertEmail"]').value || '').trim();
-  const dest = prompt("Adresse qui doit recevoir l'e-mail de test :", defaut);
+  const dest = prompt(modele ? "Adresse qui doit recevoir l'exemple d'e-mail de confirmation :" : "Adresse qui doit recevoir l'e-mail de test :", defaut);
   if(!dest) return;
 
-  const b = e.currentTarget, fin = Chargement(b);
+  const fin = Chargement(bouton);
   direMail('Envoi en cours…');
   try{
     const res = await apiFetch('/api/admin/mail/test', {
-      method:'POST', body: JSON.stringify({ email: dest })
+      method:'POST', body: JSON.stringify({ email: dest, modele })
     });
     const d = await res.json();
     if(!res.ok) throw new Error(d.error || 'Envoi impossible');
@@ -1246,7 +1276,10 @@ document.getElementById('mailTest').addEventListener('click', async e => {
       '.\nVérifie ta boîte, et aussi les indésirables.', 'ok');
   }catch(err){ direMail('Échec : ' + err.message, 'ko'); }
   finally{ fin(); }
-});
+}
+
+document.getElementById('mailTest').addEventListener('click', e => envoyerEssaiMail(e.currentTarget, ''));
+document.getElementById('mailExemple').addEventListener('click', e => envoyerEssaiMail(e.currentTarget, 'confirmation'));
 
 /* ---------- STATISTIQUES ---------- */
 const nb = n => Number(n || 0).toLocaleString('fr-FR');
@@ -1588,6 +1621,15 @@ const SETTINGS_MAP = {
   mtnNumber:             'mtn_numero',
   waLink:                'wa_link',
   email:                 'vendeur_email',
+  tiktokUrl:             'tiktok_guide_url',
+  badgeTitre:            'badge_titre',
+  badgeAnnee:            'badge_annee',
+  badgeEdition:          'badge_edition',
+  badgeLieu:             'badge_lieu',
+  badgeDates:            'badge_dates',
+  badgeActivites:        'badge_activites',
+  badgeBascule:          'badge_bascule',
+  securiteEmail:         'securite_email',
   wachapKey:             'wachap_access_token',
   resendKey:             'resend_api_key',
   resendFrom:            'resend_from',
@@ -1618,8 +1660,8 @@ async function fillSettings() {
     heroVeil.value = String(raw.hero_media_veil || '70');
     heroVeilOut.textContent = heroVeil.value + ' %';
     peindreHero(raw.hero_media_url || '');
-    peindreWordmark(raw.wordmark_url || '');
-    peindreFond(raw.ticket_bg_url || '');
+    apercuBadge();
+    chargerSecurite();
     const eventName = raw.event_name || 'WeloveAdja';
     const eln = document.getElementById('loginEventName');
     if (eln) eln.textContent = eventName;
@@ -1680,6 +1722,100 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     }
   } catch(e) { alert('Erreur lors de la sauvegarde.'); }
 });
+
+/* ---------- SÉCURITÉ ----------
+   Journal des alertes (lib/sentinelle.js) et essai d'envoi. Le journal reste
+   consultable meme quand l'e-mail ne part pas. */
+async function chargerSecurite() {
+  const hote = document.getElementById('secJournal');
+  if (!hote) return;
+  try {
+    const d = await (await apiFetch('/api/admin/securite')).json();
+    const dest = document.getElementById('secDest');
+    dest.textContent = '';
+    if (d.destinataire) {
+      const b = document.createElement('b');
+      b.textContent = d.destinataire;
+      dest.append('Les alertes partent à ', b, ' (' + d.source + ').');
+    } else {
+      dest.textContent = "Aucune adresse : les alertes restent dans le journal. Renseigne une adresse à gauche.";
+    }
+    if (d.dernierEnvoi && !d.dernierEnvoi.ok) {
+      dest.append(' Dernier envoi échoué : ' + d.dernierEnvoi.erreur);
+    }
+    if (!d.evenements.length) {
+      hote.innerHTML = '<p class="sec-vide">Rien à signaler pour le moment.</p>';
+      return;
+    }
+    hote.innerHTML = '';
+    d.evenements.forEach(e => {
+      const ligne = document.createElement('div');
+      ligne.className = 'sec-ligne';
+      const g = document.createElement('span');
+      g.className = 'g ' + e.gravite;
+      g.textContent = e.gravite;
+      const titre = document.createElement('span');
+      titre.textContent = e.titre;
+      const q = document.createElement('div');
+      q.className = 'q';
+      q.textContent = new Date(e.t).toLocaleString('fr-FR') + (e.ip ? ' — ' + e.ip : '');
+      ligne.append(g, titre, q);
+      if (e.details && e.details.length) {
+        const det = document.createElement('div');
+        det.className = 'd';
+        det.textContent = e.details.map(([k, v]) => k + ' : ' + v).join(' · ');
+        ligne.append(det);
+      }
+      hote.append(ligne);
+    });
+  } catch (e) {
+    hote.innerHTML = '<p class="sec-vide">Journal indisponible.</p>';
+  }
+}
+
+document.getElementById('secRefresh').addEventListener('click', chargerSecurite);
+document.getElementById('secTest').addEventListener('click', async e => {
+  const msg = document.getElementById('secTestMsg');
+  const fin = Chargement(e.currentTarget);
+  try {
+    const res = await apiFetch('/api/admin/securite/test', { method: 'POST' });
+    const d = await res.json();
+    msg.textContent = d.ok ? 'Alerte envoyée : vérifie la boîte de réception (et les indésirables).' : 'Échec de l’envoi : ' + (d.erreur || 'erreur inconnue');
+  } catch (err) {
+    msg.textContent = 'Échec de l’envoi : ' + err.message;
+  } finally {
+    fin();
+    chargerSecurite();
+  }
+});
+
+/* ---------- APERÇU DU BADGE ----------
+   Meme dessin que le badge reel (js/badge-layout.js), avec les textes en
+   cours de saisie : l'organisateur voit le resultat avant d'enregistrer. */
+let badgeActifs = null, badgeExemple = null, badgeMinuteur = null;
+
+async function apercuBadge() {
+  const toile = document.getElementById('badgePv');
+  if (!toile || !window.TicketCanvas) return;
+  try {
+    if (!badgeExemple) badgeExemple = await (await apiFetch('/api/admin/badge/exemple')).json();
+    if (!badgeActifs) badgeActifs = await TicketCanvas.chargerActifs(await (await fetch('/api/public-config')).json());
+    const lire = (cle) => (document.querySelector('[data-set="' + cle + '"]') || {}).value || '';
+    badgeActifs.config = { badge: Object.assign({}, badgeActifs.config.badge, {
+      titre: lire('badgeTitre'), annee: lire('badgeAnnee'), edition: lire('badgeEdition'),
+      lieu: lire('badgeLieu'), dates: lire('badgeDates'), activites: lire('badgeActivites'),
+      bascule: lire('badgeBascule'),
+    }) };
+    await TicketCanvas.dessiner(toile, {
+      nom: 'Nom du participant', code: badgeExemple.code, qr_matrice: badgeExemple.qr_matrice, photo: '',
+    }, badgeActifs, 0.5);
+  } catch (e) { /* apercu indisponible : les reglages restent utilisables */ }
+}
+
+document.querySelectorAll('[data-set^="badge"]').forEach(el => el.addEventListener('input', () => {
+  clearTimeout(badgeMinuteur);
+  badgeMinuteur = setTimeout(apercuBadge, 250);
+}));
 
 /* éditeur chefs */
 function initialsA(n) { return String(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?'; }
@@ -1990,80 +2126,8 @@ function paintLogo(url) {
 // peint le logo à l'ouverture de l'app ou à l'arrivée de la config.
 document.addEventListener('brand:ready', e => paintLogo(e.detail.logoUrl || ''));
 
-/* --- Images du billet : bandeau et photo de fond -------------------------
-   Meme mecanique que le logo, avec deux differences :
-   - le bandeau reste en PNG, car du JPEG sur du texte a bords nets laisse des
-     salissures bien visibles ;
-   - la photo de fond part en JPEG. En PNG, une photo de 1000px pesait
-     plusieurs centaines de Ko, envoyes par email a chaque participant. */
-async function reduireImage(file, maxDim, format, qualite) {
-  return new Promise(resolve => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let w = img.width, h = img.height;
-      if (w > maxDim || h > maxDim) { const r = Math.min(maxDim / w, maxDim / h); w = Math.round(w * r); h = Math.round(h * r); }
-      const cv = document.createElement('canvas');
-      cv.width = w; cv.height = h;
-      const ctx = cv.getContext('2d');
-      // Le JPEG ne gere pas la transparence : sans ce fond, les zones
-      // transparentes ressortiraient en noir.
-      if (format === 'image/jpeg') { ctx.fillStyle = '#0c2b17'; ctx.fillRect(0, 0, w, h); }
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(cv.toDataURL(format, qualite));
-    };
-    img.onerror = () => resolve(null);
-    img.src = url;
-  });
-}
-
-function brandingUploader({ pick, input, del, apercu, route, maxDim, format, qualite, videTxt }) {
-  const zoneApercu = document.getElementById(apercu);
-  const boutonDel = document.getElementById(del);
-
-  const peindre = (url) => {
-    if (url) {
-      zoneApercu.innerHTML = '<img src="' + esc(url) + '" alt="">';
-      boutonDel.style.display = '';
-    } else {
-      zoneApercu.innerHTML = '<span class="none">' + videTxt + '</span>';
-      boutonDel.style.display = 'none';
-    }
-  };
-
-  document.getElementById(pick).addEventListener('click', () => document.getElementById(input).click());
-
-  document.getElementById(input).addEventListener('change', async e => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { toast('Image trop volumineuse (10 Mo max)'); return; }
-    try {
-      const dataUrl = await reduireImage(file, maxDim, format, qualite);
-      if (!dataUrl) { toast("Impossible de lire cette image."); return; }
-      const res = await apiFetch(route, { method: 'POST', body: JSON.stringify({ image_base64: dataUrl }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Envoi impossible');
-      peindre(data.url);
-      toast('Image mise à jour');
-    } catch (err) { toast(err.message); }
-  });
-
-  boutonDel.addEventListener('click', async () => {
-    try {
-      await apiFetch(route, { method: 'DELETE' });
-      peindre('');
-      toast('Image retirée');
-    } catch (err) { toast(err.message); }
-  });
-
-  return peindre;
-}
-
-/* Fond anime de l'en-tete.
-   Il n'utilise PAS brandingUploader : une video ne passe pas par un canvas,
-   on l'envoie telle quelle. Et l'apercu doit choisir entre <img> et <video>. */
+/* Fond anime de l'en-tete. Une video ne passe pas par un canvas : on l'envoie
+   telle quelle, et l'apercu doit choisir entre <img> et <video>. */
 function peindreHero(url, type){
   const zone = document.getElementById('heroPv');
   const del = document.getElementById('heroDel');
@@ -2160,20 +2224,6 @@ document.getElementById('heroDel').addEventListener('click', async () => {
     document.getElementById('heroHint').textContent = '12 Mo maximum.';
     toast('Fond animé retiré');
   }catch(err){ toast(err.message); }
-});
-
-const peindreWordmark = brandingUploader({
-  pick: 'wmPick', input: 'wmFile', del: 'wmDel', apercu: 'wmPv',
-  route: '/api/admin/branding/wordmark',
-  maxDim: 1400, format: 'image/png', qualite: 1,
-  videTxt: 'Aucun bandeau',
-});
-
-const peindreFond = brandingUploader({
-  pick: 'bgPick', input: 'bgFile', del: 'bgDel', apercu: 'bgPv',
-  route: '/api/admin/branding/ticket-bg',
-  maxDim: 1400, format: 'image/jpeg', qualite: 0.72,
-  videTxt: 'Aucune photo',
 });
 
 document.getElementById('logoPick').addEventListener('click', () => document.getElementById('logoFile').click());

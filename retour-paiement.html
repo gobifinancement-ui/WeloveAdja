@@ -16,52 +16,93 @@
   --glass:rgba(255,255,255,.05);--stroke:rgba(246,241,230,.12);--stroke-gd:rgba(231,187,70,.36);
   --red:#e08a6a;--ok:#3fc189;--ko:#e0604a;
   --brand-green:#0a8f4f;--brand-green-br:#14b563;--brand-green-stroke:rgba(10,143,79,.5);
+  --wa:#25d366;--wa-dp:#128c4b;
   --display:"Fraunces",Georgia,serif;--body:"Hanken Grotesk",system-ui,sans-serif;
 }
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;min-height:100dvh;font-family:var(--body);color:var(--cream);background:var(--bg);display:grid;place-items:center;padding:14px}
-.card{width:100%;max-width:400px;background:var(--bg-2);border:1px solid var(--stroke);border-radius:24px;padding:26px 22px;text-align:center;box-shadow:0 40px 90px -34px rgba(0,0,0,.78)}
-
-/* --- Ecran de succes : doit tenir sans defilement ---------------------
-   Mesure avant refonte : 968px de contenu pour 640px d'ecran sur un petit
-   telephone. Le logo (56), la grosse icone (74) et la phrase d'introduction
-   (49) n'apportaient rien que le titre ne dise deja ; le second bouton pleine
-   largeur (48) devient un lien texte. Le reste du calage passe par le QR,
-   qui se reduit quand la hauteur manque au lieu d'imposer ses 150px. */
-.card.compact{padding:18px 18px 16px;max-height:calc(100dvh - 28px);display:flex;flex-direction:column;justify-content:center}
-.card.compact .logo{display:none}
-.ok-title{display:flex;align-items:center;justify-content:center;gap:9px;font-size:1.3rem;margin:0 0 12px}
-.tick{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:color-mix(in oklab,var(--ok) 22%,transparent);border:1px solid var(--ok);color:var(--ok)}
-.logo{width:56px;height:56px;object-fit:contain;margin:0 auto 18px;display:block}
+.card{width:100%;max-width:420px;background:var(--bg-2);border:1px solid var(--stroke);border-radius:24px;padding:26px 20px 22px;text-align:center;box-shadow:0 40px 90px -34px rgba(0,0,0,.78)}
+.logo{width:52px;height:52px;object-fit:contain;margin:0 auto 16px;display:block}
 .ic{width:74px;height:74px;border-radius:50%;display:grid;place-items:center;margin:0 auto 18px;background:color-mix(in oklab,var(--x,var(--gold)) 20%,transparent);color:var(--x,var(--gold))}
-h1{font-family:var(--display);font-size:1.5rem;margin:0 0 8px;color:var(--x,var(--cream))}
-p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
-.box{background:var(--glass);border:1px solid var(--stroke);border-radius:14px;padding:10px 14px;margin:0 0 10px;text-align:left}
-.row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:.82rem;border-bottom:1px solid var(--stroke)}
-.row:last-child{border-bottom:0}
-.row span{color:var(--cream-52)}
-.row b{font-weight:700;text-align:right}
-.code{font-family:ui-monospace,monospace;letter-spacing:.14em;color:var(--brand-green-br);font-size:1.05rem}
-.lead{margin-bottom:14px}
-/* Le billet : ce que le participant est venu chercher, groupe en un seul bloc
-   au lieu d'un code noye dans un tableau et d'un QR flottant plus bas. */
-.ticket{background:color-mix(in oklab,var(--brand-green) 9%,transparent);border:1px dashed var(--stroke-gd);border-radius:18px;padding:14px;margin:0 0 12px;
-  display:flex;flex-direction:column;align-items:center;min-height:0}
-.tk-lbl{display:block;font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;color:var(--brand-green-br);margin-bottom:8px}
-.tk-code{display:flex;align-items:center;justify-content:center;gap:10px}
-.tk-code b{font-family:var(--display);font-size:clamp(1.8rem,9vw,2.4rem);font-weight:700;letter-spacing:.16em;color:var(--brand-green-br);line-height:1.1}
-.tk-code button{flex:none;width:38px;height:38px;display:grid;place-items:center;border-radius:11px;cursor:pointer;
-  background:var(--glass);border:1px solid var(--stroke-gd);color:var(--brand-green-br);transition:.18s}
-.tk-code button:hover{background:color-mix(in oklab,var(--brand-green) 18%,transparent)}
-.tk-code button:active{transform:scale(.92)}
-.tk-code button.done{color:var(--ok);border-color:var(--ok)}
-/* Le QR est la seule piece elastique : il prend ce qui reste en hauteur.
-   min-height:0 est indispensable, sinon un enfant flex refuse de passer sous
-   sa taille de contenu et le depassement revient. */
-.qr{width:auto;height:auto;max-width:150px;max-height:min(150px,30dvh);
-  border-radius:11px;margin:12px auto 0;display:block;background:#fff;padding:6px;
-  object-fit:contain;flex:0 1 auto;min-height:0}
-/* Confettis : lances a l'apparition du code, pas au depart de la page. */
+h1{font-family:var(--display);font-size:1.45rem;line-height:1.25;margin:0 0 8px;color:var(--x,var(--cream))}
+p{color:var(--cream-72);font-size:.92rem;line-height:1.6;margin:0 0 16px}
+.muted{font-size:.76rem;color:var(--cream-52);margin:0 0 10px;line-height:1.5}
+.spin{width:44px;height:44px;border:3px solid var(--stroke);border-top-color:var(--brand-green-br);border-radius:50%;margin:0 auto 18px;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Classe utilitaire : elle doit l'emporter sur le `display` propre de
+   l'element, sinon masquer un bloc depend de l'ordre des regles. */
+.hidden{display:none!important}
+
+/* --- Preparation des badges --------------------------------------------
+   Une silhouette de badge parcourue d'un reflet, et une jauge qui suit le
+   vrai travail (polices, photos, PDF). L'attente se voit et se comprend. */
+.prep-badge{position:relative;width:118px;aspect-ratio:2/3;margin:4px auto 22px;border-radius:10px;background:#fff;overflow:hidden;
+  box-shadow:0 18px 40px -16px rgba(0,0,0,.7);animation:flotte 2.4s ease-in-out infinite}
+.prep-badge::before{content:"";position:absolute;inset:0 auto 0 0;width:19%;background:#006600}
+.prep-badge i{position:absolute;display:block;background:#e3eee1;border-radius:4px}
+.prep-badge .t{left:28%;right:9%;top:6%;height:5%}
+.prep-badge .ph{left:28%;right:9%;top:16%;height:36%;border-radius:9px;background:#d5e6d1}
+.prep-badge .n{left:34%;right:15%;top:56%;height:4%}
+.prep-badge .b{left:28%;right:9%;top:63%;height:4%;background:#006600;opacity:.85}
+.prep-badge .q{left:41%;right:22%;top:70%;height:17%;border-radius:6px;background:#cfe0cb}
+.prep-badge .f{left:24%;right:6%;top:90%;height:6%;background:#33cc00;opacity:.8}
+.prep-badge::after{content:"";position:absolute;inset:-20% -60%;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.85) 50%,transparent 60%);
+  transform:translateX(-60%);animation:reflet 1.6s ease-in-out infinite}
+@keyframes reflet{to{transform:translateX(60%)}}
+@keyframes flotte{50%{transform:translateY(-5px)}}
+.prep-barre{height:7px;border-radius:99px;background:var(--glass);border:1px solid var(--stroke);overflow:hidden;margin:6px 0 10px}
+.prep-barre i{display:block;height:100%;width:6%;border-radius:99px;background:linear-gradient(90deg,var(--brand-green),var(--brand-green-br));transition:width .45s ease}
+#prepSous{min-height:1.6em;transition:opacity .25s}
+
+/* --- Badges prets -------------------------------------------------------- */
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:.74rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ok);background:color-mix(in oklab,var(--ok) 14%,transparent);border:1px solid color-mix(in oklab,var(--ok) 40%,transparent);
+  padding:5px 11px;border-radius:99px;margin-bottom:12px}
+.voila{animation:entree .5s cubic-bezier(.22,.9,.28,1) both}
+.apercu-seul{display:block;width:190px;max-width:62%;height:auto;margin:6px auto 20px;border-radius:12px;background:#fff;
+  box-shadow:0 22px 50px -18px rgba(0,0,0,.75);animation:revele .7s cubic-bezier(.22,.9,.28,1) .1s both}
+@keyframes revele{from{opacity:0;transform:translateY(16px) scale(.92) rotate(-3deg)}to{opacity:1;transform:none}}
+@keyframes entree{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* Les trois grandes actions. */
+.actions{display:flex;flex-direction:column;gap:11px;margin:4px 0 14px}
+.big{position:relative;display:flex;align-items:center;justify-content:center;gap:11px;width:100%;min-height:58px;border-radius:16px;border:0;
+  font-family:inherit;font-size:1rem;font-weight:800;cursor:pointer;color:var(--cream);transition:transform .15s,filter .15s;
+  animation:entree .45s cubic-bezier(.22,.9,.28,1) both}
+.big:nth-child(2){animation-delay:.08s}.big:nth-child(3){animation-delay:.16s}
+.big:active{transform:scale(.97)}
+.big svg{flex:none}
+.big.img{background:linear-gradient(135deg,var(--brand-green-br),var(--brand-green));overflow:hidden}
+.big.img::after{content:"";position:absolute;top:0;left:-60%;width:45%;height:100%;
+  background:linear-gradient(115deg,transparent,rgba(255,255,255,.55),transparent);transform:skewX(-18deg);animation:brille 3.6s ease-in-out infinite}
+@keyframes brille{0%,18%{left:-60%}55%,100%{left:130%}}
+.big.pdf{background:var(--glass);border:1.5px solid var(--brand-green-stroke)}
+.big.wa{background:linear-gradient(135deg,var(--wa),var(--wa-dp));color:#fff}
+.big[disabled]{filter:saturate(.4) brightness(.8);cursor:progress}
+
+/* Plusieurs badges : une carte par personne. */
+.sous-titre{font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--cream-52);margin:18px 0 10px;text-align:left}
+.liste{display:flex;flex-direction:column;gap:10px;max-height:52vh;overflow-y:auto;padding:2px}
+.perso{display:grid;grid-template-columns:56px 1fr;gap:12px;align-items:center;text-align:left;padding:10px;border-radius:16px;
+  background:var(--glass);border:1px solid var(--stroke);animation:entree .4s cubic-bezier(.22,.9,.28,1) both}
+.perso canvas{width:56px;height:84px;border-radius:6px;background:#fff;box-shadow:0 8px 18px -10px rgba(0,0,0,.8)}
+.perso b{display:block;font-size:.95rem;line-height:1.3;margin-bottom:2px;word-break:break-word}
+.perso small{display:block;color:var(--cream-52);font-size:.72rem;margin-bottom:8px}
+.mini{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.mini button{display:flex;align-items:center;justify-content:center;gap:5px;min-height:38px;border-radius:11px;border:1px solid var(--stroke);
+  background:rgba(255,255,255,.06);color:var(--cream);font-family:inherit;font-size:.76rem;font-weight:800;cursor:pointer}
+.mini button.wa{background:color-mix(in oklab,var(--wa) 22%,transparent);border-color:color-mix(in oklab,var(--wa) 45%,transparent)}
+.mini button:active{transform:scale(.95)}
+
+.dl-msg{font-size:.8rem;color:var(--cream-72);margin:6px 0 4px;min-height:1.2em;line-height:1.5}
+.dl-msg.ko{color:var(--ko)}
+.home-link{display:inline-block;margin-top:12px;color:var(--cream-52);font-size:.8rem;font-weight:700;text-decoration:none}
+.home-link:hover{color:var(--cream)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:13px;padding:14px;font-weight:800;font-size:.9rem;cursor:pointer;text-decoration:none;font-family:inherit;margin-top:8px}
+.btn-gold{background:linear-gradient(135deg,var(--brand-green-br),var(--brand-green));color:var(--cream)}
+.btn-ghost{background:var(--glass);border:1px solid var(--brand-green-stroke);color:var(--cream)}
+
+/* Confettis : lances a l'instant ou le badge apparait. */
 .confetti-piece{position:fixed;top:-10vh;z-index:60;pointer-events:none;
   width:var(--w,9px);height:var(--h,13px);background:var(--c,#e7bb46);border-radius:var(--br,2px);
   animation:confetti-fall var(--dur,2.4s) var(--delay,0s) ease-in forwards}
@@ -70,78 +111,22 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
   80%{opacity:1}
   100%{transform:translateY(115vh) rotate(var(--rot,360deg));opacity:0}
 }
-@media(prefers-reduced-motion:reduce){.confetti-piece{display:none}}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:13px;padding:14px;font-weight:800;font-size:.9rem;cursor:pointer;text-decoration:none;font-family:inherit;margin-top:8px;transition:transform .18s}
-.btn:active{transform:scale(.97);transition-duration:.09s}
-.btn-gold{position:relative;overflow:hidden;background:linear-gradient(135deg,var(--brand-green-br),var(--brand-green));color:var(--cream)}
-.btn-gold::after{content:"";position:absolute;top:0;left:-60%;width:45%;height:100%;
-  background:linear-gradient(115deg,transparent,rgba(255,255,255,.65),transparent);
-  transform:skewX(-18deg);animation:btn-shine 3.6s ease-in-out infinite}
-@keyframes btn-shine{0%,18%{left:-60%}55%,100%{left:130%}}
-@media (prefers-reduced-motion:reduce){.btn-gold::after{animation:none;display:none}}
-.btn-ghost{background:var(--glass);border:1px solid var(--brand-green-stroke);color:var(--cream)}
-.spin{width:44px;height:44px;border:3px solid var(--stroke);border-top-color:var(--brand-green-br);border-radius:50%;margin:0 auto 18px;animation:spin .9s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-/* Classe utilitaire : elle doit l'emporter sur le `display` propre de
-   l'element, sinon masquer un bloc depend de l'ordre des regles. */
-.hidden{display:none!important}
-.muted{font-size:.74rem;color:var(--cream-32);margin:0 0 10px;line-height:1.45}
-/* Le retour a l'accueil est une sortie secondaire : un lien suffit, un second
-   bouton pleine largeur coutait 48px pour rien. */
-/* Telechargement des billets. Un bloc par personne : son nom en titre, ses
-   deux formats juste dessous. A plusieurs billets, une seule paire de boutons
-   ne dirait pas de qui elle parle. */
-/* Pas de plafond tant que la liste tient : un ascenseur sur un seul bloc
-   donne l'impression qu'on cache quelque chose. */
-.dl-list{display:flex;flex-direction:column;gap:12px;width:100%}
-.dl-list.longue{max-height:52vh;overflow-y:auto;padding-right:4px}
-.dl-item{
-  padding:11px 12px 12px;border-radius:14px;
-  background:var(--surface);border:1px solid var(--surface-border);
-  animation:dl-in .38s cubic-bezier(.22,.9,.28,1) both;
-}
-@keyframes dl-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-.dl-titre{margin:0 0 9px;font-size:.85rem;line-height:1.4;color:var(--cream-72);display:flex;align-items:center;gap:8px}
-.dl-titre i{
-  flex:0 0 auto;width:21px;height:21px;border-radius:50%;display:grid;place-items:center;
-  font-style:normal;font-size:.64rem;font-weight:800;
-  background:color-mix(in oklab,var(--brand-green) 22%,transparent);color:var(--brand-green-br);
-}
-.dl-titre b{color:var(--text);font-weight:800}
-.dl-titre em{font-style:normal;font-weight:800;letter-spacing:.12em;color:var(--brand-green-br);font-variant-numeric:tabular-nums}
-.dl-paire{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-.dl-paire .btn{margin-top:0}
-.dl-entete{font-size:.78rem;color:var(--cream-52);margin:0 0 2px;width:100%}
-.dl-msg{font-size:.78rem;color:var(--cream-52);margin-top:9px;min-height:1.1em;line-height:1.5}
-.dl-msg.ko{color:var(--ko)}
-.home-link{display:inline-block;margin-top:10px;color:var(--cream-52);font-size:.8rem;font-weight:700;text-decoration:none}
-.home-link:hover{color:var(--cream)}
-.ok-body{display:flex;flex-direction:column;min-height:0}
-.ok-side{display:flex;flex-direction:column;min-height:0}
-
-/* Telephone tourne : la hauteur manque mais la largeur abonde. Le billet passe
-   a gauche, le reste a droite. Empile, la page depassait de 53px. */
-@media (max-height:520px) and (orientation:landscape){
-  body{padding:10px}
-  .card.compact{max-width:min(720px,100%);padding:14px 16px}
-  .ok-title{font-size:1.1rem;margin-bottom:8px}
-  .ok-body{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:center}
-  .ticket{margin:0}
-  .qr{max-height:min(150px,42dvh)}
-  .ok-side{justify-content:center}
-  .muted{margin-bottom:6px}
+@media (prefers-reduced-motion:reduce){
+  .confetti-piece{display:none}
+  .prep-badge,.prep-badge::after,.big.img::after{animation:none}
+  .apercu-seul,.big,.perso,.voila{animation:none}
 }
 </style>
 <link rel="icon" href="/api/branding/default-icon.svg">
 <link rel="stylesheet" href="/api/theme.css">
+<script src="/js/badge-layout.js" defer></script>
 <script src="/js/ticket-canvas.js" defer></script>
-<script src="/js/chargement.js"></script>
 </head>
 <body>
 <div class="card">
   <img class="logo" id="brandLogo" src="/api/branding/default-icon.svg" alt="" onerror="this.style.display='none'">
 
-  <!-- Attente -->
+  <!-- 1. Attente de la confirmation du paiement -->
   <div id="pending">
     <div class="spin"></div>
     <h1>Vérification du paiement…</h1>
@@ -149,45 +134,46 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.65;margin:0 0 18px}
     <p class="muted" id="tries"></p>
   </div>
 
-  <!-- Succès -->
-  <div id="ok" class="hidden" style="--x:var(--ok)">
-    <h1 class="ok-title">
-      <span class="tick"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></span>
-      Paiement confirmé
-    </h1>
+  <!-- 2. Preparation des badges -->
+  <div id="prep" class="hidden" aria-live="polite">
+    <div class="prep-badge" aria-hidden="true"><i class="t"></i><i class="ph"></i><i class="n"></i><i class="b"></i><i class="q"></i><i class="f"></i></div>
+    <span class="chip"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg>Paiement confirmé</span>
+    <h1 id="prepTitre">Ton badge est en cours de préparation…</h1>
+    <p id="prepSous">Patiente quelques secondes.</p>
+    <div class="prep-barre"><i id="prepJauge"></i></div>
+    <p class="muted" id="prepEtape"></p>
+  </div>
 
-    <div class="ok-body">
-    <div class="ticket">
-      <span class="tk-lbl">Ton code d'accès</span>
-      <div class="tk-code">
-        <b id="oCode">——</b>
-        <button type="button" id="copyBtn" aria-label="Copier le code">
-          <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        </button>
-      </div>
+  <!-- 3. Badges prets -->
+  <div id="ok" class="hidden">
+    <span class="chip"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg>Paiement confirmé</span>
+    <h1 class="voila" id="okTitre">Et voilà ! Ton badge est prêt</h1>
+    <p class="voila" id="okSous">Télécharge-le ici :</p>
+    <canvas class="apercu-seul hidden" id="apercuSeul" aria-label="Aperçu du badge"></canvas>
+
+    <div class="actions" id="actions">
+      <button class="big img" type="button" data-action="img">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="m21 15-5-5L5 21"/></svg>
+        <span>Télécharger en image</span>
+      </button>
+      <button class="big pdf" type="button" data-action="pdf">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3"/></svg>
+        <span>Télécharger en PDF</span>
+      </button>
+      <button class="big wa" type="button" data-action="wa">
+        <svg width="23" height="23" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91A9.85 9.85 0 0 0 12.04 2zm0 18.15a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.22 8.22 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24a8.24 8.24 0 0 1 8.24 8.25c0 4.54-3.7 8.23-8.25 8.23zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43s.17-.25.25-.41c.08-.17.04-.31-.02-.43s-.56-1.34-.76-1.84c-.2-.48-.41-.42-.56-.43h-.48c-.17 0-.43.06-.66.31-.22.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18s-.22-.17-.47-.29z"/></svg>
+        <span>Envoyer sur mon WhatsApp</span>
+      </button>
     </div>
 
-    <div class="ok-side">
-    <div class="box">
-      <div class="row"><span>Participant</span><b id="oName">—</b></div>
-      <div class="row"><span>Montant</span><b id="oAmount">—</b></div>
-      <div class="row" id="rowPlace"><span>Lieu</span><b id="oPlace">—</b></div>
+    <div id="parPersonne" class="hidden">
+      <p class="sous-titre">Ou badge par badge</p>
+      <div class="liste" id="liste"></div>
     </div>
 
-    <p class="muted" id="mailNote">Un email de confirmation t'a été envoyé avec ton badge.</p>
-
-    <!-- Un bloc par billet : le nom de son porteur, puis les deux formats.
-         Rempli par peindreBillets(). -->
-    <div class="dl-list" id="dlList"></div>
-    <div class="dl-msg" id="dlMsg"></div>
-    <a class="btn btn-ghost" id="verifyLink" href="/verification.html">Vérifier mon code</a>
+    <div class="dl-msg" id="dlMsg" aria-live="polite"></div>
+    <p class="muted" id="mailNote"></p>
     <a class="home-link" href="/">Retour à l'accueil</a>
-
-    <!-- Toile de rendu du billet, hors ecran : elle sert uniquement a produire
-         le fichier image, l'apercu est deja affiche plus haut. -->
-    <canvas id="dlCanvas" style="display:none"></canvas>
-    </div>
-    </div>
   </div>
 
   <!-- Échec / en attente prolongée -->
@@ -205,13 +191,17 @@ const params = new URLSearchParams(location.search);
 // FedaPay renvoie ses propres parametres ; le notre est `p`.
 const participantId = params.get('p') || params.get('participant') || '';
 const $ = (id) => document.getElementById(id);
-const show = (id) => ['pending','ok','ko'].forEach(k => $(k).classList.toggle('hidden', k !== id));
+const ETATS = ['pending', 'prep', 'ok', 'ko'];
+const show = (id) => ETATS.forEach(k => $(k).classList.toggle('hidden', k !== id));
+const attendre = (ms) => new Promise(r => setTimeout(r, ms));
 
-fetch('/api/public-config').then(r => r.json()).then(c => {
-  // Retenue pour le dessin du billet : le logo en fait partie.
+// Configuration publique : textes du badge et sceau. Promesse gardee, car la
+// preparation des badges peut commencer avant qu'elle soit arrivee.
+const configPrete = fetch('/api/public-config').then(r => r.json()).then(c => {
   window.__brandConfig = c;
   if (c.logoUrl) $('brandLogo').src = c.logoUrl;
-}).catch(() => {});
+  return c;
+}).catch(() => ({}));
 
 let attempt = 0;
 const MAX_ATTEMPTS = 10;
@@ -243,55 +233,10 @@ async function check() {
     if (!response.ok) throw new Error(data.error || 'Erreur');
 
     if (data.status === 'approved') {
-      const p = data.participant || {};
-      const code = p.code_unique || '';
-      $('oName').textContent = p.nom || '—';
-      $('oCode').textContent = code || '——';
-      $('oAmount').textContent = p.montant || '—';
-      // Le lieu n'est pas toujours renseigne : une ligne "Lieu —" ne dit rien
-      // et coute de la hauteur sur un ecran ou chaque pixel compte.
-      const lieu = p.lieu_retrait || '';
-      $('oPlace').textContent = lieu || '—';
-      $('rowPlace').classList.toggle('hidden', !lieu);
-      // Le bouton emmene sur la page de verification AVEC le code deja rempli :
-      // le participant voit son billet sans rien retaper.
-      if (code) $('verifyLink').href = '/verification.html?code=' + encodeURIComponent(code);
-
-      // Jeton de telechargement delivre par le serveur au moment ou le
-      // paiement est confirme. Sans lui, le participant devrait redemander un
-      // code par e-mail pour un billet qu'il vient d'acheter.
-      // Le repere de reprise a fait son office : cette page vient d'afficher le
-      // resultat. Laisse en place, il ferait reapparaitre « Paiement confirmé »
-      // sur la page d'accueil a chaque visite suivante.
+      // Le repere de reprise a fait son office : laisse en place, il ferait
+      // reapparaitre « Paiement confirmé » sur l'accueil a chaque visite.
       try { localStorage.removeItem('adja_pending_payment'); } catch (e) {}
-
-      jetonBillet = data.ticket_token || '';
-      const enBillet = (b) => ({
-        id: b.id, nom: b.nom, code: b.code_unique || b.code || '',
-        lieu: b.lieu_retrait, qr: b.qr_code_url,
-      });
-      billetCourant = enBillet(p);
-
-      // Un achat peut couvrir plusieurs personnes : on les aligne toutes
-      // plutot que de n'en montrer qu'une.
-      const billets = (data.billets || []).map(enBillet);
-      peindreBillets(billets.length ? billets : [billetCourant]);
-
-      // L'email n'est promis que s'il est reellement parti. Le promettre a tort
-      // ferait attendre pour rien un message qui n'arrivera jamais.
-      if (data.email_sent === false) {
-        $('mailNote').textContent = "Note bien ce code : garde-le en photo ou recopie-le.";
-      }
-
-      // Mode compact : c'est le seul ecran dense, les autres tiennent large.
-      document.querySelector('.card').classList.add('compact');
-      if (billets.length > 1) {
-        $('mailNote').textContent = "Tous les badges sont partis par email à " + (p.email || 'ton adresse') + ".";
-      }
-      show('ok');
-      // Confettis ici, a l'instant ou le code apparait : c'est le moment de
-      // la bonne nouvelle.
-      launchConfetti();
+      preparer(data);
       return;
     }
 
@@ -311,7 +256,7 @@ async function check() {
 
     fail(
       'Paiement en cours de traitement',
-      "L'opérateur n'a pas encore confirmé. Si le montant a été débité, ton code arrivera par email dans quelques minutes — inutile de repayer.",
+      "L'opérateur n'a pas encore confirmé. Si le montant a été débité, ton badge arrivera par email dans quelques minutes — inutile de repayer.",
       true
     );
   } catch (error) {
@@ -325,12 +270,167 @@ async function check() {
 
 $('retry').addEventListener('click', () => { attempt = 0; show('pending'); check(); });
 
-/* ---- Telechargement du billet -------------------------------------------
-   Deux formats : le PDF vient du serveur, l'image est dessinee ici sur une
-   toile a partir du meme module que la page d'accueil. */
-let jetonBillet = '';
-let billetCourant = null;
+/* ---- Preparation des badges ---------------------------------------------
+   Tout est fabrique ICI, avant d'afficher les boutons : images, apercus et
+   PDF. Les boutons repondent ensuite tout de suite, et le partage WhatsApp
+   peut s'ouvrir dans le geste meme de l'utilisateur (un navigateur refuse
+   d'ouvrir le partage si le fichier se fabrique apres le toucher).
+   Une duree minimale garde les messages lisibles : un ecran qui clignote
+   donne l'impression d'une erreur. */
+let jeton = '';
+let billets = [];
+let pdfTous = null;
+let actifs = null;
 
+async function preparer(data) {
+  jeton = data.ticket_token || '';
+  const sources = (data.billets && data.billets.length) ? data.billets : [data.participant || {}];
+  billets = sources.map((b) => ({
+    id: b.id, nom: b.nom, code: b.code_unique || b.code || '',
+    photo: b.photo || '', qr_matrice: b.qr_matrice || null,
+    png: null, pdf: null, apercu: document.createElement('canvas'),
+  }));
+  const n = billets.length;
+  const plusieurs = n > 1;
+
+  show('prep');
+  $('prepTitre').textContent = plusieurs
+    ? `Tes ${n} badges sont en cours de préparation…`
+    : 'Ton badge est en cours de préparation…';
+
+  const messages = plusieurs
+    ? [[0, 'Patiente quelques secondes.'], [2200, 'Encore un moment…'], [5500, 'On y est presque…'], [10000, 'Les derniers détails, ça arrive…']]
+    : [[0, 'Patiente quelques secondes.'], [2200, 'Encore un moment…'], [5500, 'On y est presque…']];
+  const minuteurs = messages.slice(1).map(([t, texte]) => setTimeout(() => changerMessage(texte), t));
+
+  const total = 1 + n * 2 + (plusieurs ? 1 : 0);
+  let fait = 0;
+  const avancer = () => {
+    fait++;
+    $('prepJauge').style.width = Math.min(96, 6 + (fait / total) * 90) + '%';
+  };
+  const debut = Date.now();
+
+  try {
+    actifs = await TicketCanvas.chargerActifs(await configPrete);
+  } catch (e) { actifs = null; }
+  avancer();
+
+  // PDF fabriques par le serveur pendant que les images se dessinent ici.
+  const pdfs = billets.map((b) => recupererPdf([b.id]).then((blob) => { b.pdf = blob; }).catch(() => {}).then(avancer));
+  if (plusieurs) {
+    pdfs.push(recupererPdf(billets.map((b) => b.id)).then((blob) => { pdfTous = blob; }).catch(() => {}).then(avancer));
+  }
+
+  for (let i = 0; i < n; i++) {
+    const b = billets[i];
+    if (plusieurs) $('prepEtape').textContent = `Badge ${i + 1} sur ${n} — ${b.nom || ''}`;
+    if (actifs) {
+      try {
+        b.png = await TicketCanvas.versPng(b, actifs);
+        await TicketCanvas.dessiner(b.apercu, b, actifs, plusieurs ? 0.25 : 0.6);
+      } catch (e) { /* l'image sera refaite au clic */ }
+    }
+    avancer();
+  }
+  $('prepEtape').textContent = plusieurs ? 'Finalisation des PDF…' : '';
+  await Promise.all(pdfs);
+
+  const reste = 3600 - (Date.now() - debut);
+  if (reste > 0) await attendre(reste);
+  minuteurs.forEach(clearTimeout);
+  $('prepJauge').style.width = '100%';
+  await attendre(380);
+
+  afficherPrets(data);
+}
+
+function changerMessage(texte) {
+  const el = $('prepSous');
+  el.style.opacity = 0;
+  setTimeout(() => { el.textContent = texte; el.style.opacity = 1; }, 250);
+}
+
+async function recupererPdf(ids) {
+  if (!jeton) throw new Error('Session de téléchargement absente.');
+  const res = await fetch('/api/public/ticket/pdf?token=' + encodeURIComponent(jeton) + '&ids=' + encodeURIComponent(ids.join(',')));
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Téléchargement impossible.');
+  return res.blob();
+}
+
+/* ---- Badges prets ---------------------------------------------------------- */
+function afficherPrets(data) {
+  const n = billets.length;
+  const plusieurs = n > 1;
+
+  $('okTitre').textContent = plusieurs ? `Et voilà ! Tes ${n} badges sont prêts` : 'Et voilà ! Ton badge est prêt';
+  $('okSous').textContent = plusieurs ? `Télécharge-les ici, tous d'un coup :` : 'Télécharge-le ici :';
+
+  const libelles = plusieurs
+    ? { img: `Télécharger les ${n} en images`, pdf: `Télécharger les ${n} en PDF`, wa: `Envoyer les ${n} sur WhatsApp` }
+    : { img: 'Télécharger en image', pdf: 'Télécharger en PDF', wa: 'Envoyer sur mon WhatsApp' };
+  document.querySelectorAll('#actions .big').forEach((bt) => {
+    bt.querySelector('span').textContent = libelles[bt.dataset.action];
+    bt.onclick = () => agir(bt.dataset.action, billets, bt);
+  });
+
+  if (plusieurs) {
+    const liste = $('liste');
+    liste.innerHTML = '';
+    billets.forEach((b, i) => {
+      const carte = document.createElement('div');
+      carte.className = 'perso';
+      carte.style.animationDelay = (120 + i * 70) + 'ms';
+      const infos = document.createElement('div');
+      // textContent : le nom vient d'un formulaire public.
+      const nom = document.createElement('b');
+      nom.textContent = b.nom || `Participant ${i + 1}`;
+      const rang = document.createElement('small');
+      rang.textContent = `Badge ${i + 1} sur ${n}`;
+      const mini = document.createElement('div');
+      mini.className = 'mini';
+      [['img', 'Image'], ['pdf', 'PDF'], ['wa', 'WhatsApp']].forEach(([action, texte]) => {
+        const bt = document.createElement('button');
+        bt.type = 'button';
+        bt.textContent = texte;
+        if (action === 'wa') bt.className = 'wa';
+        bt.addEventListener('click', () => agir(action, [b], bt));
+        mini.append(bt);
+      });
+      infos.append(nom, rang, mini);
+      carte.append(b.apercu, infos);
+      liste.append(carte);
+    });
+  } else {
+    const apercu = $('apercuSeul');
+    const source = billets[0].apercu;
+    if (source.width) {
+      apercu.width = source.width;
+      apercu.height = source.height;
+      apercu.getContext('2d').drawImage(source, 0, 0);
+      apercu.classList.remove('hidden');
+    }
+  }
+  $('parPersonne').classList.toggle('hidden', !plusieurs);
+
+  // L'e-mail n'est mentionne que s'il est vraiment parti ; sinon on pousse a
+  // telecharger tout de suite.
+  const email = (data.participant && data.participant.email) || '';
+  if (data.already_finalized) {
+    $('mailNote').textContent = '';
+  } else if (data.email_sent) {
+    $('mailNote').textContent = (plusieurs ? 'Une copie de tous les badges' : 'Une copie') + ' est aussi partie par e-mail' + (email ? ' à ' + email : '') + '.';
+  } else {
+    $('mailNote').textContent = plusieurs
+      ? "Télécharge-les maintenant : l'envoi par e-mail n'a pas pu se faire."
+      : "Télécharge-le maintenant : l'envoi par e-mail n'a pas pu se faire.";
+  }
+
+  show('ok');
+  launchConfetti();
+}
+
+/* ---- Actions --------------------------------------------------------------- */
 function direDl(texte, type) {
   const el = $('dlMsg');
   el.textContent = texte || '';
@@ -344,131 +444,90 @@ function remettre(blob, nom) {
   const a = document.createElement('a');
   a.href = url; a.download = nom;
   document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
-async function telechargerPdf(billet, bouton) {
-  if (!jetonBillet || !billet) return;
-  const fin = Chargement(bouton);
+async function imageDe(b) {
+  if (!b.png) b.png = await TicketCanvas.versPng(b, actifs || await TicketCanvas.chargerActifs(await configPrete));
+  return b.png;
+}
+
+async function agir(action, liste, bouton) {
+  if (bouton.disabled) return;
+  bouton.disabled = true;
+  const plusieurs = liste.length > 1;
   try {
-    const res = await fetch('/api/public/ticket/pdf?token=' + encodeURIComponent(jetonBillet) +
-      '&id=' + encodeURIComponent(billet.id));
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Téléchargement impossible');
-    remettre(await res.blob(), 'badge-' + (billet.code || 'feja') + '.pdf');
-    direDl('Badge PDF téléchargé' + (billet.nom ? ' — ' + billet.nom : '') + '.');
-  } catch (err) {
-    direDl(err.message || 'Téléchargement impossible.', 'ko');
-  } finally {
-    fin();
-  }
-}
-
-async function telechargerImage(billet, bouton) {
-  if (!billet || !window.TicketCanvas) return;
-  const fin = Chargement(bouton);
-  try {
-    const actifs = await TicketCanvas.chargerActifs(window.__brandConfig || {});
-    actifs.qr = await TicketCanvas.charger(billet.qr || '');
-    await TicketCanvas.dessiner($('dlCanvas'), billet, actifs);
-
-    await new Promise((resolve) => {
-      $('dlCanvas').toBlob((blob) => {
-        remettre(blob, 'badge-' + (billet.code || 'feja') + '.png');
-        resolve();
-      }, 'image/png');
-    });
-    direDl('Badge image téléchargé' + (billet.nom ? ' — ' + billet.nom : '') + '.');
-  } catch (err) {
-    direDl(err.message || 'Téléchargement impossible.', 'ko');
-  } finally {
-    fin();
-  }
-}
-
-/* Un bloc de telechargement par billet.
-   A un billet le titre s'adresse a l'acheteur, a plusieurs il nomme chaque
-   porteur : une seule paire de boutons ne dirait pas de qui elle parle. */
-function peindreBillets(billets) {
-  const hote = $('dlList');
-  const groupe = billets.length > 1;
-  // Au-dela de trois, la liste depasse l'ecran : on la fait defiler elle-meme
-  // plutot que toute la page.
-  hote.classList.toggle('longue', billets.length > 3);
-  hote.innerHTML = groupe
-    ? '<p class="dl-entete">' + billets.length + ' badges — un par personne</p>'
-    : '';
-
-  billets.forEach((billet, i) => {
-    const bloc = document.createElement('div');
-    bloc.className = 'dl-item';
-    bloc.style.animationDelay = (90 + i * 70) + 'ms';
-    bloc.innerHTML =
-      '<p class="dl-titre">' + (groupe ? '<i></i>' : '') + '<span></span></p>' +
-      '<div class="dl-paire">' +
-      '<button class="btn btn-ghost" type="button" data-f="pdf">En PDF</button>' +
-      '<button class="btn btn-ghost" type="button" data-f="img">En image</button>' +
-      '</div>';
-
-    const titre = bloc.querySelector('.dl-titre span');
-    if (groupe) {
-      bloc.querySelector('.dl-titre i').textContent = i + 1;
-      // textContent sur un noeud separe : le nom vient d'un formulaire public,
-      // l'inserer en HTML ouvrirait une injection.
-      const nom = document.createElement('b');
-      nom.textContent = billet.nom || 'Participant ' + (i + 1);
-      titre.append('Télécharge le badge de ', nom);
-      if (billet.code) {
-        const code = document.createElement('em');
-        code.textContent = billet.code;
-        titre.append(' — ', code);
+    if (action === 'img') {
+      for (let i = 0; i < liste.length; i++) {
+        remettre(await imageDe(liste[i]), `badge-${liste[i].code || i + 1}.png`);
+        // Petit intervalle : sans lui, certains navigateurs ne gardent que
+        // le premier de plusieurs telechargements simultanes.
+        if (i < liste.length - 1) await attendre(600);
       }
-    } else {
-      titre.textContent = 'Télécharge ton badge ici';
+      direDl(plusieurs ? `${liste.length} images téléchargées.` : 'Image téléchargée' + (liste[0].nom ? ' — ' + liste[0].nom : '') + '.');
+    } else if (action === 'pdf') {
+      let blob;
+      if (plusieurs) {
+        blob = (liste.length === billets.length && pdfTous) || await recupererPdf(liste.map((b) => b.id));
+      } else {
+        blob = liste[0].pdf || await recupererPdf([liste[0].id]);
+      }
+      remettre(blob, plusieurs ? `badges-feja-${liste.length}.pdf` : `badge-${liste[0].code || 'feja'}.pdf`);
+      direDl(plusieurs ? `PDF des ${liste.length} badges téléchargé (une page par badge).` : 'PDF téléchargé' + (liste[0].nom ? ' — ' + liste[0].nom : '') + '.');
+    } else if (action === 'wa') {
+      await envoyerWhatsApp(liste);
     }
-
-    bloc.querySelector('[data-f="pdf"]').addEventListener('click', (e) => telechargerPdf(billet, e.currentTarget));
-    bloc.querySelector('[data-f="img"]').addEventListener('click', (e) => telechargerImage(billet, e.currentTarget));
-    hote.appendChild(bloc);
-  });
-
-  // A plusieurs billets, le grand code en tete ne peut designer personne : on
-  // ne va pas mettre celui d'un porteur en avant plutot qu'un autre.
-  document.querySelector('.ticket').classList.toggle('hidden', groupe);
-  document.querySelector('.ok-side .box').classList.toggle('hidden', groupe);
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      direDl('');
+    } else if (err && err.name === 'NotAllowedError') {
+      // Image fabriquee apres le toucher : le navigateur a refuse le partage.
+      // Elle est prete maintenant, un second toucher passe.
+      direDl('Appuie encore une fois sur « WhatsApp » : ton badge est prêt maintenant.');
+    } else {
+      direDl((err && err.message) || 'Action impossible pour le moment.', 'ko');
+    }
+  } finally {
+    bouton.disabled = false;
+  }
 }
 
-/* Copie du code. navigator.clipboard exige un contexte securise : en HTTP sur
-   une adresse locale il est absent, d'ou le repli par selection. */
-$('copyBtn').addEventListener('click', async () => {
-  const code = $('oCode').textContent.trim();
-  if (!code || code === '——') return;
+/* WhatsApp : le partage natif du telephone ouvre WhatsApp avec l'image deja
+   jointe ; on choisit soi-meme ou l'ami a qui l'envoyer. Sans partage de
+   fichiers (certains ordinateurs), l'image est telechargee et WhatsApp
+   s'ouvre : il ne reste qu'a la joindre. */
+function envoyerWhatsApp(liste) {
+  // Images deja pretes : le partage s'ouvre sans la moindre attente, dans le
+  // geste meme. Un navigateur (Safari surtout) refuse d'ouvrir le partage si
+  // quelque chose a ete attendu entre le toucher et l'appel.
+  if (liste.every((b) => b.png)) return partager(liste);
+  return Promise.all(liste.map(imageDe)).then(() => partager(liste));
+}
 
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(code);
-    } else {
-      const zone = document.createElement('textarea');
-      zone.value = code;
-      zone.style.cssText = 'position:fixed;opacity:0';
-      document.body.appendChild(zone);
-      zone.select();
-      document.execCommand('copy');
-      zone.remove();
-    }
-    const button = $('copyBtn');
-    button.classList.add('done');
-    button.innerHTML = '<svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg>';
-    setTimeout(() => {
-      button.classList.remove('done');
-      button.innerHTML = '<svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-    }, 1800);
-  } catch {
-    alert('Copie impossible. Note le code : ' + code);
+async function partager(liste) {
+  const fichiers = liste.map((b) => new File([b.png], `badge-${b.code || 'feja'}.png`, { type: 'image/png' }));
+  const texte = liste.length > 1
+    ? 'Nos badges pour le Festival Adja'
+    : 'Mon badge pour le Festival Adja';
+
+  if (navigator.canShare && navigator.canShare({ files: fichiers })) {
+    await navigator.share({ files: fichiers, title: texte, text: texte });
+    direDl('Choisis WhatsApp, puis la discussion où envoyer ' + (liste.length > 1 ? 'les badges.' : 'le badge.'));
+    return;
   }
-});
+
+  for (let i = 0; i < fichiers.length; i++) {
+    remettre(fichiers[i], fichiers[i].name);
+    if (i < fichiers.length - 1) await attendre(600);
+  }
+  window.open('https://wa.me/?text=' + encodeURIComponent(texte), '_blank', 'noopener');
+  direDl(liste.length > 1
+    ? "Les images viennent d'être téléchargées : joins-les dans la discussion WhatsApp qui s'ouvre."
+    : "L'image vient d'être téléchargée : joins-la dans la discussion WhatsApp qui s'ouvre.");
+}
 
 function launchConfetti() {
-  const COLORS = ['#f0c64f', '#ffe6a0', '#8a96f0', '#3fc189', '#ffffff', '#e08a6a'];
+  const COLORS = ['#14b563', '#0a8f4f', '#33cc00', '#f7eb04', '#ffffff', '#fb0000'];
 
   for (let i = 0; i < 90; i++) {
     const piece = document.createElement('div');
@@ -498,7 +557,9 @@ function launchConfetti() {
   }
 }
 
-check();
+// Les scripts du badge sont en `defer` : on attend qu'ils soient charges.
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', check);
+else check();
 </script>
 </body>
 </html>

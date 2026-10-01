@@ -13,7 +13,7 @@ l'entrée en vérifiant sa photo.
 
 ```bash
 npm start          # http://localhost:3000
-npm test           # 12 tests du système d'e-mails, sans réseau
+npm test           # e-mails (12) et badge (7), sans réseau
 ```
 
 Aucun framework, aucune étape de build. `node server.js` sert les pages et
@@ -34,9 +34,24 @@ machine de l'organisation le jour de l'événement.
 
 **La base est un fichier SQLite en mémoire**, via `sql.js` (WebAssembly, donc
 aucune compilation native). Elle est écrite sur disque à chaque modification
-par `persistDatabase()` — fichier temporaire puis renommage, pour qu'une
-coupure de courant ne laisse jamais un fichier à moitié écrit.
+par `persistDatabase()` — fichier temporaire, fsync, puis renommage, pour
+qu'une coupure de courant ne laisse jamais un fichier à moitié écrit.
 Chemin : `data/weloveadja.sqlite`.
+
+- L'écriture se fait **en arrière-plan et groupée** : `persistDatabase()` rend
+  une promesse tenue quand l'état du moment est sur le disque. Dans une route,
+  écrire `await persistDatabase()` avant de répondre.
+- **Un seul serveur par base** : `data/serveur.lock` (PID + battement toutes
+  les 30 s). Un second lancement sur le même dossier refuse de démarrer — deux
+  serveurs s'écraseraient les inscriptions. Un verrou laissé par un arrêt
+  brutal est repris tout seul.
+- Sauvegardes : une par heure (24 gardées) et une par jour (30 gardées) dans
+  `data/backups/`, copiées depuis la base en mémoire.
+- Les badges PDF sont dessinés par un **pool de threads** (jusqu'à 3).
+
+Tenue en charge mesurée (portable i5, mode démonstration) : 50 personnes qui
+s'inscrivent, sont validées et téléchargent leur badge au même instant →
+0 échec, 8,5 s pour le dernier ; 100 personnes → 0 échec, 14 s.
 
 **Presque tout est réglable depuis l'admin**, pas dans le code : couleurs,
 textes, montant, artistes, fond animé, pays à paiement direct… Ce sont des
@@ -60,7 +75,11 @@ sw.js                   Service worker : scan et admin utilisables sans réseau.
 
 js/branding.js          Applique logo et nom d'événement (les couleurs viennent de /api/theme.css).
 js/chargement.js        Trois points animés pendant qu'un bouton attend.
-js/ticket-canvas.js     Dessin du billet sur une toile — partagé accueil / page de retour.
+js/badge-layout.js      Mise en page du badge — partagée par le PDF (serveur) et l'image (navigateur).
+js/ticket-canvas.js     Traduction de cette mise en page en canvas — accueil, page de retour, admin.
+lib/ticket-pdf.js       Traduction en pdfkit, exécutée dans un worker (ticket-pdf-worker.js).
+fonts/                  Poppins Regular / SemiBold / Bold (licence OFL) — polices du badge.
+img/badge/              Emblème du logo de la bande gauche du badge.
 js/qr-scanner.js        Scanner QR (BarcodeDetector, repli jsQR).
 js/scan-app.js          App de scan : le verdict est rendu localement.
 js/scan-store.js        IndexedDB du scan : codes, journal, file d'attente, photos.
@@ -71,6 +90,9 @@ lib/mail/transport.js   SMTP d'abord, Resend en repli.
 lib/mail/senders.js     Une classe par type d'e-mail.
 
 test/mail.test.js       Un test par type d'e-mail, transport simulé.
+test/badge.test.js      Mise en page, PDF, et lisibilité du QR malgré le sceau.
+lib/sentinelle.js       Surveillance : fraude, attaques, incidents coûteux → journal + e-mail.
+test/sentinelle.test.js Détection, regroupement, anti-doublon, plafond d'e-mails.
 data/                   Base SQLite (non versionné).
 uploads/                Photos des participants, QR, images de marque (non versionné).
 ```
@@ -187,14 +209,51 @@ impossible de l'oublier allumé le jour de l'ouverture.
 
 ## Après paiement
 
-Tout le monde atterrit sur **`retour-paiement.html`** — un achat d'un billet
-comme de cinq. C'est une **page de téléchargement** : un bloc par billet, avec
-le nom de son porteur et les deux formats (PDF / image). Pas de QR affiché : il
-est sur le billet qu'on télécharge.
+Tout le monde atterrit sur **`retour-paiement.html`** — un achat d'un badge
+comme de cinq. Trois temps :
+
+1. **Vérification du paiement** (interrogation de `/api/payments/status`).
+2. **Préparation** : silhouette de badge animée, jauge qui suit le vrai
+   travail, messages « en cours de préparation… », « Encore un moment… ». Les
+   images, aperçus et PDF sont fabriqués ICI, avant d'afficher les boutons
+   (durée minimale 3,6 s pour que les messages se lisent).
+3. **« Et voilà ! »** : trois gros boutons — image, PDF, WhatsApp. **Aucun code
+   d'accès affiché** sur la page (il est sur le badge). À plusieurs badges,
+   les boutons agissent sur tous (un seul PDF, une page par badge :
+   `/api/public/ticket/pdf?ids=a,b,c`), puis une carte par personne.
+
+WhatsApp passe par le **partage natif** (`navigator.share` avec l'image) : le
+fichier doit être prêt AVANT le toucher, sinon Safari refuse d'ouvrir le
+partage. Sans partage de fichiers, l'image est téléchargée et `wa.me` s'ouvre.
 
 Le PDF vient du serveur (`renderTicketPdf`), l'image est dessinée dans le
-navigateur par `js/ticket-canvas.js` — **le même module que la page d'accueil**,
-pour que les deux rendus ne puissent pas diverger.
+navigateur par `js/ticket-canvas.js`. Les deux appellent **la même fonction
+de mise en page** (`js/badge-layout.js`) avec un moteur différent : ils ne
+peuvent pas diverger.
+
+### Le badge
+
+Il reproduit la maquette validée par l'organisation (854 × 1280 px, PDF en
+4 × 6 pouces). Toutes les cotes, couleurs, tailles et graisses sont dans
+`GEOMETRIE` de `js/badge-layout.js`, relevées sur la maquette au demi-pixel :
+ne pas les arrondir. Le nom, l'année, l'exposant et les dates en gras sont en
+Poppins **SemiBold**, pas Bold (mesuré à l'aire d'encre).
+
+- Textes réglables dans `Admin → Réglages → Badge` (`badge_titre`,
+  `badge_annee`, `badge_edition`, `badge_lieu`, `badge_dates` — `**gras**` —,
+  `badge_activites` — une ligne par ligne). Vide = texte de la maquette.
+- « N° » porte le **code d'accès**, le QR l'encode aussi : version 5, correction
+  H, avec le logo du site en sceau au centre. Le navigateur reçoit la matrice
+  (`qr_matrice`) du serveur, il n'a pas de générateur QR.
+- Nom trop long : il rétrécit, puis passe sur deux lignes.
+- **Passage automatique à l'édition suivante** : le lendemain du
+  `badge_bascule` (30/08 par défaut, heure du Bénin), année + 1, édition + 1 et
+  année remplacée dans les dates (`editionEnCours`, appliqué au dessin et
+  enregistré par `appliquerBasculeBadge` toutes les 15 min, avec une alerte
+  interne : les jours du festival restent à vérifier à la main).
+- Le logo de la bande gauche est l'emblème de `IMG_6010` (mains + FEJA),
+  détouré de ses anneaux : la maquette n'a qu'un anneau fin, dessiné en
+  vectoriel.
 
 Le serveur délivre un `ticket_token` au moment où il confirme le paiement :
 sans lui, l'acheteur devrait redemander un code par e-mail pour un billet qu'il
@@ -241,6 +300,20 @@ Wi-Fi avant l'événement** (bouton dans l'app de scan).
 Un achat groupé donne **un seul e-mail** portant tous les billets. Cinq messages
 pour cinq billets ressembleraient à une erreur d'envoi.
 
+- Mise en page calquée sur le modèle choisi par l'organisation (e-mail
+  transactionnel Maketou) : fond gris, carte blanche, **logo FESTIVAL ADJA
+  centré** (`img/email/logo-festival-adja.png`, lettres passées en vert foncé
+  pour le fond blanc), titre en gras, « ✨ Détails de l'achat : » en lignes
+  « Étiquette : valeur », code dans une pastille, bouton centré.
+- Le logo est **joint en image intégrée** (cid) à chaque message : il
+  s'affiche même avant la mise en ligne du site.
+- L'e-mail de confirmation **vouvoie** (« Bingo 🎉 Votre badge est prêt ! »,
+  « Kwabô … Vous venez de payer… ») : texte fourni par l'organisation,
+  exception assumée au tutoiement du site. Événement, lieu et dates viennent
+  des réglages du badge (`textesDepuisReglages`).
+- Admin → Réglages → e-mail : « Recevoir un exemple de l'e-mail de
+  confirmation » envoie l'e-mail exact, badge PDF d'exemple compris.
+
 `npm test` couvre un type d'e-mail par test, avec un transport simulé.
 
 ---
@@ -280,9 +353,16 @@ Ne pas défaire sans raison :
   détourné. `resolveFilePath` refuse tout ce qui sort de la racine.
 - **Mots de passe** hachés en scrypt, comparaison à temps constant.
 - **Jetons** (sessions, billets) stockés hachés en SHA-256.
-- **Limitation de débit** par IP et par clé arbitraire (e-mail) : `rateLimit()`.
-  Le formulaire de paiement est plafonné à **8 créations par 10 minutes et par
-  IP** — de quoi surprendre pendant une série de tests.
+- **Limitation de débit** par IP et par clé (e-mail, badge, achat) :
+  `rateLimit()` / `rateLimitKey()`. Les plafonds **par IP sont larges** : au
+  Bénin, les opérateurs mobiles font sortir des centaines de téléphones par la
+  même IP. La protection fine est par e-mail (6 inscriptions / 10 min), par
+  achat ou par jeton. `getClientIp` ne croit `X-Forwarded-For` que derrière un
+  proxy local, et en prend le dernier maillon (le premier est écrit par le
+  client et permettait de contourner toutes les limites).
+- **Validation d'un paiement en file par achat** (`finalizePaidParticipant`) :
+  le webhook et la page de retour arrivent souvent au même instant ; sans file,
+  deux codes différents étaient tirés et deux e-mails partaient.
 - **Aucune énumération d'adresses** : les échecs de récupération de billet
   rendent tous le même message.
 - **Rôles de session** : un poste de scan n'atteint que `SCAN_ALLOWED_PATHS`.
@@ -290,6 +370,29 @@ Ne pas défaire sans raison :
 - **En-têtes de sécurité** sur chaque réponse (`applySecurityHeaders`).
 - Les identifiants ne sont **jamais** écrits en dur, ni recopiés dans un
   document, ni dans un e-mail.
+
+### Surveillance (`lib/sentinelle.js`)
+
+Repère et signale : robots qui cherchent des failles, rafales de 404 / 429,
+flots de requêtes, erreurs serveur et lenteurs en série, erreurs en série dans
+le journal (console.error est observé), mots de passe admin faux, connexion
+admin depuis une adresse jamais vue, réglages sensibles modifiés (numéros
+Mobile Money, clé FedaPay, prix…), mode démonstration activé ou oublié,
+badge validé à la main, fraude au paiement (montant faux, transaction
+rejouée), fausse notification FedaPay, codes devinés, badge présenté deux fois
+à l'entrée, pannes FedaPay, e-mails de badge qui ne partent pas, disque ou
+mémoire saturés, base ou sauvegarde en échec.
+
+- **critique** = e-mail immédiat ; **alerte** = e-mail groupé sur 2 min ;
+  **info** = journal seul. Anti-doublon 10 / 30 min, plafond 12 e-mails/h.
+- Journal : `data/securite.jsonl`, visible dans Admin → Réglages → Sécurité
+  (avec un bouton d'alerte de test).
+- Destinataire : `MAIL_SECURITE_TO` (.env) → `securite_email` → adresse des
+  alertes internes. **Sans SMTP ni Resend, rien ne part** : tout reste au journal.
+- Pour signaler un nouvel incident : `sentinelle.signaler({ gravite, type,
+  titre, details, ip, cle })`, avec une consigne dans `CONSIGNES`.
+- Sous 300 Mo de disque libre, les inscriptions (photos) sont refusées : un
+  disque plein bloquerait la base elle-même.
 
 ---
 
@@ -337,8 +440,16 @@ Dans une page qui ne l'a pas, masquer par `hidden` n'est pas fiable.
 - **pdfkit ajoute une page** si l'on écrit sous la marge basse. Mettre
   `doc.page.margins.bottom = 0` avant d'écrire un pied de page.
 - **pdfkit intègre les images à leur taille d'origine** : un logo de 1,3 Mo
-  donne un billet de 1,3 Mo. Réduire avec `downscalePng` (le cache est dans
-  `uploads/branding/`, effacé par `clearTicketCache` au remplacement).
+  donne un billet de 1,3 Mo. Réduire avec `downscalePng` (le cache est
+  `uploads/branding/logo-badge.png`, effacé par `clearTicketCache` au remplacement).
+- **Chrome aligne le texte d'une toile sur le pixel entier, verticalement** :
+  pour comparer un rendu à la maquette, une ligne de base décalée de 0,4 px
+  peut sembler en bouger d'un. Le PDF, vectoriel, n'a pas ce défaut.
+- **Coupure de courant = base remplie de zéros.** Arrivé en septembre 2026 :
+  bonne taille, contenu nul, dernière sauvegarde aussi. Les écritures passent
+  désormais par `ecrireDurable` (fsync) et les sauvegardes copient la base en
+  mémoire. Au démarrage, une base illisible fait refuser le lancement avec le
+  nom de la dernière sauvegarde valide — le serveur ne la remplace jamais seul.
 - **Le SDK Resend ne lève jamais** : il rend `{data: null, error}`. Sans
   vérification explicite, on annonce un e-mail envoyé qui ne l'est pas.
 - **Le rattrapage d'un paiement en attente** (`resumePendingPayment`) ne se

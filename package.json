@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/mail.test.js"
+    "test": "node --test test/mail.test.js test/badge.test.js test/sentinelle.test.js"
   },
   "dependencies": {
     "docx": "^9.7.1",

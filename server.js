@@ -3,6 +3,7 @@ require("dotenv").config();
 const crypto = require("crypto");
 const http = require("http");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { URL } = require("url");
 const { Worker } = require("worker_threads");
@@ -10,7 +11,9 @@ const initSqlJs = require("sql.js");
 const QRCode = require("qrcode");
 const PDFDocument = require("pdfkit");
 const mail = require("./lib/mail");
-const { getTicketLogoPath, MAX_TICKET_LOGO_BYTES } = require("./lib/ticket-pdf");
+const { getTicketLogoPath, qrMatrice, textesBadge, MAX_TICKET_LOGO_BYTES, TICKET_LOGO_CACHE } = require("./lib/ticket-pdf");
+const BadgeLayout = require("./js/badge-layout");
+const { Sentinelle } = require("./lib/sentinelle");
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
@@ -46,6 +49,8 @@ const MIME_TYPES = {
   ".webm": "video/webm",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
+  // Polices du badge, chargees par la toile qui dessine l'image du badge.
+  ".ttf": "font/ttf",
 };
 
 const DEFAULT_SETTINGS = {
@@ -97,6 +102,12 @@ const DEFAULT_SETTINGS = {
   // Adresse qui recoit les alertes internes. Configurable, jamais codee
   // en dur : elle change selon la personne de permanence.
   alert_email: "",
+  // Adresse des alertes de securite (lib/sentinelle.js). MAIL_SECURITE_TO
+  // dans .env l'emporte ; vide = adresse des alertes internes.
+  securite_email: "",
+  // Adresses d'ou l'admin s'est deja connecte (JSON), pour reperer une
+  // connexion depuis une adresse jamais vue.
+  securite_ip_admin: "[]",
   event_date_label: "",
   event_date: "",
   // "1" = la fete revient chaque annee a la meme date. Le compte a rebours
@@ -104,6 +115,10 @@ const DEFAULT_SETTINGS = {
   // l'annee suivante sans qu'on ait rien a ressaisir.
   event_annual: "0",
   wa_link: "",
+  // Video montrant comment recuperer son badge, postee sur TikTok. Vide =
+  // aucun bouton "voir la video" affiche, ni sur le parcours de paiement ni
+  // en pied de page.
+  tiktok_guide_url: "",
   chiefs_json: "[]",
   sponsors_json: "[]",
   event_items_json: "[]",
@@ -118,11 +133,19 @@ const DEFAULT_SETTINGS = {
   // cartes, sections). Voir SCROLL_ANIMATIONS.
   scroll_animation: "montee",
   logo_url: "",
-  // Bandeau du titre (image "FESTIVAL ADJA") place entre les deux logos ronds
-  // du billet. Vide = un cartouche avec le nom en texte est dessine a la place.
-  wordmark_url: "",
-  // Photo de fond du billet. Vide = fond clair uni.
-  ticket_bg_url: "",
+  // Textes du badge (js/badge-layout.js). Valeurs de la maquette validee par
+  // l'organisation ; un champ vide y retombe. Dans badge_dates, ce qui est
+  // entre ** ** est ecrit en gras. badge_activites : une ligne par ligne du
+  // bandeau du bas, quatre au plus.
+  badge_titre: BadgeLayout.DEFAUTS.titre,
+  badge_annee: BadgeLayout.DEFAUTS.annee,
+  badge_edition: BadgeLayout.DEFAUTS.edition,
+  badge_lieu: BadgeLayout.DEFAUTS.lieu,
+  badge_dates: BadgeLayout.DEFAUTS.dates,
+  badge_activites: BadgeLayout.DEFAUTS.activites,
+  // Jour (JJ/MM) apres lequel le badge passe a l'annee et a l'edition
+  // suivantes. Voir appliquerBasculeBadge.
+  badge_bascule: BadgeLayout.BASCULE_DEFAUT,
   // Media anime en fond de l'en-tete : GIF ou video. Vide = le fond
   // actuel (rayonnement + degrade) reste seul.
   hero_media_url: "",
@@ -225,6 +248,7 @@ const SETTINGS_KEY_MAP = {
   smtpTlsStrict:        "smtp_tls_strict",
   mailFrom:             "mail_from",
   alertEmail:           "alert_email",
+  securiteEmail:        "securite_email",
   heroMediaActive:      "hero_media_active",
   heroMediaVeil:        "hero_media_veil",
   adminPassword:        "admin_password",
@@ -242,9 +266,211 @@ const SETTINGS_KEY_MAP = {
   artistsLayout:        "artists_layout",
   artistsAnimation:     "artists_animation",
   scrollAnimation:      "scroll_animation",
+  tiktokUrl:            "tiktok_guide_url",
+  badgeTitre:           "badge_titre",
+  badgeAnnee:           "badge_annee",
+  badgeEdition:         "badge_edition",
+  badgeLieu:            "badge_lieu",
+  badgeDates:           "badge_dates",
+  badgeActivites:       "badge_activites",
+  badgeBascule:         "badge_bascule",
 };
 
 let db;
+
+// ---------------------------------------------------------------------------
+// Surveillance (lib/sentinelle.js) : fraude, attaques, incidents couteux.
+// Les alertes partent a MAIL_SECURITE_TO (.env), sinon au reglage
+// securite_email, sinon a l'adresse des alertes internes.
+// ---------------------------------------------------------------------------
+const sentinelle = new Sentinelle({
+  dossier: DATA_DIR,
+  envoyer: async (sujet, lignes, note) => {
+    const settings = db ? getSettings() : { ...DEFAULT_SETTINGS };
+    const alerte = new mail.AlerteSecuriteEmail({
+      settings,
+      baseUrl: getPublicBaseUrl(settings),
+      evenement: sujet,
+      lignes,
+      note,
+    });
+    if (!alerte.destinataire()) throw new Error("aucune adresse pour les alertes de sécurité");
+    await alerte.send();
+    return true;
+  },
+});
+sentinelle.brancherConsole();
+
+// Adresses d'ou l'admin s'est deja connecte (20 dernieres). Une connexion
+// depuis une adresse jamais vue est le premier signe d'un mot de passe vole.
+function noterConnexionAdmin(ip, settings) {
+  let connues = [];
+  try { connues = JSON.parse(settings.securite_ip_admin || "[]"); } catch {}
+  if (connues.includes(ip)) return;
+  if (connues.length) {
+    sentinelle.signaler({ gravite: "alerte", type: "admin_connexion", titre: "Connexion à l'admin depuis une nouvelle adresse", ip,
+      details: [["Adresses connues", connues.slice(-5).join(", ")]] });
+  } else {
+    sentinelle.signaler({ gravite: "info", type: "admin_connexion", titre: "Première connexion admin enregistrée", ip });
+  }
+  saveSettings({ securite_ip_admin: JSON.stringify([...connues, ip].slice(-20)) });
+}
+
+// Reglages dont la modification merite d'etre signalee : un compte admin
+// vole servirait d'abord a detourner les paiements (numeros Mobile Money,
+// cle FedaPay) ou a s'installer (mots de passe, adresse des alertes).
+const REGLAGES_SENSIBLES = {
+  payment_secret_key: { nom: "Clé secrète FedaPay", secret: true, critique: true },
+  payment_environment: { nom: "Environnement de paiement" },
+  fedapay_webhook_secret: { nom: "Secret du webhook FedaPay", secret: true },
+  moov_numero: { nom: "Numéro Moov Money", critique: true },
+  mtn_numero: { nom: "Numéro MTN MoMo", critique: true },
+  participation_fee: { nom: "Prix du badge" },
+  admin_password: { nom: "Mot de passe admin", secret: true, critique: true },
+  scan_password: { nom: "Mot de passe des postes de scan", secret: true },
+  public_base_url: { nom: "Adresse publique du site" },
+  smtp_host: { nom: "Serveur SMTP" },
+  smtp_user: { nom: "Compte SMTP" },
+  smtp_password: { nom: "Mot de passe SMTP", secret: true },
+  mail_from: { nom: "Expéditeur des e-mails" },
+  resend_api_key: { nom: "Clé Resend", secret: true },
+  alert_email: { nom: "Adresse des alertes internes" },
+  securite_email: { nom: "Adresse des alertes de sécurité", critique: true },
+};
+
+function signalerReglagesSensibles(avant, apres, ip) {
+  const changes = Object.entries(apres).filter(([cle, valeur]) =>
+    REGLAGES_SENSIBLES[cle] && String(avant[cle] == null ? "" : avant[cle]) !== String(valeur == null ? "" : valeur));
+  if (!changes.length) return;
+  const critique = changes.some(([cle]) => REGLAGES_SENSIBLES[cle].critique);
+  sentinelle.signaler({
+    gravite: critique ? "critique" : "alerte",
+    type: "reglage_sensible",
+    titre: `Réglage sensible modifié : ${changes.map(([cle]) => REGLAGES_SENSIBLES[cle].nom).join(", ")}`,
+    ip,
+    cle: `reglages:${changes.map(([cle]) => cle).join(",")}:${Date.now()}`,
+    details: changes.map(([cle, valeur]) => [
+      REGLAGES_SENSIBLES[cle].nom,
+      REGLAGES_SENSIBLES[cle].secret ? "modifié (valeur masquée)" : `« ${avant[cle] || "vide"} » → « ${valeur || "vide"} »`,
+    ]),
+  });
+}
+
+function signalerDoubleEntree(participant, ou) {
+  sentinelle.signaler({
+    gravite: "alerte",
+    type: "double_entree",
+    titre: "Badge déjà utilisé présenté à nouveau à l'entrée",
+    cle: `double:${participant.code_unique}`,
+    details: [
+      ["Participant", `${participant.nom} — code ${participant.code_unique}`],
+      ["Premier passage", participant.retrait_effectue_at ? new Date(Number(participant.retrait_effectue_at)).toLocaleString("fr-FR", { timeZone: TIMEZONE }) : "?"],
+      ["Nouvelle présentation", ou],
+    ],
+  });
+}
+
+function signalerFraudePaiement(motif, participant, transaction, attendu) {
+  sentinelle.signaler({
+    gravite: "critique",
+    type: "fraude_paiement",
+    titre: `Tentative de fraude au paiement : ${motif}`,
+    cle: `fraude:${transaction && transaction.id}`,
+    details: [
+      ["Inscription", participant ? `${participant.id} (${participant.nom || "?"})` : "?"],
+      ["Transaction FedaPay", transaction ? String(transaction.id) : "?"],
+      ["Montant reçu", transaction ? `${transaction.amount} FCFA` : "?"],
+      ["Montant attendu", attendu == null ? "—" : `${attendu} FCFA`],
+    ],
+  });
+}
+
+// Espace libre sur le disque des donnees, mesure au plus une fois par minute.
+let espaceMesure = { t: 0, octets: Infinity };
+function espaceDisqueLibre() {
+  if (Date.now() - espaceMesure.t > 60 * 1000) {
+    try {
+      const s = fs.statfsSync(DATA_DIR);
+      espaceMesure = { t: Date.now(), octets: s.bavail * s.bsize };
+    } catch {
+      espaceMesure = { t: Date.now(), octets: Infinity };
+    }
+  }
+  return espaceMesure.octets;
+}
+
+// Sous ce seuil, plus aucune photo n'est acceptee : un disque plein bloque la
+// base elle-meme, donc TOUTES les inscriptions, y compris celles deja payees.
+const ESPACE_MINIMUM = 300 * 1024 * 1024;
+
+function inscriptionsSuspendues(request) {
+  if (espaceDisqueLibre() >= ESPACE_MINIMUM) return false;
+  sentinelle.signaler({
+    gravite: "critique",
+    type: "inscriptions_suspendues",
+    titre: "Inscriptions suspendues : disque presque plein",
+    cle: "disque-plein",
+    ip: getClientIp(request),
+    details: [["Espace libre", `${Math.round(espaceDisqueLibre() / 1048576)} Mo`]],
+  });
+  return true;
+}
+
+// Controles toutes les 5 minutes : ressources du serveur et reglages qui
+// coutent cher s'ils restent en place par oubli.
+function surveillancePeriodique() {
+  try {
+    const libre = espaceDisqueLibre();
+    if (libre < 1024 * 1024 * 1024) {
+      sentinelle.signaler({
+        gravite: libre < ESPACE_MINIMUM ? "critique" : "alerte",
+        type: "disque",
+        titre: "Espace disque presque épuisé",
+        cle: "disque",
+        delai: 3 * 60 * 60 * 1000,
+        details: [["Espace libre", `${Math.round(libre / 1048576)} Mo`]],
+      });
+    }
+
+    const memoire = process.memoryUsage().rss;
+    if (memoire > 800 * 1024 * 1024) {
+      sentinelle.signaler({ gravite: "alerte", type: "memoire", titre: "Mémoire du serveur très élevée", cle: "memoire", delai: 3 * 60 * 60 * 1000,
+        details: [["Mémoire utilisée", `${Math.round(memoire / 1048576)} Mo`]] });
+    }
+
+    if (!db) return;
+    const settings = getSettings();
+    // Rappel toutes les 6 h tant que le mode demonstration reste allume.
+    if (isDemoMode(settings)) {
+      sentinelle.signaler({ gravite: "alerte", type: "demo", titre: "Le mode démonstration est toujours actif",
+        cle: "demo-rappel", delai: 6 * 60 * 60 * 1000 });
+    }
+
+    // Reglages dangereux une fois le site public : un rappel par jour.
+    const enLigne = /^https:\/\//i.test(getPublicBaseUrl(settings) || "") && !/localhost|127\.0\.0\.1/.test(getPublicBaseUrl(settings));
+    if (enLigne) {
+      const problemes = [];
+      const environnement = process.env.FEDAPAY_ENVIRONMENT || settings.payment_environment || "sandbox";
+      if (!isDemoMode(settings) && !(process.env.FEDAPAY_SECRET_KEY || settings.payment_secret_key)) {
+        problemes.push(["Paiement", "Aucune clé FedaPay : personne ne peut payer."]);
+      } else if (!isDemoMode(settings) && environnement !== "live") {
+        problemes.push(["Paiement", "FedaPay est en mode « sandbox » : les paiements ne sont pas réels."]);
+      }
+      if (!getFedapayWebhookSecret(settings)) {
+        problemes.push(["Webhook FedaPay", "Aucun secret : les notifications FedaPay ne sont pas authentifiées."]);
+      }
+      if (verifyPassword(DEFAULT_SETTINGS.admin_password, settings.admin_password || DEFAULT_SETTINGS.admin_password).ok) {
+        problemes.push(["Mot de passe admin", "Toujours « admin » : n'importe qui peut ouvrir l'administration."]);
+      }
+      if (problemes.length) {
+        sentinelle.signaler({ gravite: "alerte", type: "config", titre: "Réglages dangereux sur le site en ligne",
+          cle: "config", delai: 24 * 60 * 60 * 1000, details: problemes });
+      }
+    }
+  } catch (error) {
+    console.warn("Surveillance periodique impossible:", error.message);
+  }
+}
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -357,7 +583,11 @@ async function serveStaticFile(request, response, pathname) {
 
     const headers = {
       "Content-Type": contentType,
-      "Cache-Control": "no-store",
+      // Les polices du badge ne changent jamais et pesent pres de 500 Ko :
+      // les retelecharger a chaque badge affiche couterait cher en donnees.
+      "Cache-Control": path.relative(ROOT, filePath).split(path.sep)[0] === "fonts"
+        ? "public, max-age=604800"
+        : "no-store",
     };
 
     // Les fichiers de /uploads/ sont fournis par l'organisateur ou par les
@@ -382,39 +612,177 @@ async function serveStaticFile(request, response, pathname) {
   }
 }
 
-// Ecriture atomique : on ecrit dans un fichier temporaire puis on le renomme.
-// Un writeFileSync direct sur la base laisse une fenetre pendant laquelle une
-// coupure de courant ou un arret brutal donne un fichier tronque, donc la perte
-// de TOUS les participants. Le rename, lui, est atomique sur un meme disque.
-function persistDatabase() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const data = Buffer.from(db.export());
-  const tempPath = `${DB_PATH}.tmp`;
+// Ecriture de la base sur le disque.
+//
+// Atomique : fichier temporaire, fsync, puis renommage. Un ecrasement direct
+// laissait, en cas de coupure, un fichier tronque, donc la perte de TOUS les
+// participants.
+//
+// Hors du fil principal et groupee : l'image de la base est prise tout de
+// suite (quelques ms), mais l'ecriture et le fsync se font en arriere-plan.
+// Faits en direct, ils gelaient le site ~50 ms par modification, soit
+// plusieurs secondes quand 50 personnes paient en meme temps. Les demandes
+// qui arrivent pendant une ecriture sont regroupees dans la suivante.
+//
+// La promesse rendue est tenue quand l'etat du moment est sur le disque : les
+// routes l'attendent avant de repondre, comme quand l'ecriture etait directe.
+let ecritureEnCours = null;
+let prochaineEcriture = null;
 
-  fs.writeFileSync(tempPath, data);
-  fs.renameSync(tempPath, DB_PATH);
+function persistDatabase() {
+  if (!prochaineEcriture) {
+    let tenir, rompre;
+    const promesse = new Promise((res, rej) => { tenir = res; rompre = rej; });
+    // L'erreur est journalisee dans lancerEcriture ; seuls ceux qui attendent
+    // la promesse la recoivent, sans « rejet non traite » pour les autres.
+    promesse.catch(() => {});
+    prochaineEcriture = { promesse, tenir, rompre };
+  }
+  const attente = prochaineEcriture.promesse;
+  if (!ecritureEnCours) lancerEcriture();
+  return attente;
+}
+
+function lancerEcriture() {
+  const lot = prochaineEcriture;
+  prochaineEcriture = null;
+  const tempPath = `${DB_PATH}.tmp`;
+  let data;
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    data = Buffer.from(db.export());
+  } catch (error) {
+    console.error("Ecriture de la base impossible:", error.message);
+    signalerEchecBase(error);
+    lot.rompre(error);
+    return;
+  }
+  ecritureEnCours = ecrireDurableAsync(tempPath, data)
+    .then(() => fs.promises.rename(tempPath, DB_PATH))
+    .then(
+      () => lot.tenir(),
+      (error) => {
+        console.error("Ecriture de la base impossible:", error.message);
+        signalerEchecBase(error);
+        lot.rompre(error);
+      },
+    )
+    .finally(() => {
+      ecritureEnCours = null;
+      if (prochaineEcriture) lancerEcriture();
+    });
+}
+
+function signalerEchecBase(error) {
+  sentinelle.signaler({ gravite: "critique", type: "base", titre: "La base de données ne s'enregistre plus sur le disque", cle: "base",
+    details: [["Erreur", error.message], ["Espace disque libre", `${Math.round(espaceDisqueLibre() / 1048576)} Mo`]] });
+}
+
+async function ecrireDurableAsync(chemin, octets) {
+  const fichier = await fs.promises.open(chemin, "w");
+  try {
+    await fichier.writeFile(octets);
+    await fichier.sync();
+  } finally {
+    await fichier.close();
+  }
+}
+
+// A l'arret, ce qui n'est pas encore sur le disque y est ecrit, de facon
+// synchrone : plus rien d'asynchrone ne s'execute pendant un arret.
+process.on("exit", () => {
+  if (!db || (!ecritureEnCours && !prochaineEcriture)) return;
+  try {
+    const tempPath = `${DB_PATH}.arret.tmp`;
+    ecrireDurable(tempPath, Buffer.from(db.export()));
+    fs.renameSync(tempPath, DB_PATH);
+  } catch (error) {
+    console.error("Ecriture de la base a l'arret impossible:", error.message);
+  }
+});
+
+// Ecriture forcee jusqu'au disque avant de rendre la main. Sans le fsync,
+// Windows peut enregistrer la taille d'un fichier avant son contenu : apres
+// une coupure de courant, la base fait la bonne taille mais ne contient que
+// des zeros, et le renommage atomique ne protege de rien.
+function ecrireDurable(chemin, octets) {
+  const fd = fs.openSync(chemin, "w");
+  try {
+    let ecrit = 0;
+    while (ecrit < octets.length) ecrit += fs.writeSync(fd, octets, ecrit, octets.length - ecrit);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+const ENTETE_SQLITE = Buffer.from("SQLite format 3\u0000", "latin1");
+
+function estBaseSqlite(chemin) {
+  try {
+    const fd = fs.openSync(chemin, "r");
+    const tete = Buffer.alloc(16);
+    try { fs.readSync(fd, tete, 0, 16, 0); } finally { fs.closeSync(fd); }
+    return tete.equals(ENTETE_SQLITE);
+  } catch {
+    return false;
+  }
+}
+
+// Message de demarrage quand la base est illisible. Le serveur ne la
+// remplace JAMAIS de lui-meme : il indique la sauvegarde a restaurer.
+function messageBaseIllisible() {
+  let sauvegarde = null;
+  try {
+    sauvegarde = fs.readdirSync(BACKUP_DIR)
+      .filter((nom) => nom.endsWith(".sqlite"))
+      .sort()
+      .reverse()
+      .find((nom) => estBaseSqlite(path.join(BACKUP_DIR, nom)));
+  } catch {}
+  return [
+    "data/weloveadja.sqlite est illisible (fichier vide ou abime, souvent apres une coupure de courant).",
+    "Le serveur refuse de demarrer pour ne rien ecraser.",
+    sauvegarde
+      ? `Derniere sauvegarde valide : data/backups/${sauvegarde}. Pour la restaurer : mettre le fichier abime de cote, puis copier cette sauvegarde a sa place sous le nom data/weloveadja.sqlite.`
+      : "Aucune sauvegarde valide dans data/backups/.",
+  ].join("\n");
 }
 
 // Copie de securite horodatee, gardee en rotation. Sert de filet si la base
 // est corrompue ou effacee par erreur la veille de l'evenement.
 function backupDatabase() {
   try {
-    if (!fs.existsSync(DB_PATH)) return;
+    if (!db) return;
 
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
     const stamp = new Date().toISOString().slice(0, 13).replace(/[-T:]/g, "");
-    fs.copyFileSync(DB_PATH, path.join(BACKUP_DIR, `weloveadja-${stamp}.sqlite`));
+    // Copie de la base EN MEMOIRE, et non du fichier : si le fichier sur
+    // disque etait abime, la rotation remplacerait peu a peu toutes les
+    // bonnes sauvegardes par des copies illisibles.
+    const octets = Buffer.from(db.export());
+    ecrireDurable(path.join(BACKUP_DIR, `weloveadja-${stamp}.sqlite`), octets);
 
-    const backups = fs
-      .readdirSync(BACKUP_DIR)
-      .filter((name) => name.endsWith(".sqlite"))
-      .sort();
+    // Une copie par jour, gardee un mois. Les copies horaires ne couvrent
+    // que 24 h : une erreur remarquee le surlendemain (inscriptions effacees
+    // par megarde) n'aurait plus aucune sauvegarde saine.
+    const jour = path.join(BACKUP_DIR, `jour-${stamp.slice(0, 8)}.sqlite`);
+    if (!fs.existsSync(jour)) ecrireDurable(jour, octets);
 
-    backups.slice(0, Math.max(0, backups.length - MAX_BACKUPS)).forEach((name) => {
-      try { fs.unlinkSync(path.join(BACKUP_DIR, name)); } catch {}
-    });
+    const tourner = (prefixe, garder) => {
+      const fichiers = fs.readdirSync(BACKUP_DIR)
+        .filter((name) => name.startsWith(prefixe) && name.endsWith(".sqlite"))
+        .sort();
+      fichiers.slice(0, Math.max(0, fichiers.length - garder)).forEach((name) => {
+        try { fs.unlinkSync(path.join(BACKUP_DIR, name)); } catch {}
+      });
+    };
+    tourner("weloveadja-", MAX_BACKUPS);
+    tourner("jour-", 30);
   } catch (error) {
     console.warn("Sauvegarde de la base impossible:", error.message);
+    sentinelle.signaler({ gravite: "alerte", type: "sauvegarde", titre: "La sauvegarde automatique de la base a échoué", cle: "sauvegarde",
+      details: [["Erreur", error.message]] });
   }
 }
 
@@ -504,7 +872,54 @@ function saveSettings(settings) {
   persistDatabase();
 }
 
+// --- Un seul serveur par base ----------------------------------------------
+// La base vit en memoire et chaque ecriture remplace tout le fichier. Deux
+// serveurs lances sur le meme dossier (double clic sur server.bat, port 3000
+// deja pris qui fait basculer le second sur 3001...) ecraseraient chacun les
+// inscriptions de l'autre, sans la moindre erreur visible. Le verrou porte
+// le numero du processus et un battement rafraichi toutes les 30 s : un
+// verrou laisse par un serveur arrete brutalement est repris tout seul.
+const VERROU_PATH = path.join(DATA_DIR, "serveur.lock");
+const VERROU_DEPUIS = Date.now();
+
+function ecrireVerrou() {
+  try {
+    fs.writeFileSync(VERROU_PATH, JSON.stringify({ pid: process.pid, depuis: VERROU_DEPUIS, battement: Date.now() }));
+  } catch {}
+}
+
+function prendreVerrou() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  let actuel = null;
+  try { actuel = JSON.parse(fs.readFileSync(VERROU_PATH, "utf8")); } catch {}
+
+  if (actuel && actuel.pid !== process.pid) {
+    let vivant = false;
+    try { process.kill(actuel.pid, 0); vivant = true; } catch (error) { vivant = error.code === "EPERM"; }
+    const frais = Date.now() - Number(actuel.battement || 0) < 2 * 60 * 1000;
+    if (vivant && frais) {
+      throw new Error(
+        `Un autre serveur utilise deja cette base (processus ${actuel.pid}). ` +
+        "Ferme-le avant d'en lancer un second : deux serveurs sur la meme base s'ecrasent les inscriptions.",
+      );
+    }
+  }
+
+  ecrireVerrou();
+  setInterval(ecrireVerrou, 30 * 1000).unref();
+
+  const liberer = () => {
+    try {
+      const v = JSON.parse(fs.readFileSync(VERROU_PATH, "utf8"));
+      if (v.pid === process.pid) fs.unlinkSync(VERROU_PATH);
+    } catch {}
+  };
+  process.on("exit", liberer);
+  ["SIGINT", "SIGTERM", "SIGBREAK"].forEach((signal) => process.on(signal, () => process.exit(0)));
+}
+
 async function initDatabase() {
+  prendreVerrou();
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   fs.mkdirSync(PARTICIPANT_PHOTOS_DIR, { recursive: true });
@@ -521,6 +936,9 @@ async function initDatabase() {
 
   const SQL = await initSqlJs();
   const existing = fs.existsSync(DB_PATH) ? fs.readFileSync(DB_PATH) : null;
+  if (existing && existing.length && !estBaseSqlite(DB_PATH)) {
+    throw new Error(messageBaseIllisible());
+  }
   db = existing ? new SQL.Database(existing) : new SQL.Database();
 
   db.run(`
@@ -736,11 +1154,18 @@ function verifyPassword(plain, stored) {
 // ---------------------------------------------------------------------------
 const rateBuckets = new Map();
 
+// Adresse du visiteur. X-Forwarded-For n'est cru que si la connexion vient
+// d'un proxy local (meme machine ou reseau prive, cas de l'hebergeur), et on
+// en prend le DERNIER maillon, celui qu'a ajoute ce proxy. Le premier
+// maillon est ecrit par le client lui-meme : s'y fier laissait n'importe qui
+// contourner toutes les limites en inventant une adresse a chaque requete.
+const ADRESSE_LOCALE = /^(::1$|127\.|::ffff:127\.|10\.|::ffff:10\.|192\.168\.|::ffff:192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::ffff:172\.(1[6-9]|2\d|3[01])\.|f[cd])/i;
+
 function getClientIp(request) {
-  // Derriere un tunnel ou un reverse proxy, l'adresse de la socket est celle
-  // du proxy : on prend le premier maillon de X-Forwarded-For quand il existe.
-  const forwarded = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  return forwarded || request.socket.remoteAddress || "inconnu";
+  const directe = request.socket.remoteAddress || "inconnu";
+  if (!ADRESSE_LOCALE.test(directe)) return directe;
+  const chaine = String(request.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return chaine.length ? chaine[chaine.length - 1] : directe;
 }
 
 // Limiteur sur une cle quelconque : sert a compter par ADRESSE EMAIL et pas
@@ -763,6 +1188,12 @@ function rateLimitKey(key, limit, windowMs) {
 }
 
 // Renvoie le nombre de secondes a attendre, ou 0 si la requete est autorisee.
+//
+// Les plafonds PAR IP sont volontairement larges : au Benin, les operateurs
+// mobiles font sortir des centaines de telephones par la meme adresse IP. Un
+// plafond serre bloquait des inconnus les uns par les autres (le 9e acheteur
+// d'une file a l'entree, par exemple). La protection fine se fait par
+// e-mail, par badge ou par participant (rateLimitKey).
 function rateLimit(request, bucket, limit, windowMs) {
   const key = `${bucket}:${getClientIp(request)}`;
   const now = Date.now();
@@ -1145,15 +1576,19 @@ function getConfigHealth(settings = getSettings()) {
     add("ok", "password", "Mot de passe administrateur personnalisé", null);
   }
 
+  // Le logo sert de sceau au centre du QR du badge. Un PNG est reduit
+  // automatiquement ; un SVG ne passe pas dans le PDF, et un JPEG trop lourd
+  // est ecarte pour ne pas alourdir chaque badge envoye par e-mail.
   const logoFile = localFileFromUrl(settings.logo_url);
-  if (logoFile && /\.(png|jpe?g)$/i.test(logoFile)) {
-    let taille = 0;
-    try { taille = fs.statSync(logoFile).size; } catch {}
-    if (taille > MAX_TICKET_LOGO_BYTES) {
-      add("warn", "logo_poids", "Logo trop lourd pour le badge PDF",
-        `Il pèse ${Math.round(taille / 1024)} Ko. Il n'est donc pas placé sur le badge, qui ferait sinon plus d'un méga-octet par participant. Réimporte-le depuis Apparence : il sera réduit automatiquement.`);
+  if (logoFile) {
+    if (getTicketLogoPath(settings)) {
+      add("ok", "logo_poids", "Logo placé au centre du QR du badge", null);
     } else {
-      add("ok", "logo_poids", "Logo utilisable sur le badge PDF", null);
+      const raison = /\.svg$/i.test(logoFile)
+        ? "Un logo SVG ne peut pas être intégré au badge PDF."
+        : `Ce JPEG dépasse ${Math.round(MAX_TICKET_LOGO_BYTES / 1024)} Ko.`;
+      add("warn", "logo_poids", "Logo absent du centre du QR du badge",
+        `${raison} Réimporte-le en PNG depuis Apparence : il sera réduit automatiquement.`);
     }
   }
 
@@ -1317,7 +1752,14 @@ function publicSettings(settings = getSettings()) {
     mtnNumber:   settings.mtn_numero || "",
     waLink:      settings.wa_link || "",
     email:       settings.vendeur_email || "",
+    tiktokUrl:   settings.tiktok_guide_url || "",
     logoUrl:     settings.logo_url || "",
+    // Ce que la toile du navigateur doit savoir pour dessiner le meme badge
+    // que le PDF : memes textes, meme sceau (la version reduite du logo).
+    badge:       Object.assign(textesBadge(settings), {
+      sceauUrl: urlSceauBadge(settings),
+      bascule: settings.badge_bascule || BadgeLayout.BASCULE_DEFAUT,
+    }),
     demoMode:    isDemoMode(settings),
     // Le formulaire s'en sert pour savoir quel chemin proposer selon le pays.
     paiementDirect: {
@@ -1477,6 +1919,11 @@ function generateParticipantId() {
   throw new Error("Impossible de generer un identifiant participant.");
 }
 
+// Codes deja tires par ce processus. Entre le tirage et l'ecriture en base, la
+// creation du QR rend la main : deux achats valides au meme moment ne doivent
+// pas pouvoir tirer le meme code avant que l'un l'ait enregistre.
+const codesTires = new Set();
+
 function generateUniqueCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -1487,7 +1934,8 @@ function generateUniqueCode() {
       code += alphabet[value % alphabet.length];
     });
 
-    if (!statementGet("SELECT id FROM participants WHERE code_unique = ?", [code])) {
+    if (!codesTires.has(code) && !statementGet("SELECT id FROM participants WHERE code_unique = ?", [code])) {
+      codesTires.add(code);
       return code;
     }
   }
@@ -1542,24 +1990,59 @@ function saveParticipantPhoto(dataUrl, participantId) {
   return saveImageUpload(dataUrl, PARTICIPANT_PHOTOS_DIR, participantId, "Photo du participant");
 }
 
-// Ressources de marque televersables depuis l'admin. La cle est le nom de
-// fichier ET le nom du reglage : une seule table evite qu'ils divergent.
-const BRANDING_ASSETS = {
-  logo:      { fichier: "logo",     reglage: "logo_url",      svg: true,  label: "Logo" },
-  wordmark:  { fichier: "wordmark", reglage: "wordmark_url",  svg: false, label: "Bandeau du titre" },
-  "ticket-bg": { fichier: "ticket-bg", reglage: "ticket_bg_url", svg: false, label: "Photo de fond du badge" },
-};
+// Efface le logo reduit du badge : sans cela, le badge continuerait
+// d'afficher l'ancien logo apres un remplacement.
+function clearTicketCache() {
+  const f = path.join(BRANDING_DIR, TICKET_LOGO_CACHE);
+  try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+}
 
-// Efface les caches reduits d'une ressource : sans cela, le billet
-// continuerait d'afficher l'ancienne image apres un remplacement.
-function clearTicketCache(nom) {
-  ["logo", "wordmark", "bg"].forEach((cle) => {
-    if (nom === "logo" && cle !== "logo") return;
-    if (nom === "wordmark" && cle !== "wordmark") return;
-    if (nom === "ticket-bg" && cle !== "bg") return;
-    const f = path.join(BRANDING_DIR, `${cle}-ticket.png`);
-    try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
-  });
+// Enregistre le passage a l'edition suivante des que le jour de bascule est
+// passe. Le dessin l'applique deja de lui-meme (textesBadge) ; l'ecrire en
+// base garde l'admin coherent : il affiche l'annee et l'edition reellement
+// imprimees, et une retouche ne repart pas d'une annee perimee.
+function appliquerBasculeBadge() {
+  try {
+    const settings = getSettings();
+    const D = BadgeLayout.DEFAUTS;
+    const anneeEnregistree = String(settings.badge_annee || "").trim() || D.annee;
+    const enCours = textesBadge(settings);
+    if (enCours.annee === anneeEnregistree) return false;
+
+    saveSettings({
+      badge_annee: enCours.annee,
+      badge_edition: enCours.edition,
+      badge_dates: enCours.dates,
+    });
+    console.log(`Badge : passage a l'edition ${enCours.edition} (${enCours.annee}).`);
+    // Les jours du festival changent d'une annee a l'autre : l'organisation
+    // doit les verifier, le changement d'annee seul ne suffit pas toujours.
+    sendInternalAlert(
+      `Badge : passage à l'édition ${enCours.edition}`,
+      [["Année", enCours.annee], ["Édition", enCours.edition], ["Dates imprimées", enCours.dates.replace(/\*\*/g, "")]],
+      getSettings(),
+      "Vérifie les jours dans Admin → Réglages → Badge : seule l'année a été changée automatiquement.",
+    ).catch(() => {});
+    return true;
+  } catch (error) {
+    console.warn("Passage a l'edition suivante impossible:", error.message);
+    return false;
+  }
+}
+
+// Adresse du sceau du QR (logo reduit) pour la toile du navigateur. Le logo
+// d'origine pese plus d'un Mo : le recharger a chaque badge affiche coutait
+// cher en donnees mobiles. Version = date du fichier, pour suivre un
+// remplacement malgre les caches.
+function urlSceauBadge(settings) {
+  const chemin = getTicketLogoPath(settings);
+  if (!chemin) return "";
+  try {
+    const relatif = path.relative(ROOT, chemin).split(path.sep).join("/");
+    return `/${relatif}?v=${Math.round(fs.statSync(chemin).mtimeMs)}`;
+  } catch {
+    return "";
+  }
 }
 
 // Le logo accepte aussi le SVG, contrairement aux autres uploads. Le nom de
@@ -1673,52 +2156,62 @@ function localFileFromUrl(url) {
 // ---------------------------------------------------------------------------
 // Badge PDF
 //
-// La construction elle-meme (pdfkit, reduction des images de marque) vit
-// dans lib/ticket-pdf.js, executee dans un thread separe : elle est
-// synchrone, et executee ici dans le thread principal elle gelerait tout le
-// site pour tous les visiteurs pendant qu'un badge se dessine. Un seul
-// worker persistant suffit a l'echelle de ce projet ; il est relance
+// La construction elle-meme (pdfkit) vit dans lib/ticket-pdf.js, executee
+// dans des threads separes : elle est synchrone, et executee ici dans le
+// thread principal elle gelerait tout le site pendant qu'un badge se dessine.
+//
+// Plusieurs threads, pas un seul : un badge coute ~75 ms de calcul, et a 50
+// paiements simultanes (badges des e-mails + telechargements), une file
+// unique faisait attendre le dernier plus de 7 s. Chaque thread est relance
 // automatiquement s'il plante.
 // ---------------------------------------------------------------------------
-let ticketWorker = null;
+const TAILLE_POOL_PDF = Math.max(1, Math.min(3, os.cpus().length - 1));
+const poolPdf = Array.from({ length: TAILLE_POOL_PDF }, () => ({ worker: null, enAttente: new Map() }));
 let ticketWorkerReqId = 0;
-const ticketWorkerPending = new Map();
 
-function spawnTicketWorker() {
+function lancerThreadPdf(place) {
   const worker = new Worker(path.join(__dirname, "lib", "ticket-pdf-worker.js"));
 
   worker.on("message", (msg) => {
-    const pending = ticketWorkerPending.get(msg.id);
+    const pending = place.enAttente.get(msg.id);
     if (!pending) return;
-    ticketWorkerPending.delete(msg.id);
+    place.enAttente.delete(msg.id);
     if (msg.error) pending.reject(new Error(msg.error));
     else pending.resolve(Buffer.from(msg.buffer));
   });
 
+  // Le thread ne repondra plus : ses demandes en attente echouent, et la
+  // prochaine demande en relancera un neuf a cette place.
+  const abandonner = (error) => {
+    for (const pending of place.enAttente.values()) pending.reject(error);
+    place.enAttente.clear();
+    if (place.worker === worker) place.worker = null;
+  };
   worker.on("error", (error) => {
-    console.error("Worker badge PDF en erreur:", error.message);
-    // Le worker ne repondra plus : les demandes encore en attente sur lui
-    // echouent, et le prochain badge en relancera un nouveau.
-    for (const pending of ticketWorkerPending.values()) pending.reject(error);
-    ticketWorkerPending.clear();
-    ticketWorker = null;
+    console.error("Thread badge PDF en erreur:", error.message);
+    abandonner(error);
   });
-
   worker.on("exit", (code) => {
-    if (code !== 0) console.warn(`Worker badge PDF arrete (code ${code}), relance a la prochaine demande.`);
-    ticketWorker = null;
+    if (code !== 0) console.warn(`Thread badge PDF arrete (code ${code}), relance a la prochaine demande.`);
+    abandonner(new Error("Thread badge PDF arrete."));
   });
 
-  return worker;
+  place.worker = worker;
+}
+
+function demarrerPoolPdf() {
+  poolPdf.forEach((place) => { if (!place.worker) lancerThreadPdf(place); });
 }
 
 function renderTicketPdf(participant, settings = getSettings()) {
-  if (!ticketWorker) ticketWorker = spawnTicketWorker();
+  // Le thread le moins charge prend la demande.
+  const place = poolPdf.reduce((a, b) => (b.enAttente.size < a.enAttente.size ? b : a));
+  if (!place.worker) lancerThreadPdf(place);
 
   const id = ++ticketWorkerReqId;
   return new Promise((resolve, reject) => {
-    ticketWorkerPending.set(id, { resolve, reject });
-    ticketWorker.postMessage({ id, participant, settings });
+    place.enAttente.set(id, { resolve, reject });
+    place.worker.postMessage({ id, participant, settings });
   });
 }
 
@@ -2371,23 +2864,41 @@ function getPaymentCredentials(settings) {
 
 async function fedapayRequest(settings, method, routePath, body = null) {
   const credentials = getPaymentCredentials(settings);
-  const response = await fetch(`${getPaymentApiBaseUrl(credentials.environment)}${routePath}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${credentials.secretKey}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await response.text();
+  let response;
+  let text;
+  try {
+    response = await fetch(`${getPaymentApiBaseUrl(credentials.environment)}${routePath}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${credentials.secretKey}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    text = await response.text();
+  } catch (error) {
+    noterPanneFedapay(`réseau : ${error.message}`);
+    throw error;
+  }
   const data = text ? JSON.parse(text) : {};
 
   if (!response.ok) {
+    // 4xx : requete refusee (souvent une cle fausse) ; 5xx : panne chez FedaPay.
+    // Les deux empechent de payer, d'ou l'alerte au-dela de quelques echecs.
+    noterPanneFedapay(`HTTP ${response.status} sur ${method} ${routePath.split("?")[0]}`);
     throw new Error(`FedaPay HTTP ${response.status}: ${text}`);
   }
 
   return data;
+}
+
+function noterPanneFedapay(detail) {
+  const exemples = sentinelle.retenirExemple("fedapay", detail);
+  if (sentinelle.franchit("fedapay", 5, 10 * 60 * 1000)) {
+    sentinelle.signaler({ gravite: "alerte", type: "fedapay", titre: "FedaPay répond en erreur (5 échecs en 10 min)", cle: "fedapay",
+      details: [["Derniers échecs", exemples.join("  |  ")]] });
+  }
 }
 
 function splitFullName(fullName) {
@@ -2458,7 +2969,10 @@ async function createPaymentTransaction(settings, participant, customer, nombreB
   return payload.transaction || payload;
 }
 
-async function verifyPaymentTransaction(transactionId, amount, settings) {
+// Le montant attendu est celui de TOUT l'achat : prix d'un badge multiplie
+// par le nombre de badges du groupe. Compare au prix d'un seul badge, tout
+// achat groupe etait refuse comme « montant incorrect » par le webhook.
+async function verifyPaymentTransaction(transactionId, participant, settings) {
   if (!transactionId) {
     throw new Error("Transaction de paiement manquante.");
   }
@@ -2467,12 +2981,14 @@ async function verifyPaymentTransaction(transactionId, amount, settings) {
   const transaction = payload.transaction || payload;
   const status = String(transaction.status || "").toLowerCase();
   const transactionAmount = Number(transaction.amount || 0);
+  const attendu = Number(getParticipationAmount(settings)) * getParticipantsDuGroupe(participant).length;
 
   if (status !== "approved") {
     throw new Error("Paiement non confirme.");
   }
 
-  if (transactionAmount !== Number(amount)) {
+  if (transactionAmount !== attendu) {
+    signalerFraudePaiement("Montant payé différent du prix", participant, transaction, attendu);
     throw new Error("Montant du paiement incorrect.");
   }
 
@@ -2529,8 +3045,10 @@ async function createPaymentToken(settings, transactionId) {
   };
 }
 
-function getPublicBaseUrl(settings) {
-  return process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
+// Reglages lus a la demande quand l'appelant n'en passe pas : la route du QR
+// d'installation l'appelait sans argument et repondait une erreur 500.
+function getPublicBaseUrl(settings = getSettings()) {
+  return process.env.PUBLIC_BASE_URL || (settings && settings.public_base_url) || "";
 }
 
 // ---------------------------------------------------------------------------
@@ -2929,14 +3447,40 @@ function billetPublic(b) {
     montant: b.montant,
     groupe_index: b.groupe_index || 1,
     groupe_taille: b.groupe_taille || 1,
+    // Ce qu'il faut a la page pour dessiner l'image du badge : la photo du
+    // porteur et la matrice du QR (le navigateur n'a pas de generateur QR).
+    photo: b.participant_photo_url || "",
+    qr_matrice: qrMatrice(b.code_unique),
   };
 }
 
-async function finalizePaidParticipant(participant, transaction, settings) {
+// Validations en cours, par achat. Le webhook FedaPay et la page de retour
+// confirment souvent le MEME paiement au meme instant : sans file d'attente,
+// les deux passaient le controle « deja valide ? » avant que l'un ait ecrit
+// (la creation du QR est asynchrone), chacun tirait un code different et
+// l'acheteur recevait deux e-mails, dont un avec un code refuse a l'entree.
+const finalisationsEnCours = new Map();
+
+function finalizePaidParticipant(participant, transaction, settings) {
   if (!participant) {
-    throw new Error("Participant introuvable.");
+    return Promise.reject(new Error("Participant introuvable."));
   }
 
+  const cle = participant.groupe_id || participant.id;
+  const precedente = finalisationsEnCours.get(cle) || Promise.resolve();
+  // La suivante relit la ligne : si la precedente a valide, elle le verra.
+  const suivante = precedente
+    .catch(() => {})
+    .then(() => finaliserAchat(getParticipantById(participant.id) || participant, transaction, settings));
+
+  finalisationsEnCours.set(cle, suivante);
+  suivante
+    .finally(() => { if (finalisationsEnCours.get(cle) === suivante) finalisationsEnCours.delete(cle); })
+    .catch(() => {});
+  return suivante;
+}
+
+async function finaliserAchat(participant, transaction, settings) {
   // Un achat couvre un ou plusieurs billets, mais toujours un seul paiement :
   // on valide le groupe entier ou rien. Valider ligne par ligne laisserait un
   // acheteur avec trois billets sur cinq si l'envoi echouait au milieu.
@@ -2962,6 +3506,7 @@ async function finalizePaidParticipant(participant, transaction, settings) {
   // Le montant attendu depend du nombre de billets : sans cette
   // multiplication, payer un seul billet en delivrerait cinq.
   if (transactionAmount !== Number(amount) * groupe.length) {
+    signalerFraudePaiement("Montant payé différent du prix", participant, transaction, Number(amount) * groupe.length);
     throw new Error("Montant du paiement incorrect.");
   }
 
@@ -2969,6 +3514,7 @@ async function finalizePaidParticipant(participant, transaction, settings) {
   // par un AUTRE groupe signalerait un rejeu.
   const dejaLiee = getParticipantByFedapayTransactionId(transaction.id);
   if (dejaLiee && !groupe.some((b) => b.id === dejaLiee.id)) {
+    signalerFraudePaiement("Transaction déjà utilisée par une autre inscription", participant, transaction, null);
     throw new Error("Cette transaction est deja liee a une inscription.");
   }
 
@@ -3002,7 +3548,7 @@ async function finalizePaidParticipant(participant, transaction, settings) {
       ],
     );
   }
-  persistDatabase();
+  await persistDatabase();
 
   const billets = getParticipantsDuGroupe(getParticipantById(participant.id));
   const updatedParticipant = billets.find((b) => b.id === participant.id) || billets[0];
@@ -3011,6 +3557,11 @@ async function finalizePaidParticipant(participant, transaction, settings) {
   // ressembleraient a une erreur d'envoi.
   const emailSent = await sendValidationEmail(billets, settings).catch((error) => {
     console.error("Email de validation non envoye:", error.message);
+    const exemples = sentinelle.retenirExemple("email-badge", error.message);
+    if (sentinelle.franchit("email-badge", 3, 30 * 60 * 1000)) {
+      sentinelle.signaler({ gravite: "alerte", type: "email_echec", titre: "Les e-mails de badge ne partent pas (3 échecs en 30 min)",
+        cle: "email-badge", details: [["Erreurs", exemples.join("  |  ")]] });
+    }
     return false;
   });
 
@@ -3135,10 +3686,50 @@ async function handleApi(request, response, url) {
       return;
     }
 
+    if (url.pathname === "/api/public/contact" && request.method === "POST") {
+      // Plafond large mais present : un formulaire ouvert peut etre soumis
+      // en boucle par un script, jamais par une vraie personne qui ecrit un
+      // message.
+      const retryAfter = rateLimit(request, "contact", 5, 30 * 60 * 1000);
+      if (retryAfter) {
+        sendRateLimited(response, retryAfter, "Trop de messages envoyes. Patiente un instant.");
+        return;
+      }
+
+      const body = await parseJsonBody(request);
+      const email = String(body.email || "").trim();
+      const whatsapp = String(body.whatsapp || "").trim();
+      const message = String(body.message || "").trim();
+
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 200) {
+        sendJson(response, 400, { error: "Adresse email invalide." });
+        return;
+      }
+      if (!message || message.length < 5) {
+        sendJson(response, 400, { error: "Decris un peu le probleme rencontre." });
+        return;
+      }
+      if (message.length > 4000 || whatsapp.length > 40) {
+        sendJson(response, 400, { error: "Message trop long." });
+        return;
+      }
+
+      const settings = getSettings();
+      const sent = await sendInternalAlert(
+        "Nouveau message de contact",
+        [["Email", email], ["WhatsApp", whatsapp || "—"]],
+        settings,
+        message,
+      );
+
+      sendJson(response, 200, { ok: true, sent });
+      return;
+    }
+
     if (url.pathname === "/api/public/verify-code" && request.method === "POST") {
       // Le code fait 6 caracteres : sans plafond, on peut le deviner par
       // essais successifs et decouvrir le nom du participant associe.
-      const retryAfter = rateLimit(request, "verify", 20, 5 * 60 * 1000);
+      const retryAfter = rateLimit(request, "verify", 60, 5 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop de vérifications. Patiente quelques minutes.");
         return;
@@ -3154,6 +3745,10 @@ async function handleApi(request, response, url) {
 
       const participant = getParticipantByCode(code);
       if (!participant || participant.statut_paiement !== "Valide") {
+        const ipCode = getClientIp(request);
+        if (sentinelle.franchit(`codes-faux:${ipCode}`, 25, 10 * 60 * 1000)) {
+          sentinelle.signaler({ gravite: "alerte", type: "codes_devines", titre: "25 codes d'accès faux essayés en 10 min", ip: ipCode });
+        }
         sendJson(response, 404, { status: "not_found", error: "Code introuvable ou paiement non confirme." });
         return;
       }
@@ -3234,6 +3829,7 @@ async function handleApi(request, response, url) {
       };
 
       insertParticipant(participant);
+      await persistDatabase();
 
       const base = process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
       const participantForNotif = { ...participant, preuve_url: base ? base + proofUrl : null };
@@ -3253,7 +3849,7 @@ async function handleApi(request, response, url) {
     // tester des milliers d'adresses et apprendre qui participe.
     // ---------------------------------------------------------------------
     if (url.pathname === "/api/public/ticket/request" && request.method === "POST") {
-      const attenteIp = rateLimit(request, "ticket-req", 10, 60 * 60 * 1000);
+      const attenteIp = rateLimit(request, "ticket-req", 60, 60 * 60 * 1000);
       if (attenteIp) {
         sendRateLimited(response, attenteIp, "Trop de demandes. Réessaie dans un moment.");
         return;
@@ -3292,11 +3888,14 @@ async function handleApi(request, response, url) {
              created_at = excluded.created_at`,
           [email, hashPassword(code), Date.now() + TICKET_CODE_TTL_MS, Date.now()],
         );
+        // Pas d'attente ici non plus, pour la meme raison de temps de reponse.
+        // Perdu sur une coupure, le code se redemande en un clic.
         persistDatabase();
 
-        try {
-          await sendTicketCodeEmail(email, code, settings);
-        } catch (error) {
+        // Envoi sans l'attendre : une reponse plus lente pour une adresse
+        // connue que pour une inconnue revelait qui participe, malgre le
+        // message identique.
+        sendTicketCodeEmail(email, code, settings).catch((error) => {
           console.warn("Code de billet non envoye:", error.message);
           // En demonstration seulement, et dans la CONSOLE DU SERVEUR
           // uniquement : jamais dans la reponse au navigateur, sinon
@@ -3304,7 +3903,7 @@ async function handleApi(request, response, url) {
           if (isDemoMode(settings)) {
             console.log(`[DEMO] Code de billet pour ${email} : ${code}`);
           }
-        }
+        });
       }
 
       // Meme reponse dans tous les cas, y compris si l'adresse est inconnue.
@@ -3320,7 +3919,7 @@ async function handleApi(request, response, url) {
     // Recuperation de billet : verification du code
     // ---------------------------------------------------------------------
     if (url.pathname === "/api/public/ticket/verify" && request.method === "POST") {
-      const attenteIp = rateLimit(request, "ticket-verify", 20, 15 * 60 * 1000);
+      const attenteIp = rateLimit(request, "ticket-verify", 100, 15 * 60 * 1000);
       if (attenteIp) {
         sendRateLimited(response, attenteIp, "Trop d'essais. Réessaie dans quelques minutes.");
         return;
@@ -3333,7 +3932,13 @@ async function handleApi(request, response, url) {
       // Message unique pour tous les echecs : un message different selon que
       // l'adresse est inconnue, le code expire ou le code faux renseignerait
       // l'attaquant a chaque tentative.
-      const echec = () => sendJson(response, 401, { error: "Code incorrect ou expiré." });
+      const echec = () => {
+        const ipCode = getClientIp(request);
+        if (sentinelle.franchit(`codes-email-faux:${ipCode}`, 15, 15 * 60 * 1000)) {
+          sentinelle.signaler({ gravite: "alerte", type: "codes_devines", titre: "15 codes de récupération de badge faux en 15 min", ip: ipCode });
+        }
+        sendJson(response, 401, { error: "Code incorrect ou expiré." });
+      };
 
       if (!email || !/^\d{6}$/.test(code)) { echec(); return; }
 
@@ -3345,7 +3950,7 @@ async function handleApi(request, response, url) {
 
       if (Number(ligne.expires_at) < Date.now()) {
         run("DELETE FROM ticket_codes WHERE email = ?", [email]);
-        persistDatabase();
+        await persistDatabase();
         echec();
         return;
       }
@@ -3355,13 +3960,13 @@ async function handleApi(request, response, url) {
         // Le code est detruit : la force brute sur six chiffres s'arrete a
         // cinq essais, il faut redemander un code et donc acceder a la boite.
         run("DELETE FROM ticket_codes WHERE email = ?", [email]);
-        persistDatabase();
+        await persistDatabase();
         sendJson(response, 429, { error: "Trop d'essais. Demande un nouveau code." });
         return;
       }
 
       run("UPDATE ticket_codes SET attempts = ? WHERE email = ?", [essais, email]);
-      persistDatabase();
+      await persistDatabase();
 
       // Comparaison a temps constant, assuree par verifyPassword.
       if (!verifyPassword(code, ligne.code_hash).ok) { echec(); return; }
@@ -3379,6 +3984,8 @@ async function handleApi(request, response, url) {
         date: p.date,
         qr: p.qr_code_url,
         utilise: p.statut_code === "utilise",
+        photo: p.participant_photo_url || "",
+        qr_matrice: qrMatrice(p.code_unique),
       }));
 
       sendJson(response, 200, {
@@ -3393,32 +4000,40 @@ async function handleApi(request, response, url) {
     // Recuperation de billet : telechargement du PDF
     // ---------------------------------------------------------------------
     if (url.pathname === "/api/public/ticket/pdf" && request.method === "GET") {
-      const attenteIp = rateLimit(request, "ticket-pdf", 40, 15 * 60 * 1000);
+      const attenteIp = rateLimit(request, "ticket-pdf", 400, 15 * 60 * 1000)
+        || rateLimitKey(`ticket-pdf-jeton:${url.searchParams.get("token") || ""}`, 60, 15 * 60 * 1000);
       if (attenteIp) {
         sendRateLimited(response, attenteIp, "Trop de téléchargements. Patiente un instant.");
         return;
       }
 
-      const resultat = getParticipantForTicketSession(
-        url.searchParams.get("token"),
-        url.searchParams.get("id"),
-      );
-
-      if (resultat.erreur === "session") {
-        sendJson(response, 401, { error: "Session expirée. Redemande un code." });
-        return;
+      // `ids` (separes par des virgules) : tous les badges d'un achat dans un
+      // seul PDF, une page par badge. `id` : un seul badge.
+      const ids = String(url.searchParams.get("ids") || url.searchParams.get("id") || "")
+        .split(",").map((s) => s.trim()).filter(Boolean).slice(0, MAX_BILLETS_PAR_ACHAT);
+      const participants = [];
+      for (const id of ids.length ? ids : [""]) {
+        const resultat = getParticipantForTicketSession(url.searchParams.get("token"), id);
+        if (resultat.erreur === "session") {
+          sendJson(response, 401, { error: "Session expirée. Redemande un code." });
+          return;
+        }
+        if (resultat.erreur) {
+          // Meme reponse pour "introuvable", "interdit" et "non valide" : dire
+          // que le billet existe mais appartient a un autre serait deja trop.
+          sendJson(response, 404, { error: "Badge introuvable." });
+          return;
+        }
+        participants.push(resultat.participant);
       }
-      if (resultat.erreur) {
-        // Meme reponse pour "introuvable", "interdit" et "non valide" : dire
-        // que le billet existe mais appartient a un autre serait deja trop.
-        sendJson(response, 404, { error: "Badge introuvable." });
-        return;
-      }
 
-      const pdf = await renderTicketPdf(resultat.participant);
+      const pdf = await renderTicketPdf(participants.length === 1 ? participants[0] : participants);
+      const nomFichier = participants.length === 1
+        ? `badge-${participants[0].code_unique}.pdf`
+        : `badges-feja-${participants.length}.pdf`;
       response.writeHead(200, {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="badge-${resultat.participant.code_unique}.pdf"`,
+        "Content-Disposition": `attachment; filename="${nomFichier}"`,
         "Content-Length": pdf.length,
         "Cache-Control": "no-store",
       });
@@ -3430,9 +4045,14 @@ async function handleApi(request, response, url) {
       // Chaque appel ecrit une photo sur le disque et cree un client chez
       // FedaPay. Sans plafond, une boucle remplissait le disque du serveur et
       // polluait le compte de paiement.
-      const retryAfter = rateLimit(request, "payment", 8, 10 * 60 * 1000);
+      const retryAfter = rateLimit(request, "payment", 60, 10 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop d'inscriptions depuis cet appareil. Réessaie dans quelques minutes.");
+        return;
+      }
+
+      if (inscriptionsSuspendues(request)) {
+        sendJson(response, 503, { error: "Les inscriptions sont momentanément suspendues. Réessaie dans un moment." });
         return;
       }
 
@@ -3440,6 +4060,14 @@ async function handleApi(request, response, url) {
       const settings = getSettings();
       const telephone = String(body.telephone || "").trim();
       const email = String(body.email || "").trim();
+
+      // Plafond par acheteur : c'est lui qui protege du remplissage du disque,
+      // le plafond par IP restant large a cause des IP partagees.
+      const attenteAcheteur = rateLimitKey(`payment-mail:${email.toLowerCase()}`, 6, 10 * 60 * 1000);
+      if (attenteAcheteur) {
+        sendRateLimited(response, attenteAcheteur, "Trop d'inscriptions avec cette adresse. Réessaie dans quelques minutes.");
+        return;
+      }
       const billetsDemandes = lireBilletsDemandes(body);
 
       if (!billetsDemandes.length) {
@@ -3514,6 +4142,7 @@ async function handleApi(request, response, url) {
           insertParticipant(d);
           return d;
         });
+        await persistDatabase();
 
         // La premiere ligne porte le paiement : c'est son identifiant que la
         // page de retour interroge, et c'est par elle qu'on retrouve le groupe.
@@ -3612,7 +4241,7 @@ async function handleApi(request, response, url) {
       // Cette route renvoie le code d'entree du participant : sans plafond,
       // elle permettait de moissonner les codes en essayant des identifiants.
       // La page de retour interroge jusqu'a 10 fois, d'ou une limite large.
-      const retryAfter = rateLimit(request, "status", 60, 10 * 60 * 1000);
+      const retryAfter = rateLimit(request, "status", 600, 10 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop de requêtes. Patiente quelques minutes.");
         return;
@@ -3625,6 +4254,14 @@ async function handleApi(request, response, url) {
 
       if (!participantId) {
         sendJson(response, 400, { error: "Participant obligatoire." });
+        return;
+      }
+
+      // Plafond par achat : chaque appel peut interroger FedaPay. L'attente
+      // d'un paiement (une requete toutes les 3 a 6 s) reste tres en dessous.
+      const attenteAchat = rateLimitKey(`status-achat:${participantId}`, 120, 10 * 60 * 1000);
+      if (attenteAchat) {
+        sendRateLimited(response, attenteAchat, "Trop de requêtes. Patiente quelques minutes.");
         return;
       }
 
@@ -3703,7 +4340,7 @@ async function handleApi(request, response, url) {
     }
 
     if (url.pathname === "/api/participants" && request.method === "POST") {
-      const retryAfter = rateLimit(request, "status", 60, 10 * 60 * 1000);
+      const retryAfter = rateLimit(request, "status", 600, 10 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop de requêtes. Patiente quelques minutes.");
         return;
@@ -3730,8 +4367,7 @@ async function handleApi(request, response, url) {
         return;
       }
 
-      const amount = getParticipationAmount(settings);
-      const paymentTransaction = await verifyPaymentTransaction(fedapayTransactionId, amount, settings);
+      const paymentTransaction = await verifyPaymentTransaction(fedapayTransactionId, participant, settings);
       const result = await finalizePaidParticipant(participant, paymentTransaction, settings);
 
       if (!result.alreadyFinalized) {
@@ -3750,10 +4386,20 @@ async function handleApi(request, response, url) {
     }
 
     if (url.pathname === "/api/fedapay/webhook" && request.method === "POST") {
+      // FedaPay n'envoie que quelques notifications par paiement ; au-dela,
+      // c'est un robot qui tente de remplir la base.
+      const attenteWebhook = rateLimit(request, "webhook", 300, 10 * 60 * 1000);
+      if (attenteWebhook) {
+        sendRateLimited(response, attenteWebhook, "Trop de notifications.");
+        return;
+      }
+
       const settings = getSettings();
       const { body, raw } = await parseJsonBodyWithRaw(request);
 
       if (!verifyFedapayWebhookSignature(request, raw, settings)) {
+        sentinelle.signaler({ gravite: "critique", type: "webhook_signature", titre: "Fausse notification FedaPay refusée (signature invalide)",
+          ip: getClientIp(request) });
         sendJson(response, 401, { error: "Signature webhook invalide." });
         return;
       }
@@ -3771,30 +4417,34 @@ async function handleApi(request, response, url) {
         transaction &&
         (String(transaction.status || "").toLowerCase() === "approved" || eventType.toLowerCase().includes("approved"));
 
-      if (isApprovedEvent) {
-        const participant = getParticipantByFedapayTransactionId(transaction.id);
-        if (participant) {
-          const verifiedTransaction = await verifyPaymentTransaction(
-            transaction.id,
-            getParticipationAmount(settings),
-            settings,
-          );
-          const result = await finalizePaidParticipant(participant, verifiedTransaction, settings);
-          if (!result.alreadyFinalized) {
-              notifyOrganizer(result.participant, settings).catch((error) => {
-              console.warn("Notification WaChap non envoyee:", error.message);
-            });
-          }
+      const participantConnu = transaction && transaction.id ? getParticipantByFedapayTransactionId(transaction.id) : null;
+
+      if (isApprovedEvent && participantConnu) {
+        const verifiedTransaction = await verifyPaymentTransaction(transaction.id, participantConnu, settings);
+        const result = await finalizePaidParticipant(participantConnu, verifiedTransaction, settings);
+        if (!result.alreadyFinalized) {
+          notifyOrganizer(result.participant, settings).catch((error) => {
+            console.warn("Notification WaChap non envoyee:", error.message);
+          });
         }
       }
 
-      insertWebhookEvent({
-        id: eventId,
-        type: eventType,
-        object_id: transaction?.id ? String(transaction.id) : "",
-        payload: JSON.stringify(body),
-        created_at: Date.now(),
-      });
+      // Seules les notifications d'une transaction du site sont gardees, et
+      // tronquees : sans secret configure, n'importe qui peut poster ici, et
+      // chaque message de 5 Mo gonflait la base reecrite a chaque inscription.
+      if (participantConnu) {
+        insertWebhookEvent({
+          id: eventId,
+          type: eventType,
+          object_id: String(transaction.id),
+          payload: JSON.stringify(body).slice(0, 20000),
+          created_at: Date.now(),
+        });
+        await persistDatabase();
+      } else if (sentinelle.franchit(`webhook-inconnu:${getClientIp(request)}`, 5, 60 * 60 * 1000)) {
+        sentinelle.signaler({ gravite: "alerte", type: "webhook_inconnu", titre: "Notifications FedaPay pour des transactions inconnues",
+          ip: getClientIp(request), details: [["Exemple", `${eventType || "?"} / transaction ${transaction && transaction.id}`]] });
+      }
 
       sendJson(response, 200, { received: true });
       return;
@@ -3819,6 +4469,7 @@ async function handleApi(request, response, url) {
         if (adminCheck.needsRehash) {
           saveSettings({ admin_password: hashPassword(submitted) });
         }
+        noterConnexionAdmin(getClientIp(request), settings);
         sendJson(response, 200, { token: createSession("admin"), role: "admin" });
         return;
       }
@@ -3838,6 +4489,15 @@ async function handleApi(request, response, url) {
         }
       }
 
+      const ipEchec = getClientIp(request);
+      if (sentinelle.franchit(`admin-echec:${ipEchec}`, 5, 15 * 60 * 1000)) {
+        sentinelle.signaler({ gravite: "alerte", type: "admin_echecs", titre: "Mots de passe admin faux en série (5 en 15 min)", ip: ipEchec });
+      }
+      // Beaucoup d'echecs depuis des adresses differentes : force brute
+      // distribuee, que la limite par IP ne voit pas.
+      if (sentinelle.franchit("admin-echec-total", 20, 60 * 60 * 1000)) {
+        sentinelle.signaler({ gravite: "critique", type: "admin_echecs", titre: "20 mots de passe admin faux en une heure", cle: "admin-echec-total" });
+      }
       sendJson(response, 401, { error: "Mot de passe incorrect." });
       return;
     }
@@ -3897,6 +4557,17 @@ async function handleApi(request, response, url) {
           console.warn("Reglages ignores (cles inconnues):", ignored.join(", "));
         }
 
+        // Les textes du badge sont dessines tels quels : un texte demesure ne
+        // casserait rien (il serait reduit) mais n'a aucune raison d'exister.
+        Object.keys(toSave).filter((k) => k.startsWith("badge_")).forEach((k) => {
+          toSave[k] = String(toSave[k] == null ? "" : toSave[k]).slice(0, 400);
+        });
+        // Date de bascule ramenee a JJ/MM ; une saisie illisible reprend le 30/08.
+        if (toSave.badge_bascule !== undefined) {
+          const b = BadgeLayout.lireBascule(toSave.badge_bascule);
+          toSave.badge_bascule = `${String(b.jour).padStart(2, "0")}/${String(b.mois).padStart(2, "0")}`;
+        }
+
         // Les champs secrets reviennent masques du navigateur quand ils n'ont
         // pas ete retouches : les reecrire tels quels effacerait la vraie
         // valeur. On ignore donc toute valeur strictement egale au masque.
@@ -3917,18 +4588,20 @@ async function handleApi(request, response, url) {
           toSave[name] = hashPassword(value);
         });
 
+        signalerReglagesSensibles(getSettings(), toSave, getClientIp(request));
         saveSettings(toSave);
         // Un changement de parametre SMTP doit prendre effet tout de suite :
         // sans cela, le transporteur en cache garderait l'ancienne connexion.
         if (Object.keys(toSave).some((k) => k.startsWith("smtp_") || k === "mail_from")) {
           mail.resetTransport();
         }
+        // Une annee de badge saisie en retard sur l'edition en cours est
+        // avancee aussitot, pour que l'admin affiche ce qui sera imprime.
+        if (Object.keys(toSave).some((k) => k.startsWith("badge_"))) appliquerBasculeBadge();
         sendJson(response, 200, maskSecretSettings(getSettings()));
         return;
       }
 
-      // Bandeau du titre et photo de fond du billet. Le logo garde sa route
-      // historique juste en dessous, pour ne rien casser cote admin.
       // Media anime de l'en-tete. Route separee : la limite de corps est bien
       // plus haute que pour une image, et le fichier n'est pas retraite.
       if (url.pathname === "/api/admin/branding/hero-media") {
@@ -3952,40 +4625,49 @@ async function handleApi(request, response, url) {
         }
       }
 
-      const brandingMatch = url.pathname.match(/^\/api\/admin\/branding\/(wordmark|ticket-bg)$/);
-      if (brandingMatch) {
-        const asset = BRANDING_ASSETS[brandingMatch[1]];
-
-        if (request.method === "POST") {
-          const body = await parseJsonBody(request);
-          const imageUrl = saveBrandingLogo(body.image_base64, asset.fichier, asset.svg);
-          clearTicketCache(brandingMatch[1]);
-          saveSettings({ [asset.reglage]: imageUrl });
-          sendJson(response, 200, { url: imageUrl });
-          return;
-        }
-
-        if (request.method === "DELETE") {
-          removeBrandingLogo(asset.fichier);
-          clearTicketCache(brandingMatch[1]);
-          saveSettings({ [asset.reglage]: "" });
-          sendJson(response, 200, { url: "" });
-          return;
-        }
-      }
-
       if (url.pathname === "/api/admin/branding/logo" && request.method === "POST") {
         const body = await parseJsonBody(request);
         const logoUrl = saveBrandingLogo(body.logo_base64);
-        clearTicketCache("logo");
+        clearTicketCache();
         saveSettings({ logo_url: logoUrl });
+        // Reduction faite ici, pendant que l'organisateur attend : sinon le
+        // premier visiteur suivant paierait le decodage du logo d'origine.
+        getTicketLogoPath(getSettings());
         sendJson(response, 200, { logo_url: logoUrl });
+        return;
+      }
+
+      // Journal de securite et destinataire des alertes.
+      if (url.pathname === "/api/admin/securite" && request.method === "GET") {
+        const settings = getSettings();
+        const source = String(process.env.MAIL_SECURITE_TO || "").trim()
+          ? "fichier .env (MAIL_SECURITE_TO)"
+          : String(settings.securite_email || "").trim() ? "réglage ci-dessus" : "adresse des alertes internes";
+        sendJson(response, 200, {
+          destinataire: new mail.AlerteSecuriteEmail({ settings }).destinataire() || "",
+          source,
+          dernierEnvoi: sentinelle.dernierEnvoi,
+          evenements: sentinelle.journal(150),
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/securite/test" && request.method === "POST") {
+        const resultat = await sentinelle.tester(getClientIp(request));
+        sendJson(response, resultat.ok ? 200 : 502, resultat);
+        return;
+      }
+
+      // Donnees d'exemple pour l'apercu du badge dans l'admin : la page n'a
+      // pas de quoi calculer un QR elle-meme.
+      if (url.pathname === "/api/admin/badge/exemple" && request.method === "GET") {
+        sendJson(response, 200, { code: "K7MQ2X", qr_matrice: qrMatrice("K7MQ2X") });
         return;
       }
 
       if (url.pathname === "/api/admin/branding/logo" && request.method === "DELETE") {
         removeBrandingLogo();
-        clearTicketCache("logo");
+        clearTicketCache();
         saveSettings({ logo_url: "" });
         sendJson(response, 200, { logo_url: "" });
         return;
@@ -4014,7 +4696,15 @@ async function handleApi(request, response, url) {
           purged = purgeDemoParticipants();
         }
 
+        const etaitActif = isDemoMode(getSettings());
         saveSettings({ demo_mode: enabled ? "1" : "0" });
+        if (enabled && !etaitActif) {
+          sentinelle.signaler({ gravite: "critique", type: "demo", titre: "Mode démonstration ACTIVÉ : badges délivrés sans paiement",
+            ip: getClientIp(request), cle: `demo-on:${Date.now()}` });
+        } else if (!enabled && etaitActif) {
+          sentinelle.signaler({ gravite: "info", type: "demo", titre: `Mode démonstration désactivé (${purged} inscription(s) d'essai supprimée(s))`,
+            ip: getClientIp(request) });
+        }
         console.log(enabled
           ? "MODE DEMONSTRATION ACTIVE : les inscriptions ne sont plus payees."
           : `Mode demonstration desactive. ${purged} inscription(s) d'essai supprimee(s).`);
@@ -4138,11 +4828,34 @@ async function handleApi(request, response, url) {
         }
 
         try {
-          const envoi = await new mail.EmailDeTest({
-            settings,
-            baseUrl: getPublicBaseUrl(settings),
-            email: destinataire,
-          }).send();
+          let envoi;
+          if (body.modele === "confirmation") {
+            // Exemple de l'e-mail que recoit un participant, badge PDF compris,
+            // pour juger le rendu reel dans une vraie messagerie.
+            const exemple = {
+              id: "EXEMPLE",
+              nom: "Participant Exemple",
+              email: destinataire,
+              code_unique: "K7MQ2X",
+              montant: `${getParticipationAmount(settings).toLocaleString("fr-FR").replace(/[  ]/g, " ")} FCFA`,
+              montant_valeur: getParticipationAmount(settings),
+              lieu_retrait: settings.pickup_location || "",
+              validation_at: Date.now(),
+            };
+            envoi = await new mail.PaiementConfirmeEmail({
+              settings,
+              baseUrl: getPublicBaseUrl(settings),
+              participant: exemple,
+              billets: [exemple],
+              attachments: [{ filename: "badge-exemple.pdf", content: await renderTicketPdf(exemple, settings) }],
+            }).send();
+          } else {
+            envoi = await new mail.EmailDeTest({
+              settings,
+              baseUrl: getPublicBaseUrl(settings),
+              email: destinataire,
+            }).send();
+          }
           sendJson(response, 200, { ok: true, destinataire, voie: envoi.voie });
         } catch (error) {
           sendJson(response, 502, { error: error.message });
@@ -4223,7 +4936,15 @@ async function handleApi(request, response, url) {
           `,
           ["Valide", codeUnique, "actif", qrCodeUrl, participant.lieu_retrait || settings.pickup_location, validationAt, participant.id],
         );
-        persistDatabase();
+        await persistDatabase();
+        sentinelle.signaler({
+          gravite: "alerte",
+          type: "validation_manuelle",
+          titre: "Badge validé à la main dans l'admin (sans paiement FedaPay)",
+          ip: getClientIp(request),
+          cle: `manuel:${participant.id}`,
+          details: [["Participant", `${participant.nom} (${participant.id})`], ["Code délivré", codeUnique]],
+        });
 
         const updatedParticipant = getParticipantById(participant.id);
         const emailSent = await sendValidationEmail(updatedParticipant, settings).catch((error) => {
@@ -4250,7 +4971,7 @@ async function handleApi(request, response, url) {
         try { items = JSON.parse(p.items_received || "{}"); } catch {}
         items[itemId] = received;
         run("UPDATE participants SET items_received = ? WHERE id = ?", [JSON.stringify(items), participantId]);
-        persistDatabase();
+        await persistDatabase();
         sendJson(response, 200, { participant_id: participantId, item_id: itemId, received, items_received: items });
         return;
       }
@@ -4320,6 +5041,7 @@ async function handleApi(request, response, url) {
 
           if (participant.statut_code === "utilise") {
             const sameDevice = String(participant.scan_device_id || "") === deviceId;
+            if (!sameDevice) signalerDoubleEntree(participant, `poste ${deviceId}`);
             results.push({
               code,
               status: sameDevice ? "applied" : "conflict",
@@ -4348,7 +5070,7 @@ async function handleApi(request, response, url) {
         }
 
         if (scans.length) {
-          persistDatabase();
+          await persistDatabase();
         }
 
         sendJson(response, 200, {
@@ -4370,6 +5092,7 @@ async function handleApi(request, response, url) {
         }
 
         if (participant.statut_code === "utilise") {
+          signalerDoubleEntree(participant, "vérification manuelle");
           sendJson(response, 200, { status: "already_used", participant });
           return;
         }
@@ -4387,7 +5110,7 @@ async function handleApi(request, response, url) {
           Date.now(),
           participant.id,
         ]);
-        persistDatabase();
+        await persistDatabase();
         sendJson(response, 200, { status: "valid", participant: getParticipantById(participant.id) });
         return;
       }
@@ -4443,6 +5166,19 @@ function applySecurityHeaders(response, { isHtml }) {
 }
 
 const server = http.createServer(async (request, response) => {
+  const debut = Date.now();
+  response.on("finish", () => {
+    try {
+      sentinelle.observerRequete({
+        ip: getClientIp(request),
+        methode: request.method,
+        chemin: String(request.url || ""),
+        statut: response.statusCode,
+        duree: Date.now() - debut,
+      });
+    } catch { /* la surveillance ne doit jamais casser une reponse */ }
+  });
+
   let url;
   try {
     url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
@@ -4513,10 +5249,44 @@ function listen(port) {
   });
 }
 
+// Une erreur imprevue dans un traitement ne doit pas eteindre le site pour
+// tout le monde : chaque ecriture en base est deja sur le disque, l'etat reste
+// coherent. On journalise et on continue. Une rafale d'erreurs signale en
+// revanche un etat casse : on s'arrete pour que l'hebergeur relance proprement.
+let erreursRecentes = [];
+
+function signalerErreurImprevue(erreur) {
+  const message = String((erreur && (erreur.stack || erreur.message)) || erreur).split("\n").slice(0, 3).join(" ").slice(0, 400);
+  sentinelle.signaler({ gravite: "alerte", type: "erreurs_serveur", titre: "Erreur imprévue dans le serveur", cle: "exception",
+    details: [["Erreur", message]] });
+}
+process.on("unhandledRejection", (raison) => {
+  console.error("Promesse rejetee sans traitement:", raison);
+  signalerErreurImprevue(raison);
+});
+process.on("uncaughtException", (error) => {
+  console.error("Erreur non rattrapee:", error);
+  signalerErreurImprevue(error);
+  const maintenant = Date.now();
+  erreursRecentes = erreursRecentes.filter((t) => maintenant - t < 60 * 1000);
+  erreursRecentes.push(maintenant);
+  if (erreursRecentes.length > 10) {
+    console.error("Plus de 10 erreurs en une minute : arret du serveur.");
+    process.exit(1);
+  }
+});
+
 initDatabase()
   .then(() => {
     migrateStraySettingKeys();
     purgeExpiredSessions();
+    appliquerBasculeBadge();
+    setInterval(appliquerBasculeBadge, 15 * 60 * 1000).unref();
+    surveillancePeriodique();
+    setInterval(surveillancePeriodique, 5 * 60 * 1000).unref();
+    // Logo reduit du badge prepare des maintenant : le premier visiteur
+    // n'attend pas le decodage du logo d'origine (plus d'un Mo).
+    getTicketLogoPath(getSettings());
     backupDatabase();
     setInterval(backupDatabase, 60 * 60 * 1000).unref();
     setInterval(purgeExpiredSessions, 6 * 60 * 60 * 1000).unref();
@@ -4528,7 +5298,7 @@ initDatabase()
     // Demarre tout de suite : sinon le tout premier badge genere paierait le
     // cout de lancement du thread (chargement des polices, etc.) en plus de
     // son propre dessin.
-    ticketWorker = spawnTicketWorker();
+    demarrerPoolPdf();
     listen(PORT);
   })
   .catch((error) => {

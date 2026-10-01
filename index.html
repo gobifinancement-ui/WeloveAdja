@@ -272,6 +272,7 @@ footer{border-top:1px solid var(--stroke);margin-top:clamp(40px,7vw,72px);paddin
 .foot-col a,.foot-col p{display:inline-flex;align-items:center;gap:9px;color:var(--cream-72);text-decoration:none;font-size:.94rem;margin-bottom:11px;transition:color .2s}
 .foot-col a:hover{color:var(--brand-green-br)}
 .foot-col svg{color:var(--brand-green-br);flex:none}
+.foot-contact-btn{margin-top:6px}
 .foot-bottom{border-top:1px solid var(--stroke);margin-top:30px;padding-top:24px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;color:var(--cream-52);font-size:.82rem;text-align:center}
 .admin-link{color:var(--cream-32);text-decoration:none;transition:color .2s}
 .admin-link:hover{color:var(--brand-green-br)}
@@ -301,6 +302,10 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .reg-top{padding:28px clamp(22px,5vw,38px) 0;text-align:center}
 .reg-top .eyebrow{margin-bottom:8px}
 .reg-top h2{font-family:var(--display);font-weight:500;font-size:clamp(1.7rem,4vw,2.2rem);line-height:1.05}
+.reg-tiktok-link{display:flex;align-items:center;justify-content:center;gap:7px;margin:14px clamp(22px,5vw,38px) 0;
+  padding:10px 14px;border-radius:100px;background:var(--glass);border:1px solid var(--brand-green-stroke);
+  color:var(--brand-green-br);font-size:.82rem;font-weight:700;text-decoration:none;transition:.2s}
+.reg-tiktok-link:hover{background:var(--glass-2);border-color:var(--brand-green)}
 /* Barre de paiement : hors du flux, toujours visible. */
 .pay-bar{
   position:fixed;left:0;right:0;bottom:0;z-index:130;
@@ -420,6 +425,11 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .field input::placeholder{color:var(--cream-32)}
 .field input:focus{outline:none;border-color:var(--brand-green);background:rgba(0,0,0,.34);box-shadow:0 0 0 4px var(--brand-green-stroke)}
 .field input.bad{border-color:var(--red);box-shadow:0 0 0 4px rgba(224,138,106,.16)}
+.field textarea{width:100%;font-family:var(--body);font-size:1rem;color:var(--cream);background:rgba(0,0,0,.24);
+  border:1px solid var(--stroke);border-radius:14px;padding:14px 16px;transition:.25s;min-height:110px;resize:vertical}
+.field textarea::placeholder{color:var(--cream-32)}
+.field textarea:focus{outline:none;border-color:var(--brand-green);background:rgba(0,0,0,.34);box-shadow:0 0 0 4px var(--brand-green-stroke)}
+.field textarea.bad{border-color:var(--red);box-shadow:0 0 0 4px rgba(224,138,106,.16)}
 .err{display:none;color:#f0a98c;font-size:.8rem;margin-top:7px}
 .err.show{display:block}
 /* Recapitulatif de paiement : montant en tete, informations saisies dessous,
@@ -525,9 +535,10 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .tk-msg{margin-top:14px;font-size:.85rem;line-height:1.5;min-height:1.2em}
 .tk-msg.ok{color:var(--green-br)}
 .tk-msg.ko{color:var(--red)}
-/* Billet : aperçu dessiné sur une toile, donc téléchargeable en image. */
+/* Badge : aperçu dessiné sur une toile. Il est vertical (2:3) : sans plafond
+   de largeur, il occuperait plusieurs écrans de haut. */
 .tk-carte{background:var(--glass);border:1px solid var(--stroke);border-radius:18px;padding:14px;margin-bottom:14px}
-.tk-carte canvas{width:100%;height:auto;display:block;border-radius:12px;background:#f4f7f2}
+.tk-carte canvas{width:100%;max-width:300px;height:auto;display:block;margin:0 auto;border-radius:10px;background:#fff}
 .tk-nom{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:12px 2px 10px;text-align:left}
 .tk-nom b{font-family:var(--display);font-weight:500;font-size:1.05rem}
 .tk-nom span{color:var(--cream-52);font-size:.8rem;font-variant-numeric:tabular-nums}
@@ -537,6 +548,13 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 
 /* Verify sheet */
 .verify-shell{max-width:520px;margin-inline:auto;text-align:center}
+.contact-fields{text-align:left;margin-top:22px}
+/* Le bouton Envoyer reste toujours atteignable meme si le clavier du
+   telephone reduit la hauteur visible : sans ca, sur un petit ecran, le
+   formulaire (3 champs + zone de texte) peut depasser l'ecran et le bouton
+   semble avoir disparu alors qu'il suffit de faire defiler. */
+.contact-actions{position:sticky;bottom:-1px;margin-top:22px;padding-top:14px;
+  background:linear-gradient(180deg,transparent,var(--bg) 30%)}
 .verify-shell .vi{width:74px;height:74px;border-radius:20px;margin:0 auto 20px;display:grid;place-items:center;background:color-mix(in oklab,var(--brand-green) 14%,transparent);border:1px solid var(--brand-green-stroke);color:var(--brand-green-br)}
 .verify-shell h2{font-family:var(--display);font-weight:500;font-size:clamp(1.7rem,4.5vw,2.3rem);margin-bottom:10px}
 .verify-shell .sub{color:var(--cream-72);max-width:40ch;margin:0 auto 26px}
@@ -778,7 +796,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){.caret{display:none}}
 .hero .a1{animation-delay:.05s}.hero .a2{animation-delay:.18s}.hero .a3{animation-delay:.31s}
 .hero .a4{animation-delay:.44s}.hero .a5{animation-delay:.57s}
-@media(min-width:760px){.steps{grid-template-columns:repeat(3,1fr);gap:14px}.foot-grid{grid-template-columns:1.6fr 1fr 1fr;text-align:left}.foot-brand .brand{justify-content:flex-start}.foot-brand p{margin-inline:0}.foot-col a,.foot-col p{display:flex}.foot-bottom{justify-content:space-between}
+@media(min-width:760px){.steps{grid-template-columns:repeat(3,1fr);gap:14px}.foot-grid{grid-template-columns:1.4fr 1fr 1fr 1fr;text-align:left}.foot-brand .brand{justify-content:flex-start}.foot-brand p{margin-inline:0}.foot-col a,.foot-col p{display:flex}.foot-bottom{justify-content:space-between}
   /* 5 objectifs sur 3 colonnes : la derniere ligne (2 cartes) s'alignait a
      gauche par defaut. Le flex centre centre pour ne pas faire penser a une
      carte manquante. */
@@ -805,6 +823,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
 <link rel="stylesheet" href="/api/theme.css">
 <script src="/js/branding.js" defer></script>
 <script src="/js/chargement.js"></script>
+<script src="/js/badge-layout.js"></script>
 <script src="/js/ticket-canvas.js"></script>
 </head>
 <body>
@@ -957,6 +976,11 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <a id="footWa" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.94.36 1.86.7 2.74a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.34-1.34a2 2 0 0 1 2.11-.45c.88.34 1.8.57 2.74.7A2 2 0 0 1 22 16.92z"/></svg> WhatsApp officiel</a>
         <a id="footMail" href="#"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg> <span data-cfg="email">contact@fejafestival.com</span></a>
       </div>
+      <div class="foot-col">
+        <h4>Besoin d'aide ?</h4>
+        <button type="button" class="btn btn-ghost btn-sm foot-contact-btn" data-open="contact"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Nous contacter</button>
+        <a href="#" target="_blank" rel="noopener" class="btn btn-ghost btn-sm foot-contact-btn tiktok-link" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16.6 5.82c-.9-.78-1.47-1.9-1.56-3.16h-3.09v13.44c0 1.43-1.16 2.6-2.6 2.6a2.6 2.6 0 0 1-2.6-2.6c0-1.72 1.66-3.01 3.37-2.48V10.4c-3.45-.46-6.47 2.22-6.47 5.64a5.7 5.7 0 0 0 5.7 5.7c3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.28s-1.88.1-3.24-1.46z"/></svg> Comment obtenir ton badge</a>
+      </div>
     </div>
     <p class="legal-note">Récépissé n°6PDC/2024A/482/PDC/SGD/SAG/SA du 23 octobre 2024 · Réf. Journal Officiel n°21 du 1ᵉʳ novembre 2024</p>
     <div class="foot-bottom">
@@ -995,6 +1019,9 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <span class="eyebrow solo" style="display:inline-flex">Participation 2026</span>
         <h2>Combien de badges voulez-vous ?</h2>
       </div>
+      <!-- Hors de #reg-header expres : ce dernier se cache passe la premiere
+           etape, alors que ce lien doit rester visible sur tout le parcours. -->
+      <a href="#" target="_blank" rel="noopener" class="tiktok-link reg-tiktok-link" style="display:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M16.6 5.82c-.9-.78-1.47-1.9-1.56-3.16h-3.09v13.44c0 1.43-1.16 2.6-2.6 2.6a2.6 2.6 0 0 1-2.6-2.6c0-1.72 1.66-3.01 3.37-2.48V10.4c-3.45-.46-6.47 2.22-6.47 5.64a5.7 5.7 0 0 0 5.7 5.7c3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.28s-1.88.1-3.24-1.46z"/></svg> Comment obtenir ton badge (vidéo TikTok)</a>
       <!-- Engendree par majEtapes() : le nombre d'etapes change avec le
            nombre de billets. -->
       <div class="progress" id="progress"></div>
@@ -1237,6 +1264,46 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
   </div>
 </div>
 
+<div class="sheet" id="sheet-contact">
+  <div class="mesh-layer mesh"></div>
+  <div class="sheet-bar">
+    <span class="grab"></span>
+    <b><svg width="18" height="18" fill="none" stroke="var(--brand-green-br)" stroke-width="1.9" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Nous contacter</b>
+    <button class="close" data-close><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg> Fermer</button>
+  </div>
+  <div class="sheet-body">
+    <div class="verify-shell">
+      <div class="vi"><svg width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+      <h2>Nous contacter</h2>
+      <p class="sub">Un souci, une question ? Écris-nous, on te répond vite.</p>
+
+      <div class="contact-fields">
+        <div class="field">
+          <label for="ctEmail">Email</label>
+          <div class="input-wrap"><span class="lead-ic"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg></span><input id="ctEmail" type="email" placeholder="Ex. kossi@email.com" autocomplete="email"></div>
+          <div class="err" data-err="ctEmail">Adresse email invalide.</div>
+        </div>
+
+        <div class="field">
+          <label for="ctWa">Numéro WhatsApp <span class="hint">– facultatif</span></label>
+          <div class="input-wrap"><span class="lead-ic"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.94.36 1.86.7 2.74a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.34-1.34a2 2 0 0 1 2.11-.45c.88.34 1.8.57 2.74.7A2 2 0 0 1 22 16.92z"/></svg></span><input id="ctWa" type="tel" placeholder="Ex. 97 00 00 00" autocomplete="tel" inputmode="tel"></div>
+        </div>
+
+        <div class="field">
+          <label for="ctMsg">Ton message</label>
+          <textarea id="ctMsg" rows="5" placeholder="Décris le problème rencontré..."></textarea>
+          <div class="err" data-err="ctMsg">Décris un peu le problème rencontré.</div>
+        </div>
+      </div>
+
+      <div class="contact-actions">
+        <button class="btn btn-gold btn-block" id="ctSend" type="button">Envoyer</button>
+        <div class="tk-msg" id="ctResult"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Tweaks -->
 <div id="tweaks">
   <div class="tk-head"><b>Tweaks</b><button id="tkClose" aria-label="Fermer"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
@@ -1302,6 +1369,13 @@ function applyConfig() {
   // Si les deux manquent, la colonne "Contact" n'a plus rien a montrer.
   const colContact = fw && fw.closest('.foot-col');
   if (colContact) colContact.style.display = (CFG.waLink || CFG.email) ? '' : 'none';
+  // Bouton "voir la video TikTok" : pose en pied de page et sur chaque etape
+  // du parcours de paiement. Meme logique que les liens de contact — invisible
+  // tant qu'aucune video n'est renseignee, pour ne jamais pointer vers rien.
+  document.querySelectorAll('.tiktok-link').forEach(el => {
+    if (CFG.tiktokUrl) { el.href = CFG.tiktokUrl; el.style.display = ''; }
+    else el.style.display = 'none';
+  });
   document.querySelectorAll('[data-amount]').forEach(el => {
     el.innerHTML = `${Number(CFG.amount).toLocaleString('fr-FR')} <small>${CFG.currency}</small>`;
   });
@@ -2661,16 +2735,11 @@ function attendreValidation(demo){
     }
   });
 
-  /* ---- Dessin du billet sur une toile -------------------------------------
-     Le PDF vient du serveur ; l'image, elle, est dessinee ici. Cela evite
-     d'embarquer un moteur de rendu PDF cote serveur, et la toile sert aussi
-     d'apercu a l'ecran. La mise en page suit celle du PDF. */
-  /* Le dessin du billet vit dans js/ticket-canvas.js : la page de retour de
-     paiement s'en sert aussi, et une seule mise en page evite qu'elles
-     divergent. */
-  const dessiner = (canvas, billet, actifs) => TicketCanvas.dessiner(canvas, billet, actifs);
-  const charger = (src) => TicketCanvas.charger(src);
-
+  /* ---- Badge -----------------------------------------------------------------
+     Le PDF vient du serveur ; l'image est dessinee ici par js/ticket-canvas.js,
+     a partir de la meme mise en page (js/badge-layout.js) : les deux ne
+     peuvent pas diverger. L'apercu est dessine petit, l'image telechargee est
+     redessinee a la taille d'impression. */
   async function afficherBillets(billets){
     const hote = $$('tkListe');
     if(!billets.length){
@@ -2684,13 +2753,8 @@ function attendreValidation(demo){
       ? billets.length + ' inscriptions sont rattachées à cette adresse.'
       : 'Garde-le : il te sera demandé à l\u2019entrée.';
 
-    // Les images de marque sont chargées une seule fois pour tous les billets.
-    const marque = (window.__brand || {});
-    const actifs = {
-      logo:    await charger(marque.logoUrl || ''),
-      bandeau: await charger('/uploads/branding/wordmark.png'),
-      fond:    await charger('/uploads/branding/ticket-bg.jpg'),
-    };
+    // Polices, logo et sceau : chargés une seule fois pour tous les badges.
+    const actifs = await TicketCanvas.chargerActifs(window.__brand || {});
 
     hote.innerHTML = billets.map((b,i) => `
       <div class="tk-carte">
@@ -2703,9 +2767,10 @@ function attendreValidation(demo){
         </div>
       </div>`).join('');
 
+    // 0,6 : 512 x 768 px, net sur un écran de téléphone à 300 px de large,
+    // sans occuper la mémoire d'une toile pleine taille par badge.
     for(let i = 0; i < billets.length; i++){
-      const qr = await charger(billets[i].qr || '');
-      await dessiner($$('tkCv'+i), billets[i], Object.assign({ qr }, actifs));
+      await TicketCanvas.dessiner($$('tkCv'+i), billets[i], actifs, 0.6);
     }
 
     hote.querySelectorAll('[data-pdf]').forEach(b => b.addEventListener('click', async e => {
@@ -2725,20 +2790,19 @@ function attendreValidation(demo){
       finally{ fin(); }
     }));
 
-    hote.querySelectorAll('[data-img]').forEach(b => b.addEventListener('click', e => {
+    hote.querySelectorAll('[data-img]').forEach(b => b.addEventListener('click', async e => {
       const i = e.currentTarget.dataset.img;
-      // La toile est deja dessinee : l'encodage PNG est presque toujours
-      // instantane. Seuil de 150 ms pour que les points n'apparaissent que sur
-      // un telephone lent, sans clignoter ailleurs.
+      // Seuil de 150 ms : les points n'apparaissent que sur un telephone lent.
       const fin = Chargement(e.currentTarget, 150);
-      $$('tkCv'+i).toBlob(blob => {
+      try{
+        const blob = await TicketCanvas.versPng(billets[i], actifs);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = 'badge-' + (billets[i].code || 'feja') + '.png';
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
-        fin();
-      }, 'image/png');
+      }catch(err){ dire('tkMsg3', err.message || 'Image impossible à produire.', 'ko'); }
+      finally{ fin(); }
     }));
   }
 })();
@@ -2755,6 +2819,45 @@ function checkCode(){
 }
 codeBtn.addEventListener('click',checkCode);
 codeInput.addEventListener('keydown',e=>{if(e.key==='Enter')checkCode();});
+
+/* Contact */
+const ctSend=document.getElementById('ctSend'),ctEmail=document.getElementById('ctEmail'),
+      ctWa=document.getElementById('ctWa'),ctMsg=document.getElementById('ctMsg'),
+      ctResult=document.getElementById('ctResult');
+ctSend.addEventListener('click', async () => {
+  const email = ctEmail.value.trim();
+  const whatsapp = ctWa.value.trim();
+  const message = ctMsg.value.trim();
+
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+  const msgOk = message.length >= 5;
+  showErr('ctEmail', !emailOk);
+  showErr('ctMsg', !msgOk);
+  if (!emailOk || !msgOk) return;
+
+  ctResult.textContent = '';
+  ctResult.className = 'tk-msg';
+  const fin = Chargement(ctSend);
+  try {
+    const res = await fetch('/api/public/contact', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, whatsapp, message }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Envoi impossible, réessaie.');
+
+    ctResult.textContent = data.sent
+      ? 'Message envoyé, on te répond vite.'
+      : "Message reçu, mais on n'a pas pu confirmer l'envoi — contacte-nous directement via WhatsApp ou email en attendant.";
+    ctResult.classList.add(data.sent ? 'ok' : 'ko');
+    ctEmail.value = ''; ctWa.value = ''; ctMsg.value = '';
+  } catch (err) {
+    ctResult.textContent = err.message;
+    ctResult.classList.add('ko');
+  } finally {
+    fin();
+  }
+});
 
 /* Tweaks */
 const tkPanel=document.getElementById('tweaks');
