@@ -146,9 +146,12 @@
   /* Badge en fichier PNG, dessine sur une toile jetable a la taille
      d'impression. Les apercus restent petits : dix badges a cette taille
      occuperaient pres de 100 Mo de memoire sur un telephone. */
-  async function versPng(billet, actifs) {
+  // Sert aussi aux apercus, a echelle reduite : une toile affichee telle
+  // quelle dans la page se couvrait de bandes sur des telephones Android (le
+  // navigateur perd son contenu en memoire graphique). Une image PNG, non.
+  async function versPng(billet, actifs, echelle) {
     const toile = document.createElement("canvas");
-    await dessiner(toile, billet, actifs, 1.5);
+    await dessiner(toile, billet, actifs, echelle || 1.5);
     const blob = await new Promise((res) => toile.toBlob(res, "image/png"));
     toile.width = toile.height = 0;
     if (!blob) throw new Error("Image impossible à produire.");

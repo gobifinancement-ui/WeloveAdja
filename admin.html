@@ -367,7 +367,7 @@ button{font-family:var(--body);cursor:pointer}
 /* Reglages du badge : champs a gauche, apercu a droite ; empiles sur mobile. */
 .badge-reglages{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:22px;align-items:start}
 .badge-apercu{margin:0;text-align:center;position:sticky;top:16px}
-.badge-apercu canvas{width:100%;max-width:230px;height:auto;display:block;margin:0 auto;border-radius:10px;background:#fff;box-shadow:0 14px 34px -14px rgba(0,0,0,.65)}
+.badge-apercu img{width:100%;max-width:230px;aspect-ratio:854/1280;height:auto;display:block;margin:0 auto;border-radius:10px;background:#fff;box-shadow:0 14px 34px -14px rgba(0,0,0,.65)}
 .badge-apercu figcaption{font-size:.74rem;color:var(--cream-52);margin-top:9px;line-height:1.45}
 @media (max-width:760px){.badge-reglages{grid-template-columns:1fr}.badge-apercu{position:static}}
 .chief-photo{width:58px;height:58px;border-radius:50%;flex:none;position:relative;overflow:hidden;border:1px solid var(--stroke-gd);background:radial-gradient(circle at 35% 30%,color-mix(in oklab,var(--green) 40%,transparent),var(--bg-2));display:grid;place-items:center;cursor:pointer}
@@ -639,7 +639,7 @@ button{font-family:var(--body);cursor:pointer}
             <div class="f" style="grid-column:1/-1"><label>Activités (bandeau du bas)</label><span class="desc">Une ligne par ligne du bandeau, quatre au plus.</span><textarea class="in" data-set="badgeActivites" rows="4" style="resize:vertical"></textarea></div>
           </div>
           <figure class="badge-apercu">
-            <canvas id="badgePv" aria-label="Aperçu du badge"></canvas>
+            <img id="badgePv" alt="Aperçu du badge">
             <figcaption>Aperçu avec un participant fictif. Enregistre pour l'appliquer aux badges.</figcaption>
           </figure>
         </div>
@@ -1796,8 +1796,8 @@ document.getElementById('secTest').addEventListener('click', async e => {
 let badgeActifs = null, badgeExemple = null, badgeMinuteur = null;
 
 async function apercuBadge() {
-  const toile = document.getElementById('badgePv');
-  if (!toile || !window.TicketCanvas) return;
+  const image = document.getElementById('badgePv');
+  if (!image || !window.TicketCanvas) return;
   try {
     if (!badgeExemple) badgeExemple = await (await apiFetch('/api/admin/badge/exemple')).json();
     if (!badgeActifs) badgeActifs = await TicketCanvas.chargerActifs(await (await fetch('/api/public-config')).json());
@@ -1807,9 +1807,14 @@ async function apercuBadge() {
       lieu: lire('badgeLieu'), dates: lire('badgeDates'), activites: lire('badgeActivites'),
       bascule: lire('badgeBascule'),
     }) };
-    await TicketCanvas.dessiner(toile, {
+    // Image PNG plutot que toile affichee : sur des Android, la toile se
+    // couvrait de bandes (voir ticket-canvas.js).
+    const png = await TicketCanvas.versPng({
       nom: 'Nom du participant', numero: badgeExemple.numero || '000001', qr_matrice: badgeExemple.qr_matrice, photo: '',
     }, badgeActifs, 0.5);
+    const precedente = image.src;
+    image.src = URL.createObjectURL(png);
+    if (precedente.startsWith('blob:')) URL.revokeObjectURL(precedente);
   } catch (e) { /* apercu indisponible : les reglages restent utilisables */ }
 }
 

@@ -564,7 +564,7 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 /* Badge : aperçu dessiné sur une toile. Il est vertical (2:3) : sans plafond
    de largeur, il occuperait plusieurs écrans de haut. */
 .tk-carte{background:var(--glass);border:1px solid var(--stroke);border-radius:18px;padding:14px;margin-bottom:14px}
-.tk-carte canvas{width:100%;max-width:300px;height:auto;display:block;margin:0 auto;border-radius:10px;background:#fff}
+.tk-carte img.tk-apercu{width:100%;max-width:300px;aspect-ratio:854/1280;height:auto;display:block;margin:0 auto;border-radius:10px;background:#fff}
 .tk-nom{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:12px 2px 10px;text-align:left}
 .tk-nom b{font-family:var(--display);font-weight:500;font-size:1.05rem}
 .tk-nom span{color:var(--cream-52);font-size:.8rem;font-variant-numeric:tabular-nums}
@@ -2879,7 +2879,7 @@ function demarrerInterrogation(){
 
     hote.innerHTML = billets.map((b,i) => `
       <div class="tk-carte">
-        <canvas id="tkCv${i}"></canvas>
+        <img class="tk-apercu" id="tkCv${i}" alt="Badge de ${escHtml(b.nom||'')}">
         <div class="tk-nom"><b>${escHtml(b.nom||'')}</b><span>${b.numero ? 'N° ' + escHtml(b.numero) : ''}</span></div>
         ${b.utilise ? '<p class="tk-utilise">Ce badge a déjà été scanné à l\u2019entrée.</p>' : ''}
         <div class="tk-actions">
@@ -2889,9 +2889,11 @@ function demarrerInterrogation(){
       </div>`).join('');
 
     // 0,6 : 512 x 768 px, net sur un écran de téléphone à 300 px de large,
-    // sans occuper la mémoire d'une toile pleine taille par badge.
+    // sans occuper la mémoire d'une image pleine taille par badge. En PNG et
+    // non en toile affichée : sur des Android, la toile se couvrait de bandes.
     for(let i = 0; i < billets.length; i++){
-      await TicketCanvas.dessiner($$('tkCv'+i), billets[i], actifs, 0.6);
+      try{ $$('tkCv'+i).src = URL.createObjectURL(await TicketCanvas.versPng(billets[i], actifs, 0.6)); }
+      catch(err){ /* l'aperçu manque, les boutons restent utilisables */ }
     }
 
     hote.querySelectorAll('[data-pdf]').forEach(b => b.addEventListener('click', async e => {

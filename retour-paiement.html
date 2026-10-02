@@ -59,7 +59,7 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.6;margin:0 0 16px}
   color:var(--ok);background:color-mix(in oklab,var(--ok) 14%,transparent);border:1px solid color-mix(in oklab,var(--ok) 40%,transparent);
   padding:5px 11px;border-radius:99px;margin-bottom:12px}
 .voila{animation:entree .5s cubic-bezier(.22,.9,.28,1) both}
-.apercu-seul{display:block;width:190px;max-width:62%;height:auto;margin:6px auto 20px;border-radius:12px;background:#fff;
+.apercu-seul{display:block;width:190px;max-width:62%;aspect-ratio:854/1280;height:auto;margin:6px auto 20px;border-radius:12px;background:#fff;
   box-shadow:0 22px 50px -18px rgba(0,0,0,.75);animation:revele .7s cubic-bezier(.22,.9,.28,1) .1s both}
 @keyframes revele{from{opacity:0;transform:translateY(16px) scale(.92) rotate(-3deg)}to{opacity:1;transform:none}}
 @keyframes entree{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -85,7 +85,7 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.6;margin:0 0 16px}
 .liste{display:flex;flex-direction:column;gap:10px;max-height:52vh;overflow-y:auto;padding:2px}
 .perso{display:grid;grid-template-columns:56px 1fr;gap:12px;align-items:center;text-align:left;padding:10px;border-radius:16px;
   background:var(--glass);border:1px solid var(--stroke);animation:entree .4s cubic-bezier(.22,.9,.28,1) both}
-.perso canvas{width:56px;height:84px;border-radius:6px;background:#fff;box-shadow:0 8px 18px -10px rgba(0,0,0,.8)}
+.perso img{width:56px;height:84px;object-fit:cover;border-radius:6px;background:#fff;box-shadow:0 8px 18px -10px rgba(0,0,0,.8)}
 .perso b{display:block;font-size:.95rem;line-height:1.3;margin-bottom:2px;word-break:break-word}
 .perso small{display:block;color:var(--cream-52);font-size:.72rem;margin-bottom:8px}
 .mini{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
@@ -149,7 +149,7 @@ p{color:var(--cream-72);font-size:.92rem;line-height:1.6;margin:0 0 16px}
     <span class="chip"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg>Paiement confirmé</span>
     <h1 class="voila" id="okTitre">Et voilà ! Ton badge est prêt</h1>
     <p class="voila" id="okSous">Télécharge-le ici :</p>
-    <canvas class="apercu-seul hidden" id="apercuSeul" aria-label="Aperçu du badge"></canvas>
+    <img class="apercu-seul hidden" id="apercuSeul" alt="Aperçu du badge">
 
     <div class="actions" id="actions">
       <button class="big img" type="button" data-action="img">
@@ -293,7 +293,9 @@ async function preparer(data) {
     // Le numero, pas le code d'acces : le code ne part que par e-mail.
     id: b.id, nom: b.nom, numero: b.numero || (b.numero_badge ? String(b.numero_badge).padStart(6, '0') : ''),
     photo: b.photo || '', qr_matrice: b.qr_matrice || null,
-    png: null, pdf: null, apercu: document.createElement('canvas'),
+    // apercu : adresse d'une image PNG, pas une toile affichee telle quelle
+    // (bandes parasites sur des telephones Android, voir ticket-canvas.js).
+    png: null, pdf: null, apercu: '',
   }));
   const n = billets.length;
   const plusieurs = n > 1;
@@ -333,7 +335,8 @@ async function preparer(data) {
     if (actifs) {
       try {
         b.png = await TicketCanvas.versPng(b, actifs);
-        await TicketCanvas.dessiner(b.apercu, b, actifs, plusieurs ? 0.25 : 0.6);
+        // Seul : l'image telechargee elle-meme. A plusieurs : une vignette.
+        b.apercu = URL.createObjectURL(plusieurs ? await TicketCanvas.versPng(b, actifs, 0.25) : b.png);
       } catch (e) { /* l'image sera refaite au clic */ }
     }
     avancer();
@@ -403,16 +406,16 @@ function afficherPrets(data) {
         mini.append(bt);
       });
       infos.append(nom, rang, mini);
-      carte.append(b.apercu, infos);
+      const vignette = document.createElement('img');
+      vignette.alt = '';
+      if (b.apercu) vignette.src = b.apercu;
+      carte.append(vignette, infos);
       liste.append(carte);
     });
   } else {
     const apercu = $('apercuSeul');
-    const source = billets[0].apercu;
-    if (source.width) {
-      apercu.width = source.width;
-      apercu.height = source.height;
-      apercu.getContext('2d').drawImage(source, 0, 0);
+    if (billets[0].apercu) {
+      apercu.src = billets[0].apercu;
       apercu.classList.remove('hidden');
     }
   }

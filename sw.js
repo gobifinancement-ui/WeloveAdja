@@ -12,7 +12,7 @@
  *    propre instantane cote IndexedDB.
  */
 
-const VERSION = "v7";
+const VERSION = "v8";
 const SHELL_CACHE = `adja-shell-${VERSION}`;
 const RUNTIME_CACHE = `adja-runtime-${VERSION}`;
 
