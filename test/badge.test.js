@@ -32,17 +32,29 @@ function moteurFactice() {
 
 function dessiner(donnees) {
   const m = moteurFactice();
-  L.dessinerBadge(m, Object.assign(textesBadge({}), { nom: "Ada Lovelace", code: "K7MQ2X", qr: qrMatrice("K7MQ2X") }, donnees));
+  L.dessinerBadge(m, Object.assign(textesBadge({}), { nom: "Ada Lovelace", numero: 1, qr: qrMatrice("K7MQ2X") }, donnees));
   return m.textes;
 }
 
 test("les textes de la maquette sont poses, le nom en capitales", () => {
   const t = dessiner({}).map((x) => x.chaine);
-  for (const attendu of ["FESTIVAL ADJA", "2027", "15", "e", "EDITION", "ADA LOVELACE", "N°  K7MQ2X", "Azovè",
+  for (const attendu of ["FESTIVAL ADJA", "2027", "15", "e", "EDITION", "ADA LOVELACE", "N°  000001", "Azovè",
     "CULTURE ADJA - CONCERT - SPORTS - PROMOTION", "EXPOSITION - GASTRONOMIE - ARTS",
     "CONFÉRENCES - CAUSERIES - JEUX CONCOURS - LOISIRS"]) {
     assert.ok(t.includes(attendu), `texte absent : ${attendu}`);
   }
+  // Le code d'acces ne s'imprime plus : il ne part que par e-mail.
+  assert.ok(!t.some((x) => x.includes("K7MQ2X")), "le code d'acces ne doit pas figurer sur le badge");
+});
+
+test("le numero du badge est complete a six chiffres", () => {
+  assert.equal(L.numeroBadge(1), "000001");
+  assert.equal(L.numeroBadge("42"), "000042");
+  assert.equal(L.numeroBadge(1234567), "1234567");
+  assert.equal(L.numeroBadge(""), "");
+  assert.equal(L.numeroBadge(null), "");
+  // Sans numero (badge pas encore valide), rien n'est ecrit apres « N° ».
+  assert.ok(!dessiner({ numero: "" }).some((x) => x.chaine.startsWith("N°")));
 });
 
 test("les dates alternent regulier et gras selon les **", () => {

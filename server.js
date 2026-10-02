@@ -832,6 +832,9 @@ function ensureParticipantColumns() {
     ["groupe_id", "TEXT"],
     ["groupe_index", "INTEGER"],
     ["groupe_taille", "INTEGER"],
+    // Numero imprime sur le badge (« N° 000001 »), attribue a la validation.
+    // Le code d'acces, lui, ne part plus que par e-mail.
+    ["numero_badge", "INTEGER"],
   ];
 
   requiredColumns.forEach(([name, definition]) => {
@@ -843,6 +846,39 @@ function ensureParticipantColumns() {
   // Cree apres les ALTER : place dans le bloc de schema, l'index porterait sur
   // une colonne qui n'existe pas encore dans les bases deja en service.
   run("CREATE INDEX IF NOT EXISTS idx_participants_groupe ON participants(groupe_id)");
+  // Unique : deux badges ne peuvent pas porter le meme numero, meme si une
+  // future modification oubliait de passer par prochainNumeroBadge().
+  run("CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_numero ON participants(numero_badge)");
+  numeroterBadgesExistants();
+}
+
+/* Prochain numero de badge. A appeler juste avant l'UPDATE qui l'enregistre,
+   sans « await » entre les deux : la base est en memoire et le serveur n'a
+   qu'un fil, deux validations ne peuvent donc pas lire le meme maximum. */
+function prochainNumeroBadge() {
+  const ligne = statementGet("SELECT COALESCE(MAX(numero_badge), 0) + 1 AS n FROM participants");
+  return Number(ligne && ligne.n) || 1;
+}
+
+function formaterNumeroBadge(numero) {
+  const n = Number(numero);
+  return Number.isInteger(n) && n > 0 ? String(n).padStart(6, "0") : "";
+}
+
+/* Badges valides avant l'arrivee du numero : ils en recoivent un, dans
+   l'ordre ou ils ont ete payes, pour que leur badge s'affiche complet. */
+function numeroterBadgesExistants() {
+  const sansNumero = statementAll(
+    `SELECT id FROM participants
+     WHERE statut_paiement = 'Valide' AND code_unique IS NOT NULL AND code_unique <> '' AND numero_badge IS NULL
+     ORDER BY COALESCE(validation_at, timestamp), COALESCE(groupe_index, 1), id`,
+  );
+  if (!sansNumero.length) return;
+  sansNumero.forEach((ligne) => {
+    run("UPDATE participants SET numero_badge = ? WHERE id = ?", [prochainNumeroBadge(), ligne.id]);
+  });
+  persistDatabase();
+  console.log(`Numero de badge attribue a ${sansNumero.length} badge(s) deja valide(s).`);
 }
 
 // Les bases creees avant l'introduction des roles n'ont pas la colonne :
@@ -3364,7 +3400,7 @@ async function sendValidationEmail(participantOuGroupe, settings) {
     // partir : le code y figure deja, le billet est un confort.
     try {
       attachments.push({
-        filename: `badge-${nomFichier}-${billet.code_unique}.pdf`,
+        filename: `badge-${nomFichier}-${formaterNumeroBadge(billet.numero_badge) || billet.code_unique}.pdf`,
         content: await renderTicketPdf(billet, settings),
       });
     } catch (error) {
@@ -3451,6 +3487,7 @@ function billetPublic(b) {
     // porteur et la matrice du QR (le navigateur n'a pas de generateur QR).
     photo: b.participant_photo_url || "",
     qr_matrice: qrMatrice(b.code_unique),
+    numero: formaterNumeroBadge(b.numero_badge),
   };
 }
 
@@ -3527,11 +3564,14 @@ async function finaliserAchat(participant, transaction, settings) {
     const codeUnique = generateUniqueCode();
     const qrCodeUrl = await saveQrCode(codeUnique, billet.id);
 
+    // Tire APRES l'await : entre la lecture du maximum et l'UPDATE, aucune
+    // autre validation ne peut s'intercaler.
     run(
       `
         UPDATE participants
         SET statut_paiement = ?, code_unique = ?, statut_code = ?, preuve_paiement = ?, preuve_url = ?,
-            fedapay_reference = ?, fedapay_status = ?, qr_code_url = ?, validation_at = ?
+            fedapay_reference = ?, fedapay_status = ?, qr_code_url = ?, validation_at = ?,
+            numero_badge = COALESCE(numero_badge, ?)
         WHERE id = ?
       `,
       [
@@ -3544,6 +3584,7 @@ async function finaliserAchat(participant, transaction, settings) {
         transaction.status || "approved",
         qrCodeUrl,
         validationAt,
+        prochainNumeroBadge(),
         billet.id,
       ],
     );
@@ -3986,6 +4027,7 @@ async function handleApi(request, response, url) {
         utilise: p.statut_code === "utilise",
         photo: p.participant_photo_url || "",
         qr_matrice: qrMatrice(p.code_unique),
+        numero: formaterNumeroBadge(p.numero_badge),
       }));
 
       sendJson(response, 200, {
@@ -4029,7 +4071,7 @@ async function handleApi(request, response, url) {
 
       const pdf = await renderTicketPdf(participants.length === 1 ? participants[0] : participants);
       const nomFichier = participants.length === 1
-        ? `badge-${participants[0].code_unique}.pdf`
+        ? `badge-${formaterNumeroBadge(participants[0].numero_badge) || "feja"}.pdf`
         : `badges-feja-${participants.length}.pdf`;
       response.writeHead(200, {
         "Content-Type": "application/pdf",
@@ -4661,7 +4703,7 @@ async function handleApi(request, response, url) {
       // Donnees d'exemple pour l'apercu du badge dans l'admin : la page n'a
       // pas de quoi calculer un QR elle-meme.
       if (url.pathname === "/api/admin/badge/exemple" && request.method === "GET") {
-        sendJson(response, 200, { code: "K7MQ2X", qr_matrice: qrMatrice("K7MQ2X") });
+        sendJson(response, 200, { code: "K7MQ2X", numero: "000001", qr_matrice: qrMatrice("K7MQ2X") });
         return;
       }
 
@@ -4729,7 +4771,7 @@ async function handleApi(request, response, url) {
         }
 
         const pdf = await renderTicketPdf(participant);
-        const nom = `badge-${participant.code_unique}.pdf`;
+        const nom = `badge-${formaterNumeroBadge(participant.numero_badge) || participant.code_unique}.pdf`;
         response.writeHead(200, {
           "Content-Type": "application/pdf",
           // inline : le billet s'ouvre dans l'onglet, donc montrable tout de
@@ -4837,6 +4879,7 @@ async function handleApi(request, response, url) {
               nom: "Participant Exemple",
               email: destinataire,
               code_unique: "K7MQ2X",
+              numero_badge: 1,
               montant: `${getParticipationAmount(settings).toLocaleString("fr-FR").replace(/[  ]/g, " ")} FCFA`,
               montant_valeur: getParticipationAmount(settings),
               lieu_retrait: settings.pickup_location || "",
@@ -4931,10 +4974,12 @@ async function handleApi(request, response, url) {
         run(
           `
             UPDATE participants
-            SET statut_paiement = ?, code_unique = ?, statut_code = ?, qr_code_url = ?, lieu_retrait = ?, validation_at = ?
+            SET statut_paiement = ?, code_unique = ?, statut_code = ?, qr_code_url = ?, lieu_retrait = ?, validation_at = ?,
+                numero_badge = COALESCE(numero_badge, ?)
             WHERE id = ?
           `,
-          ["Valide", codeUnique, "actif", qrCodeUrl, participant.lieu_retrait || settings.pickup_location, validationAt, participant.id],
+          ["Valide", codeUnique, "actif", qrCodeUrl, participant.lieu_retrait || settings.pickup_location, validationAt,
+            prochainNumeroBadge(), participant.id],
         );
         await persistDatabase();
         sentinelle.signaler({

@@ -135,7 +135,7 @@
     if ("fontKerning" in ctx) ctx.fontKerning = "normal";
     L.dessinerBadge(moteurCanvas(ctx), Object.assign(textes(actifs.config), {
       nom: billet.nom,
-      code: billet.code,
+      numero: billet.numero,
       qr: billet.qr_matrice || null,
       photo,
       logoGauche: actifs.logoGauche,

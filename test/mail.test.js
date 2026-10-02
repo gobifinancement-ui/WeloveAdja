@@ -67,6 +67,7 @@ const PARTICIPANT = {
   email: "kossi@exemple.test",
   montant: "10 000 FCFA",
   code_unique: "9872A6",
+  numero_badge: 7,
   lieu_retrait: "Terrain Omnisports CEG2 AZOVÈ",
 };
 
@@ -119,6 +120,8 @@ test("paiement confirmé : destinataire, sujet, code et pièce jointe", async ()
   assert.match(m.html, /Kwabô ! Génial !/);
   assert.match(m.html, /Détails de l&#39;achat/);
   assert.match(m.html, /9872A6/, "le code doit figurer dans le corps");
+  assert.match(m.html, /N° de badge/);
+  assert.match(m.html, /000007/, "le numero imprime sur le badge doit figurer");
   assert.match(m.html, /Kossi Adjavon/);
   assert.match(m.html, /Festival Adja 2027 · 15e édition/, "l'evenement vient des reglages du badge");
   assert.match(m.html, /Rendez-vous les 12, 13, 14 &amp; 15 Août 2027 à Azovè/);
@@ -133,12 +136,12 @@ test("paiement confirmé : destinataire, sujet, code et pièce jointe", async ()
 test("paiement confirmé à plusieurs : un code par personne et le montant total", async () => {
   const billets = [
     Object.assign({}, PARTICIPANT, { montant_valeur: 10000 }),
-    Object.assign({}, PARTICIPANT, { id: "WLA-2", nom: "Afi Adjavon", code_unique: "Z85Y72", montant_valeur: 10000 }),
+    Object.assign({}, PARTICIPANT, { id: "WLA-2", nom: "Afi Adjavon", code_unique: "Z85Y72", numero_badge: 8, montant_valeur: 10000 }),
   ];
   await new PaiementConfirmeEmail(Object.assign({ participant: billets[0], billets }, CTX)).send();
   const m = envoyes[0];
   assert.equal(m.subject, "Bingo KOSSI ADJAVON 🎉 Vos 2 badges sont prêts !");
-  assert.match(m.html, /Badge 2 — Afi Adjavon/);
+  assert.match(m.html, /Badge N° 000008 — Afi Adjavon/);
   assert.match(m.html, /Z85Y72/);
   assert.match(m.html, /20 000 F CFA/);
 });

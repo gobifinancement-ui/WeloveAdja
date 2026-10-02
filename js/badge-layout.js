@@ -179,6 +179,12 @@
       .trim();
   }
 
+  // 1 -> « 000001 », comme sur la maquette. Un texte deja forme passe tel quel.
+  function numeroBadge(valeur) {
+    const s = propre(valeur);
+    return /^\d+$/.test(s) && Number(s) > 0 ? s.padStart(6, "0") : s;
+  }
+
   function nbCaracteres(s) {
     return Array.from(s).length;
   }
@@ -441,10 +447,11 @@
       }
     }
 
-    // « N°  CODE »
-    const code = propre(d.code);
-    if (code) {
-      const U = G.numero, s = "N°  " + code;
+    // « N°  000001 » : numero d'ordre du badge. Le code d'acces n'y figure
+    // plus, il ne part que par e-mail (le QR le porte pour le scan).
+    const numero = numeroBadge(d.numero);
+    if (numero) {
+      const U = G.numero, s = "N°  " + numero;
       const a = ajuster(m, s, "regular", U.taille, U.esp, U.max, 18);
       m.texte(s, U.centre - a.largeur / 2, U.base, "regular", a.taille, C.gris, a.esp);
     }
@@ -522,6 +529,6 @@
   return {
     LARGEUR, HAUTEUR, COULEURS, DEFAUTS, QR, GEOMETRIE: G, BASCULE_DEFAUT,
     dessinerBadge, morceauxDates, lignesActivites, propre, editionEnCours, anneeDuFestival, lireBascule,
-    textesDepuisReglages, exposantEdition,
+    textesDepuisReglages, exposantEdition, numeroBadge,
   };
 });

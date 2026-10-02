@@ -302,10 +302,26 @@ body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
 .reg-top{padding:28px clamp(22px,5vw,38px) 0;text-align:center}
 .reg-top .eyebrow{margin-bottom:8px}
 .reg-top h2{font-family:var(--display);font-weight:500;font-size:clamp(1.7rem,4vw,2.2rem);line-height:1.05}
-.reg-tiktok-link{display:flex;align-items:center;justify-content:center;gap:7px;margin:14px clamp(22px,5vw,38px) 0;
-  padding:10px 14px;border-radius:100px;background:var(--glass);border:1px solid var(--brand-green-stroke);
-  color:var(--brand-green-br);font-size:.82rem;font-weight:700;text-decoration:none;transition:.2s}
-.reg-tiktok-link:hover{background:var(--glass-2);border-color:var(--brand-green)}
+/* Lien vers la video, sous la carte du premier ecran. Le bouton lecture dit
+   « video » avant meme qu'on lise le texte. */
+.reg-video{max-width:620px;margin:18px auto 0}
+.rv-lien{display:flex;align-items:center;gap:14px;padding:12px 16px 12px 12px;border-radius:22px;
+  background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.03));
+  border:1px solid var(--brand-green-stroke);color:var(--cream);text-decoration:none;
+  backdrop-filter:blur(18px);transition:background .2s var(--ease),border-color .2s var(--ease),transform .2s var(--ease)}
+.rv-lien:hover{border-color:var(--brand-green);background:var(--glass-2)}
+.rv-lien:active{transform:scale(.98)}
+.rv-play{position:relative;flex:0 0 52px;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
+  background:var(--brand-green);color:#fff;box-shadow:0 6px 18px color-mix(in oklab,var(--brand-green) 45%,transparent)}
+.rv-play svg{margin-left:3px}
+.rv-play::before{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--brand-green);
+  animation:rv-onde 1.8s var(--ease) infinite}
+@keyframes rv-onde{from{transform:scale(1);opacity:.8}to{transform:scale(1.55);opacity:0}}
+.rv-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rv-txt b{font-family:var(--display);font-weight:600;font-size:1.02rem}
+.rv-txt small{font-size:.8rem;color:var(--cream-72)}
+.rv-tt{flex:0 0 auto;display:flex;align-items:center;gap:5px;font-size:.7rem;font-weight:700;color:var(--cream-52)}
+@media (prefers-reduced-motion:reduce){.rv-play::before{animation:none;opacity:0}}
 /* Barre de paiement : hors du flux, toujours visible. */
 .pay-bar{
   position:fixed;left:0;right:0;bottom:0;z-index:130;
@@ -329,25 +345,35 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 
 /* Moyens de paiement cliquables : au Benin, c'est ici qu'on choisit son
    reseau, la demande part ensuite sur le telephone. */
-.pay-ops{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+/* Trois reseaux, trois colonnes : le logo au-dessus du nom tient a la largeur
+   d'un telephone. */
+.pay-ops{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:10px}
 .pay-op{
-  display:flex;align-items:center;gap:9px;padding:12px 12px;border-radius:14px;cursor:pointer;
-  background:var(--glass);border:1px solid var(--stroke);color:var(--cream-72);
-  font-size:.86rem;font-weight:700;text-align:left;position:relative;
-  transition:background .22s var(--ease),border-color .22s var(--ease),
-             color .22s var(--ease),transform .22s var(--ease);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  padding:16px 8px 13px;border-radius:16px;cursor:pointer;
+  background:var(--glass);border:2px solid var(--stroke);color:var(--cream-72);
+  font-size:.86rem;font-weight:700;text-align:center;position:relative;
+  transition:background .22s var(--ease),border-color .22s var(--ease),box-shadow .22s var(--ease),
+             color .22s var(--ease),transform .22s var(--ease),opacity .22s var(--ease);
 }
-.pay-op img,.pay-op svg{width:26px;height:20px;object-fit:contain;flex:0 0 auto}
+.pay-op img,.pay-op svg{width:38px;height:28px;object-fit:contain;flex:0 0 auto}
 .pay-op:hover{background:var(--glass-2);transform:translateY(-1px)}
 .pay-op:active{transform:scale(.97)}
+/* Le choix doit se voir d'un coup d'oeil : fond vert franc, bordure pleine,
+   halo, et les autres reseaux passent au second plan. */
 .pay-op.on{
-  background:color-mix(in oklab,var(--brand-green) 18%,transparent);
-  border-color:var(--stroke-gd);color:var(--cream);
+  background:linear-gradient(160deg,color-mix(in oklab,var(--brand-green) 42%,transparent),color-mix(in oklab,var(--brand-green) 22%,transparent));
+  border-color:var(--brand-green-br);color:#fff;transform:translateY(-2px);
+  box-shadow:0 0 0 4px color-mix(in oklab,var(--brand-green) 28%,transparent),
+             0 10px 26px color-mix(in oklab,var(--brand-green) 38%,transparent);
 }
+.pay-ops:has(.on) .pay-op:not(.on){opacity:.62}
+.pay-ops:has(.on) .pay-op:not(.on):hover{opacity:.9}
 .pay-op::after{
-  content:"";position:absolute;top:6px;right:6px;width:14px;height:14px;border-radius:50%;
-  background:var(--brand-green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 13 4 4L19 7'/%3E%3C/svg%3E") center/9px no-repeat;
-  opacity:0;transform:scale(.5);transition:opacity .2s var(--ease),transform .2s var(--ease);
+  content:"";position:absolute;top:-9px;right:-9px;width:24px;height:24px;border-radius:50%;
+  background:var(--brand-green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 13 4 4L19 7'/%3E%3C/svg%3E") center/13px no-repeat;
+  border:2px solid var(--bg);box-shadow:0 3px 10px rgba(0,0,0,.35);
+  opacity:0;transform:scale(.4);transition:opacity .2s var(--ease),transform .25s cubic-bezier(.3,1.6,.5,1);
 }
 .pay-op.on::after{opacity:1;transform:none}
 
@@ -470,15 +496,15 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
 .note svg{flex:none}
 .note>span{min-width:0}
 .note svg{flex:none;color:var(--brand-green-br);margin-top:2px}
-.photo-pick{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:stretch}
-.photo-pick .pick{display:flex;flex-direction:column;align-items:center;gap:4px;
+.photo-pick{display:grid;grid-template-columns:1fr;gap:12px;align-items:stretch}
+.photo-pick .pick{display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;
   font-family:var(--body);color:var(--cream);cursor:pointer;
-  border:1.5px dashed var(--brand-green-stroke);border-radius:18px;padding:20px 12px;
+  border:1.5px dashed var(--brand-green-stroke);border-radius:18px;padding:26px 16px;
   background:color-mix(in oklab,var(--brand-green) 5%,transparent);transition:.25s}
 .photo-pick .pick:hover,.photo-pick .pick.drag{background:color-mix(in oklab,var(--brand-green) 12%,transparent);border-color:var(--brand-green)}
 .photo-pick .pick:active{transform:scale(.97);transition-duration:.09s}
-.photo-pick .di{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;margin-bottom:6px;background:color-mix(in oklab,var(--brand-green) 14%,transparent);border:1px solid var(--brand-green-stroke);color:var(--brand-green-br)}
-.photo-pick b{font-family:var(--display);font-size:1rem;font-weight:500}
+.photo-pick .di{width:60px;height:60px;border-radius:50%;display:grid;place-items:center;margin-bottom:8px;background:var(--brand-green);color:#fff;box-shadow:0 6px 18px color-mix(in oklab,var(--brand-green) 40%,transparent)}
+.photo-pick b{font-family:var(--display);font-size:1.12rem;font-weight:600}
 .photo-pick small{color:var(--cream-52);font-size:.78rem}
 .pick-note{text-align:center;color:var(--cream-32);font-size:.76rem;margin:10px 0 0}
 .drop{border:1.5px dashed var(--brand-green-stroke);border-radius:18px;padding:34px 22px;text-align:center;cursor:pointer;transition:.25s;background:color-mix(in oklab,var(--brand-green) 5%,transparent)}
@@ -691,32 +717,40 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
   background:var(--glass);border:1px solid var(--stroke);
   transition:border-color .25s var(--ease),background .25s var(--ease);
 }
-/* Deux lignes plutot qu'une : sur un telephone etroit, la vignette, le nom et
-   trois boutons cote a cote se chevauchaient. */
-.ph-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
+.ph-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
 .ph-item.ok{border-color:var(--stroke-gd);background:var(--glass-2)}
 .ph-item.manque{border-color:color-mix(in oklab,var(--red) 45%,transparent)}
 .ph-thumb{
   position:relative;flex:0 0 46px;width:46px;height:46px;border-radius:50%;overflow:hidden;
   display:grid;place-items:center;background:var(--surface);border:1px solid var(--stroke);
+  padding:0;cursor:pointer;font:inherit;color:inherit;
 }
 .ph-thumb img{width:100%;height:100%;object-fit:cover;display:none}
 .ph-thumb.rempli img{display:block;animation:photo-in .34s cubic-bezier(.22,.9,.28,1) both}
 .ph-thumb.rempli .ph-ini{display:none}
 .ph-ini{font-weight:800;color:var(--cream-52);font-size:1rem}
 @keyframes photo-in{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:none}}
-.ph-meta{display:flex;align-items:baseline;gap:8px;min-width:0}
-.ph-meta b{flex:1;min-width:0;font-size:.86rem;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ph-meta span{flex:0 0 auto;font-size:.66rem;color:var(--cream-52)}
+/* L'etat sous le nom, pas a cote : avec le bouton d'import a droite, le nom
+   n'avait plus que quelques lettres. */
+.ph-meta{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ph-meta b{min-width:0;font-size:.88rem;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-meta span{font-size:.7rem;color:var(--cream-52)}
 .ph-item.ok .ph-meta span{color:var(--brand-green-br)}
-.ph-acts{display:flex;gap:6px;flex-wrap:wrap}
-.ph-acts button{
-  padding:7px 9px;border-radius:10px;cursor:pointer;font-size:.68rem;font-weight:700;
-  background:var(--glass-2);border:1px solid var(--stroke);color:var(--cream-72);
-  transition:background .2s var(--ease),color .2s var(--ease),transform .2s var(--ease);
+/* Bouton d'import : l'icone « fleche qui monte » se comprend sans lire. */
+.ph-imp{
+  flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:8px 10px;border-radius:14px;cursor:pointer;min-width:66px;
+  background:var(--brand-green);border:1px solid var(--brand-green);color:#fff;
+  font-size:.64rem;font-weight:800;letter-spacing:.02em;
+  transition:background .2s var(--ease),transform .2s var(--ease);
 }
-.ph-acts button:hover{background:var(--surface-strong);color:var(--cream);transform:translateY(-1px)}
-.ph-acts button:active{transform:scale(.95)}
+.ph-imp:hover{transform:translateY(-1px)}
+.ph-imp:active{transform:scale(.95)}
+.ph-item.ok .ph-imp{background:var(--glass-2);border-color:var(--stroke);color:var(--cream-72)}
+.ph-moi{
+  align-self:flex-start;padding:0;background:none;border:0;cursor:pointer;
+  font-size:.7rem;font-weight:700;color:var(--brand-green-br);text-decoration:underline;text-underline-offset:3px;
+}
 
 .pr-noms{display:flex;flex-direction:column;gap:6px;padding:10px 0 4px}
 .pr-noms .pn{
@@ -1016,12 +1050,9 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
   <div class="sheet-body">
     <div class="reg-shell">
       <div class="reg-top" id="reg-header">
-        <span class="eyebrow solo" style="display:inline-flex">Participation 2026</span>
+        <span class="eyebrow solo" id="regEyebrow" style="display:inline-flex">Festival Adja 2027</span>
         <h2>Combien de badges voulez-vous ?</h2>
       </div>
-      <!-- Hors de #reg-header expres : ce dernier se cache passe la premiere
-           etape, alors que ce lien doit rester visible sur tout le parcours. -->
-      <a href="#" target="_blank" rel="noopener" class="tiktok-link reg-tiktok-link" style="display:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M16.6 5.82c-.9-.78-1.47-1.9-1.56-3.16h-3.09v13.44c0 1.43-1.16 2.6-2.6 2.6a2.6 2.6 0 0 1-2.6-2.6c0-1.72 1.66-3.01 3.37-2.48V10.4c-3.45-.46-6.47 2.22-6.47 5.64a5.7 5.7 0 0 0 5.7 5.7c3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.28s-1.88.1-3.24-1.46z"/></svg> Comment obtenir ton badge (vidéo TikTok)</a>
       <!-- Engendree par majEtapes() : le nombre d'etapes change avec le
            nombre de billets. -->
       <div class="progress" id="progress"></div>
@@ -1087,7 +1118,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
             <div class="err" data-err="tel">Numéro invalide (au moins 8 chiffres).</div>
           </div>
           <div class="field">
-            <label for="email">Email <span class="hint">– ton code d'accès y sera envoyé</span></label>
+            <label for="email">Email <span class="hint" id="emailHint">– ton badge y sera envoyé</span></label>
             <div class="input-wrap"><span class="lead-ic"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg></span><input id="email" type="email" placeholder="Ex. kossi@email.com" autocomplete="email"></div>
             <div class="err" data-err="email">Adresse email invalide.</div>
           </div>
@@ -1108,20 +1139,17 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
           <div class="field">
             <label>Photo du participant <span class="hint">– visage clair, bien éclairé</span></label>
             <div class="photo-pick" id="photoPick">
-              <button type="button" class="pick" id="pickCamera">
-                <span class="di"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
-                <b>Appareil</b>
-                <small>Prendre une photo</small>
-              </button>
               <button type="button" class="pick" id="pickGallery">
-                <span class="di"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-5-5L5 21"/></svg></span>
-                <b>Galerie</b>
-                <small>Importer une photo</small>
+                <span class="di"><svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg></span>
+                <b>Photo</b>
+                <small>Touche pour importer depuis ta galerie</small>
               </button>
             </div>
             <p class="pick-note">PNG ou JPG – compressée automatiquement</p>
-            <input id="photoFile" type="file" accept="image/*" hidden>
-            <input id="photoCam" type="file" accept="image/*" capture="user" hidden>
+            <!-- Sans attribut capture : c'est lui qui ouvrait l'appareil photo.
+                 Des types precis plutot que image/* : Android ouvre alors la
+                 galerie au lieu de proposer l'appareil. -->
+            <input id="photoFile" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden>
             <div class="preview" id="photoPreview">
               <img id="photoPvImg" alt="">
               <div class="pm"><b id="photoPvName">photo.jpg</b><span id="photoPvSize">–</span></div>
@@ -1135,8 +1163,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
                precedente : sans le nom en face, on ne sait plus quelle photo
                va a qui des le troisieme billet. -->
           <div class="ph-list" id="photosGroupe" hidden></div>
-          <input id="gphotoFile" type="file" accept="image/*" hidden>
-          <input id="gphotoCam" type="file" accept="image/*" capture="user" hidden>
+          <input id="gphotoFile" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden>
           <div class="err" data-err="photos">Il manque la photo de quelqu'un.</div>
 
           <p class="note"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span id="noteVieP">Ta photo est utilisée uniquement pour vérifier ton identité le jour J. Elle ne sera jamais publiée.</span></p>
@@ -1149,7 +1176,7 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
         <div class="pane" data-pane="3">
           <div class="pane-intro">
             <b>Tes coordonnées</b>
-            <span>C'est toi qui achètes : le code d'accès de chacun part sur cette adresse.</span>
+            <span>C'est toi qui achètes : les badges de tout le monde partent sur cette adresse.</span>
           </div>
           <div id="slotContact3"></div>
           <div class="reg-actions"><button class="btn btn-back" data-back>← Retour</button><button class="btn btn-gold" data-next>Continuer →</button></div>
@@ -1178,11 +1205,10 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
             <span class="pb"><img src="/moov.png" alt="" onerror="this.remove()"> Moov</span>
             <span class="pb"><img src="/MTN.svg" alt="" onerror="this.remove()"> MTN</span>
             <span class="pb"><img src="/celtiiscash.png" alt="" onerror="this.remove()"> Celtiis</span>
-            <span class="pb"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> Carte bancaire</span>
           </div>
           <div class="pay-ops" id="payOps" hidden></div>
 
-          <p class="note" id="payNote"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span id="payNoteTexte">Redirection vers la <b>page de paiement sécurisée</b>, puis retour ici avec ton code.</span></p>
+          <p class="note" id="payNote"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span id="payNoteTexte">Redirection vers la <b>page de paiement sécurisée</b>, puis retour ici avec ton badge.</span></p>
 
           <div class="reg-actions"><button class="btn btn-back" data-back>← Retour</button></div>
         </div>
@@ -1192,13 +1218,22 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
       <div class="waiting-screen" id="waitingScreen" style="display:none">
         <div class="wait-icon"><svg width="38" height="38" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></div>
         <h2>Valide sur ton téléphone</h2>
-        <p class="sub">Accepte la demande de paiement reçue sur ton Mobile Money, puis appuie sur <b>Vérifier</b>.</p>
-        <button class="btn btn-gold" id="checkBtn" style="margin:0 auto 14px;display:flex">Vérifier le paiement</button>
+        <p class="sub">Accepte la demande de paiement reçue sur ton Mobile Money. La page continue toute seule ; si elle tarde, appuie sur <b>J'ai payé</b>.</p>
+        <button class="btn btn-gold" id="checkBtn" style="margin:0 auto 14px;display:flex">J'ai payé</button>
         <p class="poll-status" id="pollStatus">Vérification automatique toutes les 6 s…</p>
         <div class="poll-error" id="pollError"></div>
       </div>
 
 
+    </div>
+    <!-- Sous la carte, dans le vide du premier ecran, et seulement la : a
+         l'interieur, le lien s'intercalait entre la question et les choix. -->
+    <div class="reg-video" id="regVideo">
+      <a href="#" target="_blank" rel="noopener" class="tiktok-link rv-lien" style="display:none">
+        <span class="rv-play" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.6v12.8a1 1 0 0 0 1.52.85l10.2-6.4a1 1 0 0 0 0-1.7L9.52 4.75A1 1 0 0 0 8 5.6z"/></svg></span>
+        <span class="rv-txt"><b>Regarde la vidéo</b><small>Comment obtenir ton badge</small></span>
+        <span class="rv-tt" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16.6 5.82c-.9-.78-1.47-1.9-1.56-3.16h-3.09v13.44c0 1.43-1.16 2.6-2.6 2.6a2.6 2.6 0 0 1-2.6-2.6c0-1.72 1.66-3.01 3.37-2.48V10.4c-3.45-.46-6.47 2.22-6.47 5.64a5.7 5.7 0 0 0 5.7 5.7c3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.28s-1.88.1-3.24-1.46z"/></svg>TikTok</span>
+      </a>
     </div>
   </div>
 </div>
@@ -1353,6 +1388,12 @@ function applyConfig() {
   document.querySelectorAll('[data-cfg]').forEach(el => {
     const k = el.dataset.cfg; if (CFG[k] != null) el.textContent = CFG[k];
   });
+  // Meme titre et meme annee que le badge : apres le 30 aout, les deux passent
+  // ensemble a l'annee suivante.
+  const regEyebrow = document.getElementById('regEyebrow');
+  if (regEyebrow && CFG.badge && CFG.badge.titre && CFG.badge.annee) {
+    regEyebrow.textContent = CFG.badge.titre + ' ' + CFG.badge.annee;
+  }
   /* Liens de contact. Non renseignes, ils restaient affiches avec href="#" :
      le visiteur cliquait sur "WhatsApp officiel" et remontait en haut de page.
      Un lien mort est pire qu'un lien absent, on les masque donc. */
@@ -1826,6 +1867,10 @@ function paint(){
   // meme question.
   const regHeader = document.getElementById('reg-header');
   if(regHeader) regHeader.style.display = courant === 0 ? '' : 'none';
+  // La video explique tout le parcours : on la propose avant qu'il commence,
+  // pas au milieu d'une saisie.
+  const regVideo = document.getElementById('regVideo');
+  if(regVideo) regVideo.hidden = courant !== 0;
 
   const sb = document.querySelector('#sheet-participer');
   if(sb) sb.scrollTop = 0;
@@ -1842,7 +1887,10 @@ function paint(){
    feuille est ouverte : elle est fixe, elle flotterait sinon sur l'accueil. */
 function majBarrePaiement(){
   const barre = document.getElementById('payBar');
-  const dessus = volet() === 4 && document.body.classList.contains('sheet-open');
+  // Cachee pendant l'attente du paiement : un second « Payer » sous « J'ai
+  // payé » invitait a payer deux fois.
+  const attente = document.getElementById('waitingScreen').style.display === 'block';
+  const dessus = volet() === 4 && !attente && document.body.classList.contains('sheet-open');
   barre.classList.toggle('on', dessus);
   document.body.classList.toggle('pay-open', dessus);
   // Hauteur reelle de la barre, y compris la zone sure du telephone.
@@ -1944,6 +1992,36 @@ if(paysSel && telInput){
   });
   syncTelPlaceholder();
 
+  /* Chiffres groupes par deux pendant la saisie (« 97 00 00 00 ») : un numero
+     colle d'un bloc se relit mal, et c'est sur lui qu'arrive la demande de
+     paiement. Le serveur ne garde que les chiffres. */
+  let telChiffresPrec = '';
+  telInput.addEventListener('input', e => {
+    const avant = telInput.value;
+    const curseur = telInput.selectionStart == null ? avant.length : telInput.selectionStart;
+    // Le curseur est repere en chiffres, pas en caracteres : les espaces
+    // ajoutees le decaleraient sinon a chaque frappe au milieu du numero.
+    let chiffresAvant = avant.slice(0, curseur).replace(/\D/g, '').length;
+    let chiffres = avant.replace(/\D/g, '');
+    // Effacer une espace ne changerait rien (elle reviendrait aussitot) : on
+    // efface le chiffre qu'elle separait, comme on s'y attend.
+    if(chiffres === telChiffresPrec && e.inputType === 'deleteContentBackward' && chiffresAvant > 0){
+      chiffres = chiffres.slice(0, chiffresAvant - 1) + chiffres.slice(chiffresAvant);
+      chiffresAvant--;
+    }else if(chiffres === telChiffresPrec && e.inputType === 'deleteContentForward'){
+      chiffres = chiffres.slice(0, chiffresAvant) + chiffres.slice(chiffresAvant + 1);
+    }
+    chiffres = chiffres.slice(0, 15);
+    telChiffresPrec = chiffres;
+    const plus = /^\s*\+/.test(avant) ? '+' : '';
+    const forme = plus + grouperParDeux(chiffres);
+    if(forme === avant) return;
+    telInput.value = forme;
+    let pos = plus.length, vus = 0;
+    while(pos < forme.length && vus < chiffresAvant){ if(/\d/.test(forme[pos])) vus++; pos++; }
+    try{ telInput.setSelectionRange(pos, pos); }catch(err){}
+  });
+
   /* Beaucoup de gens saisissent leur numero en entier : "+229 97 00 00 00",
      "00229...", ou "22997000000". L'indicatif partirait alors en double vers
      l'operateur de paiement et le numero serait rejete. On le retire, et on
@@ -1961,8 +2039,12 @@ if(paysSel && telInput){
       digits = digits.slice(match.length);
       syncTelPlaceholder();
     }
-    telInput.value = digits;
+    telInput.value = grouperParDeux(digits);
   });
+}
+
+function grouperParDeux(chiffres){
+  return (String(chiffres).match(/\d{1,2}/g) || []).join(' ');
 }
 
 function valEmail(v){return/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);}
@@ -2036,6 +2118,10 @@ function construireNoms(){
 }
 
 /* ---- Emplacements de photos ------------------------------------------- */
+const ICONE_IMPORT = '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" '
+  + 'stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>'
+  + '<path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>';
+
 function construirePhotos(){
   elPhotosGrp.innerHTML = '';
   if(!enGroupe()) return;
@@ -2044,17 +2130,18 @@ function construirePhotos(){
     const d = document.createElement('div');
     d.className = 'ph-item';
     d.dataset.i = i;
+    // Un seul geste par personne : le bouton d'import (ou la vignette). Deux
+    // boutons « Appareil » / « Galerie » par ligne faisaient hesiter.
     d.innerHTML =
-      '<div class="ph-thumb"><img alt=""><span class="ph-ini">?</span></div>' +
+      '<button type="button" class="ph-thumb" data-act="gal" aria-label="Importer la photo">' +
+      '<img alt=""><span class="ph-ini">?</span></button>' +
       '<div class="ph-col">' +
       '<div class="ph-meta"><b></b><span>Aucune photo</span></div>' +
-      '<div class="ph-acts">' +
-      '<button type="button" data-act="cam">Appareil</button>' +
-      '<button type="button" data-act="gal">Galerie</button>' +
       // Repli pour l'acheteur qui n'a pas la photo des autres : c'est lui qui
       // paie, et c'est sa presence qu'on verifiera a l'entree.
-      (i > 0 ? '<button type="button" data-act="moi">Ma photo</button>' : '') +
-      '</div></div>';
+      (i > 0 ? '<button type="button" class="ph-moi" data-act="moi">ou mettre ma photo</button>' : '') +
+      '</div>' +
+      '<button type="button" class="ph-imp" data-act="gal">' + ICONE_IMPORT + '<span>Importer</span></button>';
     elPhotosGrp.appendChild(d);
   }
   majEtiquettesPhotos();
@@ -2081,6 +2168,7 @@ function majPhotos(){
     item.classList.toggle('ok', !!src);
     if(src) item.classList.remove('manque');
     item.querySelector('.ph-meta span').textContent = src ? 'Photo ajoutée' : 'Aucune photo';
+    item.querySelector('.ph-imp span').textContent = src ? 'Changer' : 'Importer';
   });
 }
 
@@ -2123,6 +2211,7 @@ function majTextesGuides(){
       + "quelqu'un, mets la tienne à la place : c'est toi qui achètes.");
     dire('noteVieP', "Les photos servent uniquement à vérifier les identités le jour J. "
       + "Elles ne seront jamais publiées.");
+    dire('emailHint', '– les badges y seront envoyés');
   }else{
     dire('introNomTitre', 'Tes informations');
     dire('introNomTexte', 'Le badge sera établi à ce nom.');
@@ -2130,6 +2219,7 @@ function majTextesGuides(){
     dire('introPhotoTexte', "Elle sert à vérifier ton identité à l'entrée. Visage clair, bien éclairé.");
     dire('noteVieP', "Ta photo est utilisée uniquement pour vérifier ton identité le jour J. "
       + "Elle ne sera jamais publiée.");
+    dire('emailHint', '– ton badge y sera envoyé');
   }
 }
 
@@ -2146,9 +2236,6 @@ const LOGOS_OPERATEURS = {
   moov:    '/moov.png',
   celtiis: '/celtiiscash.png',
 };
-
-const ICONE_CARTE = '<svg width="26" height="20" fill="none" stroke="currentColor" stroke-width="1.9" '
-  + 'viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>';
 
 function paysChoisi(){
   const sel = document.getElementById('pays');
@@ -2187,8 +2274,7 @@ function majMoyensPaiement(){
     (LOGOS_OPERATEURS[o.code]
       ? '<img src="' + LOGOS_OPERATEURS[o.code] + '" alt="" onerror="this.remove()">'
       : '') +
-    '<span>' + o.label + '</span></button>').join('')
-    + '<button type="button" class="pay-op" data-op="">' + ICONE_CARTE + '<span>Carte bancaire</span></button>';
+    '<span>' + o.label + '</span></button>').join('');
 
   // Le premier reseau est retenu d'office : c'est le cas courant, et un ecran
   // de paiement sans rien de coche laisse croire qu'il manque une etape.
@@ -2217,7 +2303,7 @@ function majBoutonPayer(){
   if(note){
     note.innerHTML = direct
       ? "La demande arrive <b>sur ton téléphone</b>. Tu tapes ton code secret, sans quitter cette page."
-      : "Redirection vers la <b>page de paiement sécurisée</b>, puis retour ici avec ton code.";
+      : "Redirection vers la <b>page de paiement sécurisée</b>, puis retour ici avec ton badge.";
   }
 }
 
@@ -2262,9 +2348,8 @@ elQtyNb.addEventListener('input', () => {
   else if(elQtyNb.value !== ''){ showErr('qty', true); }
 });
 
-/* ---- Photos du groupe : une seule paire d'entrees, une cible a la fois -- */
+/* ---- Photos du groupe : une seule entree, une cible a la fois --------- */
 const gFile = document.getElementById('gphotoFile');
-const gCam  = document.getElementById('gphotoCam');
 let cibleP  = 0;
 
 elPhotosGrp.addEventListener('click', async e => {
@@ -2280,23 +2365,21 @@ elPhotosGrp.addEventListener('click', async e => {
     majPhotos();
     return;
   }
-  (b.dataset.act === 'cam' ? gCam : gFile).click();
+  gFile.click();
 });
 
-[gFile, gCam].forEach(input => {
-  input.addEventListener('change', async e => {
-    const f = e.target.files[0];
-    if(!f || !f.type.startsWith('image/')) return;
-    const item = elPhotosGrp.children[cibleP];
-    if(item) item.querySelector('.ph-meta span').textContent = 'Compression…';
+gFile.addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if(!f || !f.type.startsWith('image/')) return;
+  const item = elPhotosGrp.children[cibleP];
+  if(item) item.querySelector('.ph-meta span').textContent = 'Compression…';
 
-    photoEnCours = compressImage(f).then(dataUrl => {
-      if(dataUrl){ photos[cibleP] = dataUrl; majPhotos(); showErr('photos', false); }
-      else if(item) item.querySelector('.ph-meta span').textContent = 'Image illisible';
-    }).finally(() => { photoEnCours = null; });
-    e.target.value = '';
-    await photoEnCours;
-  });
+  photoEnCours = compressImage(f).then(dataUrl => {
+    if(dataUrl){ photos[cibleP] = dataUrl; majPhotos(); showErr('photos', false); }
+    else if(item) item.querySelector('.ph-meta span').textContent = 'Image illisible';
+  }).finally(() => { photoEnCours = null; });
+  e.target.value = '';
+  await photoEnCours;
 });
 
 /* Coordonnees de l'acheteur. Verifiees a l'etape 1 quand elles s'y trouvent,
@@ -2371,16 +2454,10 @@ const photoDrop=document.getElementById('photoPick');
 const photoFileInput=document.getElementById('photoFile');
 const photoPreview=document.getElementById('photoPreview');
 
-const photoCamInput=document.getElementById('photoCam');
-
-// Deux entrees separees : celle qui porte capture="user" ouvre l'appareil,
-// l'autre ouvre la galerie. Une seule entree avec capture n'aurait jamais
-// laisse le choix.
-document.getElementById('pickCamera').addEventListener('click',()=>photoCamInput.click());
+// Un seul bouton, vers la galerie : l'organisation veut des photos choisies,
+// pas prises a la volee devant l'ecran.
 document.getElementById('pickGallery').addEventListener('click',()=>photoFileInput.click());
-[photoFileInput,photoCamInput].forEach(input=>{
-  input.addEventListener('change',e=>{if(e.target.files[0])lancerPhoto(e.target.files[0]);});
-});
+photoFileInput.addEventListener('change',e=>{if(e.target.files[0])lancerPhoto(e.target.files[0]);});
 
 // Glisser-deposer, utile sur ordinateur.
 ['dragover','dragenter'].forEach(ev=>photoDrop.addEventListener(ev,e=>{e.preventDefault();photoDrop.classList.add('drag');}));
@@ -2425,7 +2502,7 @@ async function handlePhoto(f){
   document.querySelector('.pick-note').style.display='none';
 }
 document.getElementById('photoPvRemove').addEventListener('click',()=>{
-  photos[0]='';photoFileInput.value='';photoCamInput.value='';
+  photos[0]='';photoFileInput.value='';
   photoPreview.classList.remove('show');photoDrop.style.display='';
   document.querySelector('.pick-note').style.display='';
 });
@@ -2442,10 +2519,12 @@ function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
 
 function showWaitingScreen(){
   document.getElementById('reg-header').style.display='none';
+  document.getElementById('regVideo').hidden=true;
   document.getElementById('progress').style.display='none';
   document.querySelector('#sheet-participer .reg-body').style.display='none';
   document.getElementById('waitingScreen').style.display='block';
   document.getElementById('sheet-participer').scrollTop=0;
+  majBarrePaiement();
 }
 
 // Sans ca, fermer le volet pendant l'attente d'un paiement puis rouvrir
@@ -2454,19 +2533,47 @@ function showWaitingScreen(){
 function hideWaitingScreen(){
   const header = document.getElementById('reg-header');
   if(header) header.style.display = volet() === 0 ? '' : 'none';
+  const video = document.getElementById('regVideo');
+  if(video) video.hidden = volet() !== 0;
   const progress = document.getElementById('progress');
   if(progress) progress.style.display = '';
   const body = document.querySelector('#sheet-participer .reg-body');
   if(body) body.style.display = '';
   const waiting = document.getElementById('waitingScreen');
   if(waiting) waiting.style.display = 'none';
+  majBarrePaiement();
 }
 
 document.getElementById('launchBtn').addEventListener('click',launchPayment);
-document.getElementById('checkBtn').addEventListener('click',()=>{pollPaymentStatus(true);});
+document.getElementById('checkBtn').addEventListener('click',jaiPaye);
+
+/* « J'ai payé » : chaque essai interroge FedaPay depuis le serveur, pas un
+   etat garde en memoire. Plusieurs essais rapproches, parce que l'operateur
+   met parfois quelques secondes a confirmer un paiement que le client voit
+   deja debite sur son telephone. Valide : on continue vers le badge. */
+async function jaiPaye(){
+  const bouton=document.getElementById('checkBtn');
+  if(bouton.disabled)return;
+  const fin=Chargement(bouton);
+  setError('');
+  for(let essai=0;essai<8;essai++){
+    const statut=await pollPaymentStatus(true);
+    if(statut==='approved')return;            // la page part vers le badge
+    if(statut==='failed'){fin();return;}
+    setStatus("On vérifie ton paiement auprès de l'opérateur…");
+    await new Promise(r=>setTimeout(r,3000));
+  }
+  fin();
+  setStatus('');
+  setError("Ton paiement n'est pas encore confirmé par l'opérateur. Vérifie que tu as bien tapé ton code secret : on continue de vérifier toute seule.");
+  // L'attente automatique avait peut-etre abandonne : on la relance.
+  if(!pollTimer)demarrerInterrogation();
+}
 
 async function launchPayment(){
-  const telephone=document.getElementById('tel').value.trim();
+  // Les espaces ne servent qu'a la lecture : la base garde les chiffres seuls,
+  // comme pour les inscriptions d'avant.
+  const telephone=document.getElementById('tel').value.replace(/\D/g,'');
   const email=document.getElementById('email').value.trim();
   const pays=document.getElementById('pays').value;
   const launchBtn=document.getElementById('launchBtn');
@@ -2505,6 +2612,9 @@ async function launchPayment(){
     if(createData.mode==='direct'){
       pollState={participantId:createData.participant.id,
                  transactionId:String((createData.transaction||{}).id||'')};
+      // La barre disparait pendant l'attente ; le bouton doit etre redevenu
+      // normal si l'on referme puis rouvre le formulaire.
+      finLaunch();
       attendreValidation(createData.demo===true);
       return;
     }
@@ -2551,8 +2661,9 @@ async function resumePendingPayment(){
 function setStatus(msg){const el=document.getElementById('pollStatus');if(el)el.textContent=msg;}
 function setError(msg){const el=document.getElementById('pollError');if(!el)return;el.textContent=msg;el.classList.toggle('show',!!msg);}
 
+/* Rend 'approved', 'failed', 'pending' ou 'error'. */
 async function pollPaymentStatus(manual=false){
-  if(!pollState.participantId)return;
+  if(!pollState.participantId)return 'error';
   if(manual)setStatus('Vérification en cours…');
   try{
     const res=await fetch('/api/payments/status',{
@@ -2569,26 +2680,30 @@ async function pollPaymentStatus(manual=false){
       // billets et leur téléchargement. Ce n'est pas une redirection de
       // paiement — on reste sur le site, l'opérateur n'a jamais été affiché.
       location.href='/retour-paiement.html?p='+encodeURIComponent(data.participant.id);
-      return;
+      return 'approved';
     }else if(data.status&&data.status!=='pending'&&data.status!=='approved'){
       // declined / expired / canceled
       stopPolling();
       const msg=data.status==='declined'?'Paiement refusé. Réessaie ou choisis un autre opérateur.':'Paiement échoué ('+data.status+'). Réessaie.';
       setError(msg);setStatus('');
+      return 'failed';
     }else{
       if(manual)setStatus('Paiement en attente de confirmation…');
       else setStatus(`Vérification automatique… (tentative ${pollAttempts+1}/${MAX_POLL})`);
-      setError('');
+      // L'explication laissee par « J'ai payé » reste lisible entre deux essais.
+      if(manual)setError('');
+      return 'pending';
     }
   }catch(e){
     if(manual)setStatus('Erreur réseau, réessaie dans un instant.');
+    return 'error';
   }
 }
 
 /* Attente de la validation sur le telephone.
    L'interrogation est automatique : demander au client d'appuyer lui-meme sur
-   « Vérifier » apres avoir tape son code ferait croire a un blocage. Le bouton
-   reste la pour qui veut forcer. */
+   un bouton apres avoir tape son code ferait croire a un blocage. « J'ai payé »
+   reste la pour qui voit son compte debite avant que la page ne bouge. */
 function attendreValidation(demo){
   pollAttempts=0;
   showWaitingScreen();
@@ -2601,12 +2716,18 @@ function attendreValidation(demo){
   // En démonstration le serveur valide dès la première interrogation : inutile
   // de faire patienter six secondes pour rien.
   pollPaymentStatus();
+  demarrerInterrogation();
+}
+
+function demarrerInterrogation(){
+  stopPolling();
+  pollAttempts=0;
   pollTimer=setInterval(()=>{
     pollAttempts++;
     if(pollAttempts>MAX_POLL){
       stopPolling();
       setStatus('');
-      setError("Toujours rien reçu. Si le montant a été débité, ton code arrivera par email.");
+      setError("Toujours rien reçu. Si le montant a été débité, appuie sur « J'ai payé » : ton badge arrivera aussi par email.");
       return;
     }
     pollPaymentStatus();
@@ -2759,7 +2880,7 @@ function attendreValidation(demo){
     hote.innerHTML = billets.map((b,i) => `
       <div class="tk-carte">
         <canvas id="tkCv${i}"></canvas>
-        <div class="tk-nom"><b>${escHtml(b.nom||'')}</b><span>${escHtml(b.code||'')}</span></div>
+        <div class="tk-nom"><b>${escHtml(b.nom||'')}</b><span>${b.numero ? 'N° ' + escHtml(b.numero) : ''}</span></div>
         ${b.utilise ? '<p class="tk-utilise">Ce badge a déjà été scanné à l\u2019entrée.</p>' : ''}
         <div class="tk-actions">
           <button class="btn btn-gold btn-sm" data-pdf="${escHtml(b.id)}">PDF</button>
@@ -2798,7 +2919,7 @@ function attendreValidation(demo){
         const blob = await TicketCanvas.versPng(billets[i], actifs);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = 'badge-' + (billets[i].code || 'feja') + '.png';
+        a.href = url; a.download = 'badge-' + (billets[i].numero || 'feja') + '.png';
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
       }catch(err){ dire('tkMsg3', err.message || 'Image impossible à produire.', 'ko'); }

@@ -13,7 +13,7 @@ l'entrée en vérifiant sa photo.
 
 ```bash
 npm start          # http://localhost:3000
-npm test           # e-mails (12) et badge (7), sans réseau
+npm test           # e-mails, badge et surveillance (29 tests), sans réseau
 ```
 
 Aucun framework, aucune étape de build. `node server.js` sert les pages et
@@ -170,9 +170,14 @@ Deux chemins, décidés par le **pays choisi avec l'indicatif** :
 cliquables sur l'écran de paiement. Le serveur crée la transaction, obtient un
 jeton, puis poste sur l'endpoint de l'opérateur : le client reçoit la demande
 en USSD sur son téléphone. La page attend et interroge `/api/payments/status`
-toutes les 6 s.
+toutes les 6 s. Pas de carte bancaire sur cet écran (choix de l'organisation).
+Le bouton **« J'ai payé »** relance tout de suite plusieurs vérifications
+auprès de FedaPay (chaque appel interroge l'opérateur, pas un état en
+mémoire), puis continue vers le badge dès que c'est validé. La barre
+« Payer » est masquée pendant cette attente.
 
-**Ailleurs, et carte bancaire — page hébergée FedaPay**, comme avant.
+**Ailleurs — page hébergée FedaPay** (Mobile Money des autres pays, carte),
+comme avant.
 
 Le serveur **annonce le chemin retenu** (`mode: "direct" | "redirect"`) et la
 page suit sa décision, pas son intention. Si la demande directe échoue — nom de
@@ -218,7 +223,7 @@ comme de cinq. Trois temps :
    images, aperçus et PDF sont fabriqués ICI, avant d'afficher les boutons
    (durée minimale 3,6 s pour que les messages se lisent).
 3. **« Et voilà ! »** : trois gros boutons — image, PDF, WhatsApp. **Aucun code
-   d'accès affiché** sur la page (il est sur le badge). À plusieurs badges,
+   d'accès affiché** sur la page (il ne part que par e-mail). À plusieurs badges,
    les boutons agissent sur tous (un seul PDF, une page par badge :
    `/api/public/ticket/pdf?ids=a,b,c`), puis une carte par personne.
 
@@ -242,8 +247,11 @@ Poppins **SemiBold**, pas Bold (mesuré à l'aire d'encre).
 - Textes réglables dans `Admin → Réglages → Badge` (`badge_titre`,
   `badge_annee`, `badge_edition`, `badge_lieu`, `badge_dates` — `**gras**` —,
   `badge_activites` — une ligne par ligne). Vide = texte de la maquette.
-- « N° » porte le **code d'accès**, le QR l'encode aussi : version 5, correction
-  H, avec le logo du site en sceau au centre. Le navigateur reçoit la matrice
+- « N° 000001 » est le **numéro d'ordre du badge** (`numero_badge`), attribué
+  à la validation du paiement (`prochainNumeroBadge`, index unique) et rattrapé
+  au démarrage pour les badges plus anciens. Le **code d'accès n'est plus
+  imprimé** : il ne part que par e-mail, et le QR l'encode (version 5, correction
+  H, avec le logo du site en sceau au centre). Le navigateur reçoit la matrice
   (`qr_matrice`) du serveur, il n'a pas de générateur QR.
 - Nom trop long : il rétrécit, puis passe sur deux lignes.
 - **Passage automatique à l'édition suivante** : le lendemain du

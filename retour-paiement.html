@@ -210,6 +210,10 @@ function fail(title, text, soft) {
   $('koTitle').textContent = title;
   $('koText').innerHTML = text;
   $('ko').style.setProperty('--x', soft ? 'var(--gold)' : 'var(--ko)');
+  // En attente, le client sait souvent mieux que nous qu'il a paye : meme
+  // bouton que sur l'ecran d'attente, qui relance la verification aupres de
+  // l'operateur.
+  $('retry').textContent = soft ? "J'ai payé" : 'Vérifier à nouveau';
   show('ko');
 }
 
@@ -286,7 +290,8 @@ async function preparer(data) {
   jeton = data.ticket_token || '';
   const sources = (data.billets && data.billets.length) ? data.billets : [data.participant || {}];
   billets = sources.map((b) => ({
-    id: b.id, nom: b.nom, code: b.code_unique || b.code || '',
+    // Le numero, pas le code d'acces : le code ne part que par e-mail.
+    id: b.id, nom: b.nom, numero: b.numero || (b.numero_badge ? String(b.numero_badge).padStart(6, '0') : ''),
     photo: b.photo || '', qr_matrice: b.qr_matrice || null,
     png: null, pdf: null, apercu: document.createElement('canvas'),
   }));
@@ -459,7 +464,7 @@ async function agir(action, liste, bouton) {
   try {
     if (action === 'img') {
       for (let i = 0; i < liste.length; i++) {
-        remettre(await imageDe(liste[i]), `badge-${liste[i].code || i + 1}.png`);
+        remettre(await imageDe(liste[i]), `badge-${liste[i].numero || i + 1}.png`);
         // Petit intervalle : sans lui, certains navigateurs ne gardent que
         // le premier de plusieurs telechargements simultanes.
         if (i < liste.length - 1) await attendre(600);
@@ -472,7 +477,7 @@ async function agir(action, liste, bouton) {
       } else {
         blob = liste[0].pdf || await recupererPdf([liste[0].id]);
       }
-      remettre(blob, plusieurs ? `badges-feja-${liste.length}.pdf` : `badge-${liste[0].code || 'feja'}.pdf`);
+      remettre(blob, plusieurs ? `badges-feja-${liste.length}.pdf` : `badge-${liste[0].numero || 'feja'}.pdf`);
       direDl(plusieurs ? `PDF des ${liste.length} badges téléchargé (une page par badge).` : 'PDF téléchargé' + (liste[0].nom ? ' — ' + liste[0].nom : '') + '.');
     } else if (action === 'wa') {
       await envoyerWhatsApp(liste);
@@ -505,7 +510,7 @@ function envoyerWhatsApp(liste) {
 }
 
 async function partager(liste) {
-  const fichiers = liste.map((b) => new File([b.png], `badge-${b.code || 'feja'}.png`, { type: 'image/png' }));
+  const fichiers = liste.map((b) => new File([b.png], `badge-${b.numero || 'feja'}.png`, { type: 'image/png' }));
   const texte = liste.length > 1
     ? 'Nos badges pour le Festival Adja'
     : 'Mon badge pour le Festival Adja';
