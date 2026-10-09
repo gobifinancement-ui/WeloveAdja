@@ -250,3 +250,57 @@ test("sans aucun moyen d'envoi, l'erreur est explicite", async () => {
   await assert.rejects(() => mail.send(), /Aucun moyen d'envoi configuré|expédition non configurée/);
   activerFauxSmtp();
 });
+
+/* ----------------------------------------------------------------- Brevo */
+// Faux fetch : retient la requete au lieu de la poster chez Brevo.
+async function avecFauxFetch(reponse, corps) {
+  const vraiFetch = global.fetch;
+  const appels = [];
+  global.fetch = async (url, init) => {
+    appels.push({ url, init, corps: JSON.parse(init.body) });
+    return { ok: reponse.ok, status: reponse.status, json: async () => reponse.json };
+  };
+  try { await corps(appels); } finally { global.fetch = vraiFetch; }
+}
+
+const REGLAGES_BREVO = {
+  event_name: "FEJA",
+  brevo_api_key: "xkeysib-cle-de-test",
+  brevo_from: "FEJA <billetterie@feja.test>",
+};
+
+test("sans SMTP, l'envoi passe par l'API Brevo, logo compris", async () => {
+  restaurer();
+  await avecFauxFetch({ ok: true, status: 201, json: { messageId: "<brevo@test>" } }, async (appels) => {
+    const mail = new EmailDeTest({ settings: REGLAGES_BREVO, email: "a@b.test", baseUrl: "https://feja.test" });
+    const resultat = await mail.send();
+    assert.equal(resultat.voie, "brevo");
+    assert.equal(appels.length, 1);
+    const { url, init, corps } = appels[0];
+    assert.equal(url, "https://api.brevo.com/v3/smtp/email");
+    assert.equal(init.headers["api-key"], "xkeysib-cle-de-test");
+    assert.deepEqual(corps.sender, { name: "FEJA", email: "billetterie@feja.test" });
+    assert.deepEqual(corps.to, [{ email: "a@b.test" }]);
+    // Pas d'image integree chez Brevo : le logo pointe vers le site, et ne
+    // part pas en piece jointe.
+    assert.doesNotMatch(corps.htmlContent, /cid:/);
+    assert.match(corps.htmlContent, /https:\/\/feja\.test\/img\/email\/logo-festival-adja\.png/);
+    assert.equal(corps.attachment, undefined);
+  });
+  activerFauxSmtp();
+});
+
+test("une erreur de l'API Brevo est remontee, pas annoncee comme un envoi", async () => {
+  restaurer();
+  await avecFauxFetch({ ok: false, status: 400, json: { code: "invalid_parameter", message: "sender not valid" } }, async () => {
+    const mail = new EmailDeTest({ settings: REGLAGES_BREVO, email: "a@b.test" });
+    await assert.rejects(() => mail.send(), /Brevo : sender not valid/);
+  });
+  activerFauxSmtp();
+});
+
+test("le SMTP reste prioritaire sur Brevo", () => {
+  assert.equal(transport.voieEnvoi(Object.assign({}, REGLAGES, REGLAGES_BREVO)), "smtp");
+  assert.equal(transport.voieEnvoi(REGLAGES_BREVO), "brevo");
+  assert.equal(transport.voieEnvoi({ brevo_api_key: "xkeysib-XXXXXXXX" }), "aucune");
+});

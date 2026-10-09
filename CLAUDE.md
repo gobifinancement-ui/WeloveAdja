@@ -13,7 +13,7 @@ l'entrée en vérifiant sa photo.
 
 ```bash
 npm start          # http://localhost:3000
-npm test           # e-mails, badge et surveillance (29 tests), sans réseau
+npm test           # e-mails, badge et surveillance (32 tests), sans réseau
 ```
 
 Aucun framework, aucune étape de build. `node server.js` sert les pages et
@@ -86,7 +86,7 @@ js/scan-store.js        IndexedDB du scan : codes, journal, file d'attente, phot
 
 lib/mail/index.js       Point d'entrée unique — le reste du projet n'importe que lui.
 lib/mail/template.js    Gabarit HTML unique (tableaux + styles en ligne, pour Outlook).
-lib/mail/transport.js   SMTP d'abord, Resend en repli.
+lib/mail/transport.js   SMTP d'abord, puis API Brevo, Resend en dernier repli.
 lib/mail/senders.js     Une classe par type d'e-mail.
 
 test/mail.test.js       Un test par type d'e-mail, transport simulé.
@@ -301,7 +301,8 @@ Wi-Fi avant l'événement** (bouton dans l'app de scan).
   media queries) et Gmail retire la balise `<style>` sur mobile.
 - **Une classe par événement** (`senders.js`) : paiement confirmé, code de
   vérification, paiement échoué, alerte interne, e-mail de test.
-- **Acheminement** (`transport.js`) : SMTP d'abord, Resend en repli. Les
+- **Acheminement** (`transport.js`) : SMTP d'abord (boîte du domaine ou relais
+  SMTP de Brevo), puis l'API HTTPS de Brevo, Resend en dernier repli. Les
   identifiants viennent de l'environnement d'abord, des réglages ensuite.
 - L'alerte interne part vers `MAIL_ALERT_TO` → `alert_email` → `vendeur_email`.
 
@@ -339,7 +340,8 @@ FEDAPAY_WEBHOOK_SECRET
 SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD / SMTP_SECURE / SMTP_TLS_STRICT
 MAIL_FROM
 MAIL_ALERT_TO
-RESEND_API_KEY           repli si aucun SMTP
+BREVO_API_KEY / BREVO_FROM  envoi par l'API Brevo si aucun SMTP
+RESEND_API_KEY           dernier repli
 ```
 
 L'environnement l'emporte sur les réglages de l'admin. Le mot de passe
@@ -396,7 +398,7 @@ mémoire saturés, base ou sauvegarde en échec.
 - Journal : `data/securite.jsonl`, visible dans Admin → Réglages → Sécurité
   (avec un bouton d'alerte de test).
 - Destinataire : `MAIL_SECURITE_TO` (.env) → `securite_email` → adresse des
-  alertes internes. **Sans SMTP ni Resend, rien ne part** : tout reste au journal.
+  alertes internes. **Sans SMTP, Brevo ni Resend, rien ne part** : tout reste au journal.
 - Pour signaler un nouvel incident : `sentinelle.signaler({ gravite, type,
   titre, details, ip, cle })`, avec une consigne dans `CONSIGNES`.
 - Sous 300 Mo de disque libre, les inscriptions (photos) sont refusées : un
@@ -458,6 +460,10 @@ Dans une page qui ne l'a pas, masquer par `hidden` n'est pas fiable.
   désormais par `ecrireDurable` (fsync) et les sauvegardes copient la base en
   mémoire. Au démarrage, une base illisible fait refuser le lancement avec le
   nom de la dernière sauvegarde valide — le serveur ne la remplace jamais seul.
+- **L'API Brevo n'a pas d'image intégrée par cid** : le logo y est remplacé
+  par son adresse publique (`/img/email/…`), ou à défaut inscrit en base64
+  dans le HTML — que Gmail n'affiche pas. Le relais SMTP de Brevo, lui, garde
+  le cid.
 - **Le SDK Resend ne lève jamais** : il rend `{data: null, error}`. Sans
   vérification explicite, on annonce un e-mail envoyé qui ne l'est pas.
 - **Le rattrapage d'un paiement en attente** (`resumePendingPayment`) ne se
@@ -476,7 +482,7 @@ Rien de tout cela n'est un défaut du code ; ce sont des choses à fournir :
 | Manque | Conséquence |
 |---|---|
 | Clé **FedaPay** valide | Aucun paiement réel. Mode démonstration en attendant. |
-| **SMTP** ou clé Resend réelle | Aucun e-mail ne part. |
+| **SMTP**, clé Brevo ou clé Resend réelle | Aucun e-mail ne part. |
 | `PUBLIC_BASE_URL` publique | Le retour de paiement renvoie le client sur son propre téléphone. |
 | Hébergement **HTTPS** | Ni caméra de scan, ni mode hors-ligne le jour J. |
 | Domaine + **SPF / DKIM / DMARC** | Les e-mails partent en indésirables. |

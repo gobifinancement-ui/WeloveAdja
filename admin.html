@@ -808,6 +808,12 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Clé API WaChap</label><span class="desc">Notifications WhatsApp à l'organisateur</span>
             <div class="ipwrap"><input class="in" data-set="wachapKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
+          <div class="f"><label>Clé API Brevo</label><span class="desc">Envoi par l'API de Brevo (xkeysib-…), utilisée si le SMTP n'est pas rempli. Pour passer par le relais SMTP de Brevo, remplis plutôt les champs SMTP plus bas (smtp-relay.brevo.com, port 587).</span>
+            <div class="ipwrap"><input class="in" data-set="brevoKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          </div>
+          <div class="f"><label>Email expéditeur Brevo</label><span class="desc">Une adresse validée dans ton compte Brevo. Ex. FEJA &lt;noreply@fejafestival.com&gt;</span>
+            <input class="in" data-set="brevoFrom" placeholder="FEJA &lt;noreply@…&gt;">
+          </div>
           <div class="f"><label>Clé API Resend</label><span class="desc">Envoi des emails de confirmation</span>
             <div class="ipwrap"><input class="in" data-set="resendKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
@@ -816,7 +822,7 @@ button{font-family:var(--body);cursor:pointer}
           </div>
           <div class="f" style="margin-bottom:6px">
             <label>Envoi des e-mails (SMTP du domaine)</label>
-            <span class="desc">Renseigne la boîte mail de ton domaine. Sans elle, le site retombe sur Resend, et les messages ne partent pas de ton propre domaine. Ces valeurs peuvent aussi vivre dans le fichier .env du serveur, qui l'emporte sur ce formulaire.</span>
+            <span class="desc">Renseigne la boîte mail de ton domaine. Sans elle, le site passe par Brevo (ou Resend), et les messages ne partent pas de ton propre domaine. Ces valeurs peuvent aussi vivre dans le fichier .env du serveur, qui l'emporte sur ce formulaire.</span>
           </div>
           <div class="f"><label>Serveur SMTP (hôte)</label><span class="desc">Le nom EXACT donné par l'hébergeur de tes boîtes mail. Ne devine pas : sur un serveur mutualisé, le certificat porte souvent un nom du type mail62.hebergeur-panel.com.</span>
             <input class="in" data-set="smtpHost" placeholder="mail62.hebergeur-panel.com" autocomplete="off">
@@ -1252,7 +1258,7 @@ document.getElementById('mailVerify').addEventListener('click', async e => {
         'Expéditeur : ' + (d.expediteur || '—'), 'ok');
     }else{
       direMail('Échec : ' + (d.raison || 'raison inconnue') +
-        (d.voie === 'resend' ? '\n\nLe site enverra par Resend en attendant.' : ''), 'ko');
+        (d.voie === 'brevo' ? '\n\nLe SMTP est vide : le site enverra par l\'API Brevo.' : d.voie === 'resend' ? '\n\nLe site enverra par Resend en attendant.' : ''), 'ko');
     }
   }catch(err){ direMail('Test impossible : ' + err.message, 'ko'); }
   finally{ fin(); }
@@ -1634,6 +1640,8 @@ const SETTINGS_MAP = {
   wachapKey:             'wachap_access_token',
   resendKey:             'resend_api_key',
   resendFrom:            'resend_from',
+  brevoKey:              'brevo_api_key',
+  brevoFrom:             'brevo_from',
   smtpHost:              'smtp_host',
   smtpPort:              'smtp_port',
   smtpUser:              'smtp_user',

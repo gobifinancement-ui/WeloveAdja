@@ -88,6 +88,10 @@ const DEFAULT_SETTINGS = {
   wachap_access_token: "",
   resend_api_key: "",
   resend_from: "",
+  // Brevo par API (BREVO_API_KEY, BREVO_FROM dans .env l'emportent). Pour
+  // le relais SMTP de Brevo, remplir plutot les champs SMTP ci-dessous.
+  brevo_api_key: "",
+  brevo_from: "",
   // --- Envoi par le SMTP de la boite du domaine ---
   // Ces valeurs peuvent aussi venir de l'environnement (SMTP_HOST,
   // SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_SECURE, MAIL_FROM), qui
@@ -240,6 +244,8 @@ const SETTINGS_KEY_MAP = {
   wachapKey:            "wachap_access_token",
   resendKey:            "resend_api_key",
   resendFrom:           "resend_from",
+  brevoKey:             "brevo_api_key",
+  brevoFrom:            "brevo_from",
   smtpHost:             "smtp_host",
   smtpPort:             "smtp_port",
   smtpUser:             "smtp_user",
@@ -334,6 +340,7 @@ const REGLAGES_SENSIBLES = {
   smtp_password: { nom: "Mot de passe SMTP", secret: true },
   mail_from: { nom: "Expéditeur des e-mails" },
   resend_api_key: { nom: "Clé Resend", secret: true },
+  brevo_api_key: { nom: "Clé Brevo", secret: true },
   alert_email: { nom: "Adresse des alertes internes" },
   securite_email: { nom: "Adresse des alertes de sécurité", critique: true },
 };
@@ -1548,16 +1555,6 @@ function getConfigHealth(settings = getSettings()) {
     add("ok", "webhook", "Secret webhook configuré", null);
   }
 
-  const resendKey = process.env.RESEND_API_KEY || settings.resend_api_key || "";
-  if (!resendKey) {
-    add("warn", "email", "Envoi d'emails non configuré",
-      "Les participants ne recevront pas leur code par email. Ils le verront à l'écran après paiement.");
-  } else if (resendKey.length < 20) {
-    add("warn", "email", "Clé email probablement incomplète", "Les emails risquent de ne pas partir.");
-  } else {
-    add("ok", "email", "Envoi d'emails configuré", null);
-  }
-
   const amount = Number(settings.participation_fee);
   if (!Number.isFinite(amount) || amount <= 0) {
     add("error", "amount", "Montant de participation invalide", "Renseigne un montant supérieur à zéro.");
@@ -1631,15 +1628,22 @@ function getConfigHealth(settings = getSettings()) {
   // Moyen d'envoi. Sans lui, ni le billet ni le code de recuperation ne
   // partent : c'est bloquant, pas cosmetique.
   const cfgSmtp = mail.getSmtpConfig(settings);
-  const cleResend = process.env.RESEND_API_KEY || settings.resend_api_key || "";
-  if (cfgSmtp) {
+  const voie = mail.voieEnvoi(settings);
+  if (voie === "smtp") {
     add("ok", "mail", `Envoi par SMTP (${cfgSmtp.host}:${cfgSmtp.port})`, null);
-  } else if (cleResend && !/X{3,}/i.test(cleResend)) {
+  } else if (voie === "brevo") {
+    if (!mail.getFromAddress(settings, settings.event_name)) {
+      add("error", "mail", "Brevo : expéditeur absent",
+        "Renseigne l'e-mail expéditeur Brevo, une adresse validée dans ton compte Brevo. Sans elle, Brevo refuse chaque envoi.");
+    } else {
+      add("ok", "mail", "Envoi par Brevo (API)", null);
+    }
+  } else if (voie === "resend") {
     add("warn", "mail", "Envoi par Resend, pas par la boîte du domaine",
-      "Fonctionne, mais les messages ne partent pas de ton propre domaine. Renseigne le SMTP pour une identité d'expéditeur cohérente.");
+      "Fonctionne, mais les messages ne partent pas de ton propre domaine. Renseigne le SMTP ou Brevo pour une identité d'expéditeur cohérente.");
   } else {
     add("error", "mail", "Aucun moyen d'envoi d'e-mail",
-      "Ni SMTP ni clé Resend. Le badge et le code de récupération ne partiront pas.");
+      "Ni SMTP, ni clé Brevo, ni clé Resend. Le badge et le code de récupération ne partiront pas.");
   }
 
   if (!String(settings.alert_email || process.env.MAIL_ALERT_TO || "").trim()) {
@@ -1683,6 +1687,7 @@ const SECRET_SETTING_KEYS = [
   "payment_public_key",
   "fedapay_webhook_secret",
   "resend_api_key",
+  "brevo_api_key",
   "smtp_password",
   "wachap_access_token",
   "wachap_instance_id",
@@ -4851,7 +4856,7 @@ async function handleApi(request, response, url) {
           chiffrement: cfg ? (cfg.secure ? "TLS implicite (465)" : "STARTTLS") : null,
           utilisateur: cfg ? cfg.user : null,
           expediteur: mail.getFromAddress(settings, settings.event_name) || null,
-          voie: cfg ? "smtp" : (settings.resend_api_key || process.env.RESEND_API_KEY ? "resend" : "aucune"),
+          voie: mail.voieEnvoi(settings),
         });
         return;
       }
