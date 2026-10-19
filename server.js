@@ -3957,8 +3957,37 @@ async function finalizePaidParticipant(participant, transaction, settings) {
   }
 
   const cle = participant.groupe_id || participant.id;
-  return await avecVerrou(`feja:achat:${cle}`, async () =>
+  const resultat = await avecVerrou(`feja:achat:${cle}`, async () =>
     await finaliserAchat((await getParticipantById(participant.id)) || participant, transaction, settings));
+
+  // E-mail et alerte HORS du verrou : le badge est deja enregistre, une
+  // seconde confirmation verra « deja valide ». Les garder sous le verrou
+  // faisait passer les validations quelques-unes a la fois (connexions de
+  // verrou occupees pendant tout l'envoi) : 45 s d'attente a 200 acheteurs.
+  if (!resultat.alreadyFinalized) {
+    resultat.emailSent = await envoyerBadgesPayes(resultat.billets, settings);
+  }
+  return resultat;
+}
+
+async function envoyerBadgesPayes(billets, settings) {
+  // Un seul e-mail pour tout l'achat : cinq messages pour cinq billets
+  // ressembleraient a une erreur d'envoi.
+  const emailSent = await sendValidationEmail(billets, settings).catch((error) => {
+    console.error("Email de validation non envoye:", error.message);
+    const exemples = sentinelle.retenirExemple("email-badge", error.message);
+    if (sentinelle.franchit("email-badge", 3, 30 * 60 * 1000)) {
+      sentinelle.signaler({ gravite: "alerte", type: "email_echec", titre: "Les e-mails de badge ne partent pas (3 échecs en 30 min)",
+        cle: "email-badge", details: [["Erreurs", exemples.join("  |  ")]] });
+    }
+    return false;
+  });
+
+  // Point de passage unique de TOUT paiement valide, quel que soit le chemin
+  // (retour de paiement, webhook, mode demonstration). Accrochee ailleurs,
+  // l'alerte manquait le parcours de demonstration.
+  alerterInscriptionPayee(billets, settings);
+  return emailSent;
 }
 
 async function finaliserAchat(participant, transaction, settings) {
@@ -4020,24 +4049,8 @@ async function finaliserAchat(participant, transaction, settings) {
   const billets = await getParticipantsDuGroupe(await getParticipantById(participant.id));
   const updatedParticipant = billets.find((b) => b.id === participant.id) || billets[0];
 
-  // Un seul e-mail pour tout l'achat : cinq messages pour cinq billets
-  // ressembleraient a une erreur d'envoi.
-  const emailSent = await sendValidationEmail(billets, settings).catch((error) => {
-    console.error("Email de validation non envoye:", error.message);
-    const exemples = sentinelle.retenirExemple("email-badge", error.message);
-    if (sentinelle.franchit("email-badge", 3, 30 * 60 * 1000)) {
-      sentinelle.signaler({ gravite: "alerte", type: "email_echec", titre: "Les e-mails de badge ne partent pas (3 échecs en 30 min)",
-        cle: "email-badge", details: [["Erreurs", exemples.join("  |  ")]] });
-    }
-    return false;
-  });
-
-  // Point de passage unique de TOUT paiement valide, quel que soit le chemin
-  // (retour de paiement, webhook, mode demonstration). Accrochee ailleurs,
-  // l'alerte manquait le parcours de demonstration.
-  alerterInscriptionPayee(billets, settings);
-
-  return { participant: updatedParticipant, billets, emailSent, alreadyFinalized: false };
+  // L'e-mail part apres le verrou (finalizePaidParticipant).
+  return { participant: updatedParticipant, billets, emailSent: false, alreadyFinalized: false };
 }
 
 function normalizeParticipant(p) {
@@ -4545,7 +4558,10 @@ async function handleApi(request, response, url) {
       // Chaque appel ecrit une photo sur le disque et cree un client chez
       // FedaPay. Sans plafond, une boucle remplissait le disque du serveur et
       // polluait le compte de paiement.
-      const retryAfter = await rateLimit(request, "payment", 60, 10 * 60 * 1000);
+      // 400 et non 60 : MTN et Moov font sortir des milliers de telephones
+      // par la meme adresse IP ; a l'ouverture des ventes, le 61e acheteur
+      // d'un operateur etait bloque. Le plafond fin reste par e-mail.
+      const retryAfter = await rateLimit(request, "payment", 400, 10 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop d'inscriptions depuis cet appareil. Réessaie dans quelques minutes.");
         return;
