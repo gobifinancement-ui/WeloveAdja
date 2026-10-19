@@ -13,7 +13,9 @@ l'entrée en vérifiant sa photo.
 
 ```bash
 npm start          # http://localhost:3000
-npm test           # e-mails, badge et surveillance (32 tests), sans réseau
+npm test           # e-mails, badge, surveillance et parcours complet, sans réseau
+FEJA_TEST_MYSQL=mysql://root@127.0.0.1:3399 node --test test/parcours.test.js
+                   # le parcours sur TROIS serveurs et une base MySQL, comme chez l'hébergeur
 ```
 
 Aucun framework, aucune étape de build. `node server.js` sert les pages et
@@ -32,7 +34,14 @@ seul gestionnaire. Les pages sont des fichiers HTML autonomes, chacun avec son
 `<style>` et son `<script>` en ligne. Rien à compiler, rien à installer sur la
 machine de l'organisation le jour de l'événement.
 
-**La base est un fichier SQLite en mémoire**, via `sql.js` (WebAssembly, donc
+**Deux bases possibles, choisies au démarrage.** Sur un PC (et dans les tests
+par défaut) : la base SQLite en mémoire décrite ci-dessous. Chez l'hébergeur,
+dès que `DB_NAME` est défini : **MySQL** (`lib/base-mysql.js`), parce que
+Hostinger fait tourner **plusieurs processus de l'appli en même temps**, sans
+réglage pour n'en garder qu'un (réponse du support, 19/10/2026). Voir la
+section « Plusieurs processus » plus bas.
+
+**La base locale est un fichier SQLite en mémoire**, via `sql.js` (WebAssembly, donc
 aucune compilation native). Elle est écrite sur disque à chaque modification
 par `persistDatabase()` — fichier temporaire, fsync, puis renommage, pour
 qu'une coupure de courant ne laisse jamais un fichier à moitié écrit.
@@ -346,6 +355,9 @@ FEJA_DATA_DIR            base + sauvegardes hors du dossier de l'appli (defaut .
 FEJA_UPLOADS_DIR         photos, QR, images de marque hors de l'appli (defaut ./uploads)
 FEJA_VERROU              "reprendre" chez un hebergeur : un nouveau processus arrete
                          l'ancien au lieu de refuser de demarrer (voir prendreVerrou)
+DB_HOST / DB_PORT        MySQL de l'hebergeur : 127.0.0.1 / 3306 chez Hostinger
+DB_NAME / DB_USER        DB_NAME defini = mode MySQL (sinon base locale sql.js)
+DB_PASSWORD              jamais dans le code ni dans un fichier versionne
 ```
 
 Chez Hostinger, l'appli est redeployee dans un nouveau dossier a chaque mise
@@ -361,6 +373,38 @@ transforme les erreurs de configuration silencieuses en liste de contrôle :
 clé absente, adresse publique locale, environnement encore en sandbox.
 
 ---
+
+## Plusieurs processus (MySQL, hébergement)
+
+Chez Hostinger, deux confirmations du même paiement, deux postes de scan ou
+deux essais de mot de passe arrivent souvent sur **deux processus
+différents**. Rien de ce qui doit être unique ou compté ne peut donc vivre
+dans la mémoire d'un processus :
+
+- **Validation d'un achat** : `finalizePaidParticipant` passe par
+  `avecVerrou("feja:achat:<groupe>")` (GET_LOCK MySQL, file en mémoire avec
+  sql.js). La validation manuelle de l'admin prend le même verrou.
+- **Code et numéro de badge** : `enregistrerValidation()` calcule le numéro
+  DANS l'UPDATE et rejoue l'écriture si l'index UNIQUE refuse un doublon
+  (`aRejouer`).
+- **Entrée scannée** : UPDATE conditionnel (`... AND statut_code <> 'utilise'`)
+  et test du nombre de lignes modifiées (`run()` le rend).
+- **Limites anti-abus** : table `limites` (`rateLimitKey`), et essais du code
+  de récupération incrémentés atomiquement.
+- **Tâches de fond** (sauvegarde, purges, surveillance) : `tacheUnique()`, un
+  seul processus à la fois.
+- **Démarrage** : `listen()` est appelé tout de suite (Hostinger arrête une
+  appli qui n'a pas écouté en 3 s) ; les requêtes attendent `basePrete`.
+
+Toutes les fonctions qui touchent la base sont **asynchrones**. Un `await`
+oublié devant `getSessionRole()` rendrait une promesse, toujours « vraie » :
+l'admin s'ouvrirait à tout le monde. Le test `test/parcours.test.js` en mode
+MySQL (trois serveurs) vérifie ces garanties de bout en bout.
+
+Limites connues : la surveillance (`lib/sentinelle.js`) compte et
+dédoublonne ses alertes par processus, donc une même alerte peut partir une
+fois par processus ; la liste des objets remis (`items_received`) est relue
+puis réécrite.
 
 ## Sécurité — ce qui est déjà en place
 

@@ -14,6 +14,12 @@ const mail = require("./lib/mail");
 const { getTicketLogoPath, qrMatrice, textesBadge, MAX_TICKET_LOGO_BYTES, TICKET_LOGO_CACHE } = require("./lib/ticket-pdf");
 const BadgeLayout = require("./js/badge-layout");
 const { Sentinelle } = require("./lib/sentinelle");
+const baseMysql = require("./lib/base-mysql");
+
+// MySQL des que DB_NAME est defini (hebergement), sinon la base locale sql.js
+// (PC de l'organisation, tests). Voir lib/base-mysql.js pour le pourquoi.
+const CONFIG_MYSQL = baseMysql.configurationDepuisEnv();
+const MODE_MYSQL = Boolean(CONFIG_MYSQL);
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
@@ -302,7 +308,8 @@ let db;
 const sentinelle = new Sentinelle({
   dossier: DATA_DIR,
   envoyer: async (sujet, lignes, note) => {
-    const settings = db ? getSettings() : { ...DEFAULT_SETTINGS };
+    // Base pas encore ouverte (alerte au demarrage) : reglages par defaut.
+    const settings = (MODE_MYSQL || db) ? await getSettings().catch(() => ({ ...DEFAULT_SETTINGS })) : { ...DEFAULT_SETTINGS };
     const alerte = new mail.AlerteSecuriteEmail({
       settings,
       baseUrl: getPublicBaseUrl(settings),
@@ -319,7 +326,7 @@ sentinelle.brancherConsole();
 
 // Adresses d'ou l'admin s'est deja connecte (20 dernieres). Une connexion
 // depuis une adresse jamais vue est le premier signe d'un mot de passe vole.
-function noterConnexionAdmin(ip, settings) {
+async function noterConnexionAdmin(ip, settings) {
   let connues = [];
   try { connues = JSON.parse(settings.securite_ip_admin || "[]"); } catch {}
   if (connues.includes(ip)) return;
@@ -329,7 +336,7 @@ function noterConnexionAdmin(ip, settings) {
   } else {
     sentinelle.signaler({ gravite: "info", type: "admin_connexion", titre: "Première connexion admin enregistrée", ip });
   }
-  saveSettings({ securite_ip_admin: JSON.stringify([...connues, ip].slice(-20)) });
+  await saveSettings({ securite_ip_admin: JSON.stringify([...connues, ip].slice(-20)) });
 }
 
 // Reglages dont la modification merite d'etre signalee : un compte admin
@@ -435,7 +442,7 @@ function inscriptionsSuspendues(request) {
 
 // Controles toutes les 5 minutes : ressources du serveur et reglages qui
 // coutent cher s'ils restent en place par oubli.
-function surveillancePeriodique() {
+async function surveillancePeriodique() {
   try {
     const libre = espaceDisqueLibre();
     if (libre < 1024 * 1024 * 1024) {
@@ -456,7 +463,7 @@ function surveillancePeriodique() {
     }
 
     if (!db) return;
-    const settings = getSettings();
+    const settings = await getSettings();
     // Rappel toutes les 6 h tant que le mode demonstration reste allume.
     if (isDemoMode(settings)) {
       sentinelle.signaler({ gravite: "alerte", type: "demo", titre: "Le mode démonstration est toujours actif",
@@ -667,6 +674,8 @@ let ecritureEnCours = null;
 let prochaineEcriture = null;
 
 function persistDatabase() {
+  // MySQL ecrit chaque requete sur son disque : rien a faire ici.
+  if (MODE_MYSQL) return Promise.resolve();
   if (!prochaineEcriture) {
     let tenir, rompre;
     const promesse = new Promise((res, rej) => { tenir = res; rompre = rej; });
@@ -788,27 +797,40 @@ function messageBaseIllisible() {
 
 // Copie de securite horodatee, gardee en rotation. Sert de filet si la base
 // est corrompue ou effacee par erreur la veille de l'evenement.
-function backupDatabase() {
+async function backupDatabase() {
   try {
-    if (!db) return;
+    let octets;
+    let extension;
+    if (MODE_MYSQL) {
+      // Un seul processus sauvegarde : les autres trouvent le verrou pris et
+      // passent leur tour, au lieu d'ecrire tous le meme fichier en meme temps.
+      const tour = await baseMysql.avecVerrou("feja:sauvegarde", 0, async () => {
+        octets = Buffer.from(JSON.stringify(await baseMysql.exporter()));
+      });
+      if (!tour.pris) return;
+      extension = ".json";
+    } else {
+      if (!db) return;
+      // Copie de la base EN MEMOIRE, et non du fichier : si le fichier sur
+      // disque etait abime, la rotation remplacerait peu a peu toutes les
+      // bonnes sauvegardes par des copies illisibles.
+      octets = Buffer.from(db.export());
+      extension = ".sqlite";
+    }
 
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
     const stamp = new Date().toISOString().slice(0, 13).replace(/[-T:]/g, "");
-    // Copie de la base EN MEMOIRE, et non du fichier : si le fichier sur
-    // disque etait abime, la rotation remplacerait peu a peu toutes les
-    // bonnes sauvegardes par des copies illisibles.
-    const octets = Buffer.from(db.export());
-    ecrireDurable(path.join(BACKUP_DIR, `weloveadja-${stamp}.sqlite`), octets);
+    ecrireDurable(path.join(BACKUP_DIR, `weloveadja-${stamp}${extension}`), octets);
 
     // Une copie par jour, gardee un mois. Les copies horaires ne couvrent
     // que 24 h : une erreur remarquee le surlendemain (inscriptions effacees
     // par megarde) n'aurait plus aucune sauvegarde saine.
-    const jour = path.join(BACKUP_DIR, `jour-${stamp.slice(0, 8)}.sqlite`);
+    const jour = path.join(BACKUP_DIR, `jour-${stamp.slice(0, 8)}${extension}`);
     if (!fs.existsSync(jour)) ecrireDurable(jour, octets);
 
     const tourner = (prefixe, garder) => {
       const fichiers = fs.readdirSync(BACKUP_DIR)
-        .filter((name) => name.startsWith(prefixe) && name.endsWith(".sqlite"))
+        .filter((name) => name.startsWith(prefixe) && name.endsWith(extension))
         .sort();
       fichiers.slice(0, Math.max(0, fichiers.length - garder)).forEach((name) => {
         try { fs.unlinkSync(path.join(BACKUP_DIR, name)); } catch {}
@@ -823,7 +845,11 @@ function backupDatabase() {
   }
 }
 
-function statementAll(sql, params = []) {
+// Acces a la base. Asynchrones des deux cotes : MySQL repond par le reseau,
+// et le code des routes doit etre le meme quelle que soit la base.
+async function statementAll(sql, params = []) {
+  if (MODE_MYSQL) return baseMysql.toutes(sql, params);
+
   const statement = db.prepare(sql);
   const rows = [];
 
@@ -839,21 +865,70 @@ function statementAll(sql, params = []) {
   return rows;
 }
 
-function statementGet(sql, params = []) {
-  return statementAll(sql, params)[0] || null;
+async function statementGet(sql, params = []) {
+  return (await statementAll(sql, params))[0] || null;
 }
 
-function run(sql, params = []) {
+// Rend le nombre de lignes modifiees : c'est lui qui dit, quand deux
+// processus tentent la meme mise a jour, lequel l'a vraiment faite.
+async function run(sql, params = []) {
+  if (MODE_MYSQL) return (await baseMysql.executer(sql, params)).changements;
+
   const statement = db.prepare(sql);
   try {
     statement.run(params);
   } finally {
     statement.free();
   }
+  return db.getRowsModified();
 }
 
-function ensureParticipantColumns() {
-  const existingColumns = new Set(statementAll("PRAGMA table_info(participants)").map((column) => column.name));
+// Verrou entre les traitements qui lisent puis ecrivent (numero de badge,
+// validation d'un achat). Avec MySQL il est partage par tous les processus ;
+// avec sql.js, une file en memoire suffit : il n'y a qu'un processus, mais les
+// await entre la lecture et l'ecriture laissent passer d'autres requetes.
+const filesLocales = new Map();
+
+async function avecVerrou(nom, fn) {
+  // Avec MySQL, la file locale passe d'abord : deux requetes du meme
+  // processus sur le meme achat n'occupent pas deux connexions a attendre.
+  const executer = MODE_MYSQL ? async () => (await baseMysql.avecVerrou(nom, 30, fn)).valeur : fn;
+
+  const precedente = filesLocales.get(nom) || Promise.resolve();
+  const suivante = precedente.catch(() => {}).then(executer);
+  filesLocales.set(nom, suivante);
+  suivante.finally(() => { if (filesLocales.get(nom) === suivante) filesLocales.delete(nom); }).catch(() => {});
+  return suivante;
+}
+
+// Tache de fond (sauvegarde, purge...) faite par un seul processus a la fois :
+// les autres passent leur tour.
+async function tacheUnique(nom, fn) {
+  if (!MODE_MYSQL) return fn();
+  const tour = await baseMysql.avecVerrou(`feja:tache:${nom}`, 0, fn);
+  return tour.valeur;
+}
+
+// Insertion ou mise a jour d'un reglage, dans la syntaxe de chaque base.
+const SQL_ECRIRE_REGLAGE = MODE_MYSQL
+  ? "INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)"
+  : "INSERT INTO settings (`key`, value) VALUES (?, ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value";
+
+async function colonnesDe(table) {
+  if (MODE_MYSQL) return baseMysql.colonnes(table);
+  return new Set((await statementAll(`PRAGMA table_info(${table})`)).map((column) => column.name));
+}
+
+// Ecriture a rejouer : doublon sur un index UNIQUE (code ou numero de badge
+// tire au meme instant par un autre processus), ou interblocage tranche par
+// MySQL entre deux validations simultanees. On retire et on recommence.
+function aRejouer(error) {
+  const texte = `${(error && error.code) || ""} ${(error && error.message) || ""}`;
+  return /ER_DUP_ENTRY|ER_LOCK_DEADLOCK|ER_LOCK_WAIT_TIMEOUT|UNIQUE constraint failed/.test(texte);
+}
+
+async function ensureParticipantColumns() {
+  const existingColumns = await colonnesDe("participants");
   const requiredColumns = [
     ["participant_photo_url", "TEXT"],
     ["items_received", "TEXT"],
@@ -874,26 +949,32 @@ function ensureParticipantColumns() {
     ["numero_badge", "INTEGER"],
   ];
 
-  requiredColumns.forEach(([name, definition]) => {
+  for (const [name, definition] of requiredColumns) {
     if (!existingColumns.has(name)) {
-      run(`ALTER TABLE participants ADD COLUMN ${name} ${definition}`);
+      // MySQL : INTEGER devient BIGINT, comme dans le schema de base-mysql.
+      const type = MODE_MYSQL && definition === "INTEGER" ? "BIGINT" : definition;
+      await run(`ALTER TABLE participants ADD COLUMN ${name} ${type}`);
     }
-  });
+  }
 
-  // Cree apres les ALTER : place dans le bloc de schema, l'index porterait sur
-  // une colonne qui n'existe pas encore dans les bases deja en service.
-  run("CREATE INDEX IF NOT EXISTS idx_participants_groupe ON participants(groupe_id)");
-  // Unique : deux badges ne peuvent pas porter le meme numero, meme si une
-  // future modification oubliait de passer par prochainNumeroBadge().
-  run("CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_numero ON participants(numero_badge)");
-  numeroterBadgesExistants();
+  // Avec MySQL, ces index sont deja dans le CREATE TABLE (lib/base-mysql.js).
+  if (!MODE_MYSQL) {
+    // Cree apres les ALTER : place dans le bloc de schema, l'index porterait sur
+    // une colonne qui n'existe pas encore dans les bases deja en service.
+    await run("CREATE INDEX IF NOT EXISTS idx_participants_groupe ON participants(groupe_id)");
+    // Unique : deux badges ne peuvent pas porter le meme numero, meme si une
+    // future modification oubliait de passer par prochainNumeroBadge().
+    await run("CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_numero ON participants(numero_badge)");
+  }
+  await numeroterBadgesExistants();
 }
 
-/* Prochain numero de badge. A appeler juste avant l'UPDATE qui l'enregistre,
-   sans « await » entre les deux : la base est en memoire et le serveur n'a
-   qu'un fil, deux validations ne peuvent donc pas lire le meme maximum. */
-function prochainNumeroBadge() {
-  const ligne = statementGet("SELECT COALESCE(MAX(numero_badge), 0) + 1 AS n FROM participants");
+/* Prochain numero de badge. A appeler sous avecVerrou("feja:numero"), juste
+   avant l'UPDATE qui l'enregistre : sinon deux validations simultanees (deux
+   processus, ou deux requetes entre deux await) liraient le meme maximum.
+   L'index UNIQUE sur numero_badge reste le dernier rempart. */
+async function prochainNumeroBadge() {
+  const ligne = await statementGet("SELECT COALESCE(MAX(numero_badge), 0) + 1 AS n FROM participants");
   return Number(ligne && ligne.n) || 1;
 }
 
@@ -904,44 +985,43 @@ function formaterNumeroBadge(numero) {
 
 /* Badges valides avant l'arrivee du numero : ils en recoivent un, dans
    l'ordre ou ils ont ete payes, pour que leur badge s'affiche complet. */
-function numeroterBadgesExistants() {
-  const sansNumero = statementAll(
-    `SELECT id FROM participants
-     WHERE statut_paiement = 'Valide' AND code_unique IS NOT NULL AND code_unique <> '' AND numero_badge IS NULL
-     ORDER BY COALESCE(validation_at, timestamp), COALESCE(groupe_index, 1), id`,
-  );
-  if (!sansNumero.length) return;
-  sansNumero.forEach((ligne) => {
-    run("UPDATE participants SET numero_badge = ? WHERE id = ?", [prochainNumeroBadge(), ligne.id]);
+async function numeroterBadgesExistants() {
+  await avecVerrou("feja:numero", async () => {
+    const sansNumero = await statementAll(
+      `SELECT id FROM participants
+       WHERE statut_paiement = 'Valide' AND code_unique IS NOT NULL AND code_unique <> '' AND numero_badge IS NULL
+       ORDER BY COALESCE(validation_at, timestamp), COALESCE(groupe_index, 1), id`,
+    );
+    if (!sansNumero.length) return;
+    for (const ligne of sansNumero) {
+      await run("UPDATE participants SET numero_badge = ? WHERE id = ?", [await prochainNumeroBadge(), ligne.id]);
+    }
+    persistDatabase();
+    console.log(`Numero de badge attribue a ${sansNumero.length} badge(s) deja valide(s).`);
   });
-  persistDatabase();
-  console.log(`Numero de badge attribue a ${sansNumero.length} badge(s) deja valide(s).`);
 }
 
 // Les bases creees avant l'introduction des roles n'ont pas la colonne :
 // ALTER TABLE la rajoute sans toucher aux sessions deja ouvertes.
-function ensureSessionColumns() {
-  const columns = new Set(statementAll("PRAGMA table_info(sessions)").map((column) => column.name));
+async function ensureSessionColumns() {
+  const columns = await colonnesDe("sessions");
   if (!columns.has("role")) {
-    run("ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'");
+    await run(`ALTER TABLE sessions ADD COLUMN role ${MODE_MYSQL ? "VARCHAR(32)" : "TEXT"} NOT NULL DEFAULT 'admin'`);
   }
 }
 
-function getSettings() {
-  const rows = statementAll("SELECT key, value FROM settings");
+async function getSettings() {
+  const rows = await statementAll("SELECT `key`, value FROM settings");
   return rows.reduce((accumulator, row) => {
     accumulator[row.key] = row.value;
     return accumulator;
   }, { ...DEFAULT_SETTINGS });
 }
 
-function saveSettings(settings) {
-  Object.entries(settings).forEach(([key, value]) => {
-    run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [
-      key,
-      value == null ? "" : String(value),
-    ]);
-  });
+async function saveSettings(settings) {
+  for (const [key, value] of Object.entries(settings)) {
+    await run(SQL_ECRIRE_REGLAGE, [key, value == null ? "" : String(value)]);
+  }
   persistDatabase();
 }
 
@@ -1020,13 +1100,50 @@ async function prendreVerrou() {
 }
 
 async function initDatabase() {
-  await prendreVerrou();
+  if (MODE_MYSQL) {
+    // Plusieurs processus sur la meme base MySQL : c'est prevu, pas de verrou
+    // de fichier. Un arret demande par l'hebergeur reste un arret propre.
+    ["SIGINT", "SIGTERM", "SIGBREAK"].forEach((signal) => process.on(signal, () => process.exit(0)));
+  } else {
+    await prendreVerrou();
+  }
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   fs.mkdirSync(PARTICIPANT_PHOTOS_DIR, { recursive: true });
   fs.mkdirSync(QRCODES_DIR, { recursive: true });
   fs.mkdirSync(BRANDING_DIR, { recursive: true });
 
+  if (MODE_MYSQL) {
+    await baseMysql.ouvrir(CONFIG_MYSQL);
+    await baseMysql.creerSchema();
+  } else {
+    await ouvrirBaseLocale();
+  }
+
+  await ensureParticipantColumns();
+  await ensureSessionColumns();
+
+  // Seuls les reglages absents recoivent leur valeur par defaut. Reecrire
+  // TOUS les reglages lus (l'ancien comportement) ecrasait, sur MySQL, un
+  // reglage modifie dans l'admin pendant qu'un autre processus demarrait.
+  const presents = new Set((await statementAll("SELECT `key` FROM settings")).map((ligne) => ligne.key));
+  const manquants = Object.fromEntries(Object.entries(DEFAULT_SETTINGS).filter(([cle]) => !presents.has(cle)));
+  if (Object.keys(manquants).length) await saveSettings(manquants);
+  const settings = await getSettings();
+
+  // Migration du mot de passe en clair vers une empreinte scrypt. Se fait une
+  // seule fois, au premier demarrage suivant la mise a jour.
+  const storedPassword = String(settings.admin_password || "");
+  if (storedPassword && !storedPassword.startsWith(PASSWORD_PREFIX)) {
+    await saveSettings({ admin_password: hashPassword(storedPassword) });
+    console.log("Mot de passe admin migre vers un stockage hache.");
+  }
+  // Base locale : les colonnes ajoutees ci-dessus partent sur le disque tout
+  // de suite, sans attendre la prochaine inscription.
+  await persistDatabase();
+}
+
+async function ouvrirBaseLocale() {
   // Reprise de l'ancien fichier de base (feja.sqlite) : on le renomme au lieu
   // de repartir de zero, sinon reglages et participants seraient perdus. Ne
   // s'execute que si la nouvelle base n'existe pas encore.
@@ -1120,20 +1237,6 @@ async function initDatabase() {
       created_at INTEGER NOT NULL
     );
   `);
-
-  ensureParticipantColumns();
-  ensureSessionColumns();
-
-  const settings = getSettings();
-  saveSettings(settings);
-
-  // Migration du mot de passe en clair vers une empreinte scrypt. Se fait une
-  // seule fois, au premier demarrage suivant la mise a jour.
-  const storedPassword = String(settings.admin_password || "");
-  if (storedPassword && !storedPassword.startsWith(PASSWORD_PREFIX)) {
-    saveSettings({ admin_password: hashPassword(storedPassword) });
-    console.log("Mot de passe admin migre vers un stockage hache.");
-  }
 }
 
 function parseJsonBody(request, maxBytes = MAX_BODY_BYTES) {
@@ -1272,8 +1375,16 @@ function getClientIp(request) {
 // Limiteur sur une cle quelconque : sert a compter par ADRESSE EMAIL et pas
 // seulement par IP. Sans cela, changer de reseau suffirait a relancer autant
 // de codes qu'on veut vers la boite de quelqu'un d'autre.
-function rateLimitKey(key, limit, windowMs) {
+async function rateLimitKey(key, limit, windowMs) {
   const now = Date.now();
+
+  // Avec MySQL, le compteur est dans la base : partage par tous les
+  // processus, et il survit a leurs redemarrages.
+  if (MODE_MYSQL) {
+    const { compte, fin } = await baseMysql.compterLimite(key, windowMs);
+    return compte > limit ? Math.max(1, Math.ceil((fin - now) / 1000)) : 0;
+  }
+
   const entry = rateBuckets.get(key);
 
   if (!entry || now > entry.resetAt) {
@@ -1295,25 +1406,15 @@ function rateLimitKey(key, limit, windowMs) {
 // plafond serre bloquait des inconnus les uns par les autres (le 9e acheteur
 // d'une file a l'entree, par exemple). La protection fine se fait par
 // e-mail, par badge ou par participant (rateLimitKey).
-function rateLimit(request, bucket, limit, windowMs) {
-  const key = `${bucket}:${getClientIp(request)}`;
-  const now = Date.now();
-  const entry = rateBuckets.get(key);
-
-  if (!entry || now > entry.resetAt) {
-    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
-    return 0;
-  }
-
-  entry.count += 1;
-  if (entry.count > limit) {
-    return Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
-  }
-
-  return 0;
+async function rateLimit(request, bucket, limit, windowMs) {
+  return await rateLimitKey(`${bucket}:${getClientIp(request)}`, limit, windowMs);
 }
 
-function purgeRateBuckets() {
+async function purgeRateBuckets() {
+  if (MODE_MYSQL) {
+    await tacheUnique("purge-limites", () => baseMysql.purgerLimites());
+    return;
+  }
   const now = Date.now();
   rateBuckets.forEach((entry, key) => {
     if (now > entry.resetAt) rateBuckets.delete(key);
@@ -1329,10 +1430,10 @@ function sendRateLimited(response, retryAfter, message) {
   response.end(JSON.stringify({ error: message, retry_after: retryAfter }));
 }
 
-function createSession(role = "admin") {
+async function createSession(role = "admin") {
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = Date.now() + SESSION_TTL_MS;
-  run("INSERT INTO sessions (token, expires_at, role) VALUES (?, ?, ?)", [token, expiresAt, role]);
+  await run("INSERT INTO sessions (token, expires_at, role) VALUES (?, ?, ?)", [token, expiresAt, role]);
   persistDatabase();
   return token;
 }
@@ -1349,17 +1450,17 @@ const SCAN_ALLOWED_PATHS = new Set([
 
 // Renvoie le role de la session ("admin", "scan") ou null si le jeton est
 // absent, inconnu ou expire.
-function getSessionRole(request) {
+async function getSessionRole(request) {
   const header = request.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
 
   if (!token) return null;
 
-  const row = statementGet("SELECT expires_at, role FROM sessions WHERE token = ?", [token]);
+  const row = await statementGet("SELECT expires_at, role FROM sessions WHERE token = ?", [token]);
 
   if (!row || Number(row.expires_at) < Date.now()) {
     if (row) {
-      run("DELETE FROM sessions WHERE token = ?", [token]);
+      await run("DELETE FROM sessions WHERE token = ?", [token]);
       persistDatabase();
     }
     return null;
@@ -1370,41 +1471,41 @@ function getSessionRole(request) {
   // toutes les quelques secondes) reecrirait toute la base.
   const nextExpiry = Date.now() + SESSION_TTL_MS;
   if (nextExpiry - Number(row.expires_at) > 60 * 60 * 1000) {
-    run("UPDATE sessions SET expires_at = ? WHERE token = ?", [nextExpiry, token]);
+    await run("UPDATE sessions SET expires_at = ? WHERE token = ?", [nextExpiry, token]);
     persistDatabase();
   }
 
   return String(row.role || "admin");
 }
 
-function requireAdmin(request) {
-  return getSessionRole(request) === "admin";
+async function requireAdmin(request) {
+  return await getSessionRole(request) === "admin";
 }
 
 // Nettoyage des reglages ecrits sous leur nom camelCase par l'ancien bug de
 // mapping (le serveur ne les a jamais lus). Si une valeur y a ete saisie alors
 // que la cle reellement utilisee est restee vide, on la recupere : c'est ce que
 // l'organisateur avait voulu enregistrer.
-function migrateStraySettingKeys() {
-  const settings = getSettings();
+async function migrateStraySettingKeys() {
+  const settings = await getSettings();
   const recovered = [];
   const removed = [];
 
-  Object.entries(SETTINGS_KEY_MAP).forEach(([camelKey, target]) => {
+  for (const [camelKey, target] of Object.entries(SETTINGS_KEY_MAP)) {
     const strayValue = settings[camelKey];
-    if (strayValue === undefined) return;
+    if (strayValue === undefined) continue;
 
     const targets = Array.isArray(target) ? target : [target];
-    targets.forEach((name) => {
+    for (const name of targets) {
       if (strayValue && !settings[name]) {
-        run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [name, strayValue]);
+        await run(SQL_ECRIRE_REGLAGE, [name, strayValue]);
         recovered.push(`${camelKey} -> ${name}`);
       }
-    });
+    }
 
-    run("DELETE FROM settings WHERE key = ?", [camelKey]);
+    await run("DELETE FROM settings WHERE `key` = ?", [camelKey]);
     removed.push(camelKey);
-  });
+  }
 
   if (recovered.length) console.log("Reglages recuperes:", recovered.join(", "));
   if (removed.length) {
@@ -1414,8 +1515,8 @@ function migrateStraySettingKeys() {
 }
 
 // Les sessions expirees ne servent qu'a faire grossir la base.
-function purgeExpiredSessions() {
-  run("DELETE FROM sessions WHERE expires_at < ?", [Date.now()]);
+async function purgeExpiredSessions() {
+  await run("DELETE FROM sessions WHERE expires_at < ?", [Date.now()]);
   persistDatabase();
 }
 
@@ -1459,7 +1560,7 @@ function getRotationPresets(settings) {
 }
 
 // Le theme effectif = preset choisi, surcharge par les couleurs personnalisees.
-function resolveTheme(settings = getSettings()) {
+function resolveTheme(settings) {
   const rotation = getRotationPresets(settings);
 
   // Rotation active : le preset du jour l'emporte sur le preset fixe.
@@ -1494,7 +1595,7 @@ function resolveTheme(settings = getSettings()) {
 }
 
 // Feuille servie a toutes les pages : elle surcharge les :root inline des HTML.
-function buildThemeCss(settings = getSettings()) {
+function buildThemeCss(settings) {
   const { colors } = resolveTheme(settings);
   const c = colors;
 
@@ -1541,7 +1642,7 @@ body{background:
 // Icone de repli quand aucun logo n'a ete televerse : un monogramme genere aux
 // couleurs du theme. Evite d'embarquer une image de marque en dur et garde
 // l'app installable des le premier jour.
-function buildDefaultIcon(settings = getSettings()) {
+function buildDefaultIcon(settings) {
   const { colors } = resolveTheme(settings);
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
   const initial = (eventName.trim()[0] || "?").toUpperCase();
@@ -1573,7 +1674,7 @@ function isPubliclyReachableUrl(value) {
 // Etat de preparation de l'evenement. Transforme les erreurs de configuration
 // silencieuses (cle absente, URL locale, montant a zero) en liste de controle
 // affichee dans l'admin.
-function getConfigHealth(settings = getSettings()) {
+function getConfigHealth(settings) {
   const checks = [];
   const add = (level, key, label, detail) => checks.push({ level, key, label, detail });
 
@@ -1776,7 +1877,7 @@ function maskSecretSettings(settings) {
 // renvoie la prochaine occurrence a venir. Sans cela, le compte a rebours
 // passerait a zero le 16 aout et y resterait onze mois, ce qui donne un site
 // a l'abandon.
-function resolveEventDate(settings = getSettings()) {
+function resolveEventDate(settings) {
   const brut = String(settings.event_date || "").trim();
   if (!brut) return "";
 
@@ -1833,7 +1934,7 @@ function buildHeroMedia(settings) {
   };
 }
 
-function publicSettings(settings = getSettings()) {
+function publicSettings(settings) {
   let chiefs = [], sponsors = [], eventItems = [], artists = [];
   try { chiefs = JSON.parse(settings.chiefs_json || "[]"); } catch {}
   try { sponsors = JSON.parse(settings.sponsors_json || "[]"); } catch {}
@@ -1964,7 +2065,7 @@ async function demanderPaiementMobile(settings, jeton, operateur, telephone, pay
   const numero = String(telephone || "").replace(/\D/g, "");
   if (numero.length < 8) throw new Error("Numero de telephone invalide.");
 
-  return fedapayRequest(settings, "POST", `/${op.route}`, {
+  return await fedapayRequest(settings, "POST", `/${op.route}`, {
     token: jeton,
     phone_number: { number: numero, country: String(pays || "BJ").toLowerCase() },
   });
@@ -1999,7 +2100,7 @@ function getOperatorMeta(settings, operator) {
 // l'organisation : elle seule peut verifier autant d'identites a l'entree.
 const MAX_BILLETS_PAR_ACHAT = 10;
 
-function generateParticipantId() {
+async function generateParticipantId() {
   const dateKey = getDateKeyBenin().replace(/-/g, "");
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 symboles, sans O/0/I/1
 
@@ -2010,7 +2111,7 @@ function generateParticipantId() {
     bytes.forEach((value) => { random += alphabet[value % alphabet.length]; });
 
     const id = `WLA-${dateKey}-${random}`;
-    if (!statementGet("SELECT id FROM participants WHERE id = ?", [id])) {
+    if (!await statementGet("SELECT id FROM participants WHERE id = ?", [id])) {
       return id;
     }
   }
@@ -2023,7 +2124,7 @@ function generateParticipantId() {
 // pas pouvoir tirer le meme code avant que l'un l'ait enregistre.
 const codesTires = new Set();
 
-function generateUniqueCode() {
+async function generateUniqueCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -2033,7 +2134,7 @@ function generateUniqueCode() {
       code += alphabet[value % alphabet.length];
     });
 
-    if (!codesTires.has(code) && !statementGet("SELECT id FROM participants WHERE code_unique = ?", [code])) {
+    if (!codesTires.has(code) && !await statementGet("SELECT id FROM participants WHERE code_unique = ?", [code])) {
       codesTires.add(code);
       return code;
     }
@@ -2100,15 +2201,15 @@ function clearTicketCache() {
 // passe. Le dessin l'applique deja de lui-meme (textesBadge) ; l'ecrire en
 // base garde l'admin coherent : il affiche l'annee et l'edition reellement
 // imprimees, et une retouche ne repart pas d'une annee perimee.
-function appliquerBasculeBadge() {
+async function appliquerBasculeBadge() {
   try {
-    const settings = getSettings();
+    const settings = await getSettings();
     const D = BadgeLayout.DEFAUTS;
     const anneeEnregistree = String(settings.badge_annee || "").trim() || D.annee;
     const enCours = textesBadge(settings);
     if (enCours.annee === anneeEnregistree) return false;
 
-    saveSettings({
+    await saveSettings({
       badge_annee: enCours.annee,
       badge_edition: enCours.edition,
       badge_dates: enCours.dates,
@@ -2119,7 +2220,7 @@ function appliquerBasculeBadge() {
     sendInternalAlert(
       `Badge : passage à l'édition ${enCours.edition}`,
       [["Année", enCours.annee], ["Édition", enCours.edition], ["Dates imprimées", enCours.dates.replace(/\*\*/g, "")]],
-      getSettings(),
+      await getSettings(),
       "Vérifie les jours dans Admin → Réglages → Badge : seule l'année a été changée automatiquement.",
     ).catch(() => {});
     return true;
@@ -2304,7 +2405,7 @@ function demarrerPoolPdf() {
   poolPdf.forEach((place) => { if (!place.worker) lancerThreadPdf(place); });
 }
 
-function renderTicketPdf(participant, settings = getSettings()) {
+function renderTicketPdf(participant, settings) {
   // Le thread le moins charge prend la demande.
   const place = poolPdf.reduce((a, b) => (b.enAttente.size < a.enAttente.size ? b : a));
   if (!place.worker) lancerThreadPdf(place);
@@ -2336,8 +2437,8 @@ async function saveQrCode(code, participantId) {
   return `/uploads/qrcodes/${filename}`;
 }
 
-function insertParticipant(participant) {
-  run(
+async function insertParticipant(participant) {
+  await run(
     `
       INSERT INTO participants (
         id, evenement, nom, telephone, whatsapp, email, montant, montant_valeur, paiement,
@@ -2391,35 +2492,35 @@ function insertParticipant(participant) {
   persistDatabase();
 }
 
-function getParticipantById(id) {
-  return statementGet("SELECT * FROM participants WHERE id = ?", [id]);
+async function getParticipantById(id) {
+  return await statementGet("SELECT * FROM participants WHERE id = ?", [id]);
 }
 
-function getParticipantByFedapayTransactionId(transactionId) {
-  return statementGet("SELECT * FROM participants WHERE fedapay_transaction_id = ?", [String(transactionId)]);
+async function getParticipantByFedapayTransactionId(transactionId) {
+  return await statementGet("SELECT * FROM participants WHERE fedapay_transaction_id = ?", [String(transactionId)]);
 }
 
-function getWebhookEventById(id) {
-  return statementGet("SELECT id FROM webhook_events WHERE id = ?", [String(id)]);
+async function getWebhookEventById(id) {
+  return await statementGet("SELECT id FROM webhook_events WHERE id = ?", [String(id)]);
 }
 
-function insertWebhookEvent(event) {
-  run(
+async function insertWebhookEvent(event) {
+  await run(
     "INSERT INTO webhook_events (id, type, object_id, payload, created_at) VALUES (?, ?, ?, ?, ?)",
     [event.id, event.type, event.object_id, event.payload, event.created_at],
   );
   persistDatabase();
 }
 
-function getParticipantByCode(code) {
-  return statementGet("SELECT * FROM participants WHERE code_unique = ?", [code]);
+async function getParticipantByCode(code) {
+  return await statementGet("SELECT * FROM participants WHERE code_unique = ?", [code]);
 }
 
-function getParticipants() {
-  return statementAll("SELECT * FROM participants ORDER BY timestamp DESC");
+async function getParticipants() {
+  return await statementAll("SELECT * FROM participants ORDER BY timestamp DESC");
 }
 
-function getStats(participants = getParticipants()) {
+function getStats(participants) {
   return {
     total: participants.length,
     attente: participants.filter(
@@ -2446,8 +2547,9 @@ function dayKeyFromTimestamp(ms) {
   return `${d.year}-${d.month}-${d.day}`;
 }
 
-function buildStats(settings = getSettings()) {
-  const participants = getParticipants();
+async function buildStats(settings) {
+  if (!settings) settings = await getSettings();
+  const participants = await getParticipants();
   const montantUnitaire = getParticipationAmount(settings);
 
   let eventItems = [];
@@ -2571,7 +2673,7 @@ function formatExportValue(participant, cle) {
   return String(brut);
 }
 
-function buildParticipantsCsv() {
+async function buildParticipantsCsv() {
   // Point-virgule et non virgule : c'est le separateur attendu par Excel en
   // configuration francaise, ou la virgule est le separateur decimal.
   const SEP = ";";
@@ -2581,7 +2683,7 @@ function buildParticipantsCsv() {
   };
 
   const lignes = [EXPORT_COLUMNS.map(([, titre]) => echapper(titre)).join(SEP)];
-  getParticipants().forEach((p) => {
+  (await getParticipants()).forEach((p) => {
     lignes.push(EXPORT_COLUMNS.map(([cle]) => echapper(formatExportValue(p, cle))).join(SEP));
   });
 
@@ -2628,9 +2730,10 @@ function statsResume(stats, settings) {
   ];
 }
 
-function buildRapportPdf(settings = getSettings()) {
-  const stats = buildStats(settings);
-  const participants = getParticipants();
+async function buildRapportPdf(settings) {
+  if (!settings) settings = await getSettings();
+  const stats = await buildStats(settings);
+  const participants = await getParticipants();
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
   const d = getDatePartsBenin();
   const genere = `${d.day}/${d.month}/${d.year} à ${d.hour}:${d.minute}`;
@@ -2737,10 +2840,11 @@ function buildRapportPdf(settings = getSettings()) {
   return doc;
 }
 
-function renderRapportPdf(settings = getSettings()) {
+async function renderRapportPdf(settings) {
+  if (!settings) settings = await getSettings();
+  const doc = await buildRapportPdf(settings);
   return new Promise((resolve, reject) => {
     try {
-      const doc = buildRapportPdf(settings);
       const morceaux = [];
       doc.on("data", (m) => morceaux.push(m));
       doc.on("end", () => resolve(Buffer.concat(morceaux)));
@@ -2753,14 +2857,15 @@ function renderRapportPdf(settings = getSettings()) {
 }
 
 // -- Version Word du meme rapport ------------------------------------------
-async function renderRapportDocx(settings = getSettings()) {
+async function renderRapportDocx(settings) {
+  if (!settings) settings = await getSettings();
   const {
     Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
     HeadingLevel, WidthType, AlignmentType, BorderStyle, ShadingType,
   } = require("docx");
 
-  const stats = buildStats(settings);
-  const participants = getParticipants();
+  const stats = await buildStats(settings);
+  const participants = await getParticipants();
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
   const d = getDatePartsBenin();
   const genere = `${d.day}/${d.month}/${d.year} à ${d.hour}:${d.minute}`;
@@ -2871,24 +2976,24 @@ function generateTicketCode() {
 // Inscriptions validees rattachees a une adresse. Une meme adresse peut avoir
 // servi a plusieurs inscriptions (une famille, un groupe d'amis) : on les
 // renvoie toutes plutot que d'en choisir une au hasard.
-function getValidatedParticipantsByEmail(email) {
+async function getValidatedParticipantsByEmail(email) {
   const cible = normalizeEmail(email);
   if (!cible) return [];
-  return getParticipants().filter(
+  return (await getParticipants()).filter(
     (p) => normalizeEmail(p.email) === cible && p.statut_paiement === "Valide" && p.code_unique,
   );
 }
 
-function purgeTicketAccess() {
+async function purgeTicketAccess() {
   const maintenant = Date.now();
-  run("DELETE FROM ticket_codes WHERE expires_at < ?", [maintenant]);
-  run("DELETE FROM ticket_sessions WHERE expires_at < ?", [maintenant]);
+  await run("DELETE FROM ticket_codes WHERE expires_at < ?", [maintenant]);
+  await run("DELETE FROM ticket_sessions WHERE expires_at < ?", [maintenant]);
   persistDatabase();
 }
 
-function createTicketSession(email) {
+async function createTicketSession(email) {
   const token = crypto.randomBytes(32).toString("hex");
-  run(
+  await run(
     "INSERT INTO ticket_sessions (token_hash, email, expires_at, created_at) VALUES (?, ?, ?, ?)",
     [hashToken(token), normalizeEmail(email), Date.now() + TICKET_SESSION_TTL_MS, Date.now()],
   );
@@ -2899,18 +3004,18 @@ function createTicketSession(email) {
 // Renvoie l'email de la session, ou null. Ne prolonge JAMAIS la session :
 // quinze minutes suffisent a telecharger un billet, et une session qui se
 // renouvelle toute seule finit par ne plus expirer du tout.
-function getTicketSessionEmail(token) {
+async function getTicketSessionEmail(token) {
   const brut = String(token || "").trim();
   if (!/^[a-f0-9]{64}$/.test(brut)) return null;
 
-  const ligne = statementGet(
+  const ligne = await statementGet(
     "SELECT email, expires_at FROM ticket_sessions WHERE token_hash = ?",
     [hashToken(brut)],
   );
   if (!ligne) return null;
 
   if (Number(ligne.expires_at) < Date.now()) {
-    run("DELETE FROM ticket_sessions WHERE token_hash = ?", [hashToken(brut)]);
+    await run("DELETE FROM ticket_sessions WHERE token_hash = ?", [hashToken(brut)]);
     persistDatabase();
     return null;
   }
@@ -2920,11 +3025,11 @@ function getTicketSessionEmail(token) {
 // Retrouve un participant a partir d'une session ET d'un identifiant. Les deux
 // sont verifies : un jeton valide ne doit pas permettre de telecharger le
 // billet d'une AUTRE adresse en changeant simplement l'identifiant dans l'URL.
-function getParticipantForTicketSession(token, participantId) {
-  const email = getTicketSessionEmail(token);
+async function getParticipantForTicketSession(token, participantId) {
+  const email = await getTicketSessionEmail(token);
   if (!email) return { erreur: "session" };
 
-  const participant = getParticipantById(String(participantId || "").trim());
+  const participant = await getParticipantById(String(participantId || "").trim());
   if (!participant) return { erreur: "introuvable" };
 
   if (normalizeEmail(participant.email) !== email) return { erreur: "interdit" };
@@ -3082,7 +3187,7 @@ async function verifyPaymentTransaction(transactionId, participant, settings) {
   const transaction = payload.transaction || payload;
   const status = String(transaction.status || "").toLowerCase();
   const transactionAmount = Number(transaction.amount || 0);
-  const attendu = Number(getParticipationAmount(settings)) * getParticipantsDuGroupe(participant).length;
+  const attendu = Number(getParticipationAmount(settings)) * (await getParticipantsDuGroupe(participant)).length;
 
   if (status !== "approved") {
     throw new Error("Paiement non confirme.");
@@ -3105,8 +3210,8 @@ async function getPaymentTransaction(transactionId, settings) {
   return payload.transaction || payload;
 }
 
-function updateParticipantPaymentStatus(participantId, transaction) {
-  run(
+async function updateParticipantPaymentStatus(participantId, transaction) {
+  await run(
     `
       UPDATE participants
       SET preuve_paiement = COALESCE(?, preuve_paiement),
@@ -3148,7 +3253,7 @@ async function createPaymentToken(settings, transactionId) {
 
 // Reglages lus a la demande quand l'appelant n'en passe pas : la route du QR
 // d'installation l'appelait sans argument et repondait une erreur 500.
-function getPublicBaseUrl(settings = getSettings()) {
+function getPublicBaseUrl(settings) {
   return process.env.PUBLIC_BASE_URL || (settings && settings.public_base_url) || "";
 }
 
@@ -3167,17 +3272,17 @@ function getPublicBaseUrl(settings = getSettings()) {
 // ---------------------------------------------------------------------------
 const DEMO_PAYMENT_TAG = "demonstration";
 
-function isDemoMode(settings = getSettings()) {
+function isDemoMode(settings) {
   return String(settings.demo_mode || "0") === "1";
 }
 
 // Fabrique la transaction que FedaPay aurait renvoyee pour un paiement
 // accepte. finalizePaidParticipant verifie le statut ET le montant : on fournit
 // donc les deux, sinon la validation echouerait.
-function buildDemoTransaction(participant, settings) {
+async function buildDemoTransaction(participant, settings) {
   // Le montant doit couvrir tout l'achat : finalizePaidParticipant refuse une
   // transaction dont le montant ne correspond pas au nombre de billets.
-  const billets = getParticipantsDuGroupe(participant).length;
+  const billets = (await getParticipantsDuGroupe(participant)).length;
   return {
     id: `demo-${participant.id}`,
     status: "approved",
@@ -3189,8 +3294,8 @@ function buildDemoTransaction(participant, settings) {
 // Efface les inscriptions de demonstration et les fichiers qu'elles ont laisses
 // (photo, QR code). Sans le menage des fichiers, chaque essai laisserait une
 // image orpheline sur le disque.
-function purgeDemoParticipants() {
-  const rows = statementAll(
+async function purgeDemoParticipants() {
+  const rows = await statementAll(
     "SELECT id, participant_photo_url, qr_code_url FROM participants WHERE paiement = ?",
     [DEMO_PAYMENT_TAG],
   );
@@ -3205,7 +3310,7 @@ function purgeDemoParticipants() {
     });
   });
 
-  run("DELETE FROM participants WHERE paiement = ?", [DEMO_PAYMENT_TAG]);
+  await run("DELETE FROM participants WHERE paiement = ?", [DEMO_PAYMENT_TAG]);
   persistDatabase();
   return rows.length;
 }
@@ -3252,21 +3357,21 @@ function lireBilletsDemandes(body) {
  * leur propre groupe d'une seule ligne, ce qui evite d'avoir a distinguer les
  * deux cas partout ailleurs.
  */
-function getParticipantsDuGroupe(participant) {
+async function getParticipantsDuGroupe(participant) {
   if (!participant) return [];
   if (!participant.groupe_id) return [participant];
 
-  const lignes = statementAll(
+  const lignes = await statementAll(
     "SELECT * FROM participants WHERE groupe_id = ? ORDER BY groupe_index ASC, timestamp ASC",
     [participant.groupe_id],
   );
   return lignes.length ? lignes : [participant];
 }
 
-function buildPendingParticipant(body, settings, billet, groupe) {
+async function buildPendingParticipant(body, settings, billet, groupe) {
   const amount = getParticipationAmount(settings);
   const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
-  const id = generateParticipantId();
+  const id = await generateParticipantId();
   // Le nom et la photo viennent du billet ; le telephone et l'email restent
   // ceux de l'acheteur, sur chaque ligne : c'est par son adresse qu'il
   // retrouvera plus tard TOUS les billets qu'il a payes.
@@ -3514,7 +3619,8 @@ function alerterInscriptionPayee(participantOuGroupe, settings) {
 // Avis interne a l'organisation. Ne bloque jamais le parcours du participant :
 // une alerte qui ne part pas est ennuyeuse, une inscription qui echoue l'est
 // beaucoup plus.
-async function sendInternalAlert(evenement, lignes, settings = getSettings(), note = "") {
+async function sendInternalAlert(evenement, lignes, settings, note = "") {
+  if (!settings) settings = await getSettings();
   const alerte = new mail.AlerteInterneEmail({
     settings,
     baseUrl: getPublicBaseUrl(settings),
@@ -3555,41 +3661,66 @@ function billetPublic(b) {
   };
 }
 
+// Valide une ligne : code d'acces, QR et numero de badge. Utilisee par le
+// paiement (finaliserAchat) et par la validation manuelle de l'admin.
+//
+// Le numero est calcule DANS l'UPDATE : lecture du maximum et ecriture ne
+// font qu'une requete, sans fenetre ou une autre validation pourrait lire le
+// meme maximum. Un code ou un numero tire au meme instant par un autre
+// processus fait echouer l'UPDATE sur l'index UNIQUE : on retire et on
+// recommence, plutot que de laisser un paiement sans badge.
+async function enregistrerValidation(billetId, champs) {
+  for (let essai = 1; ; essai += 1) {
+    const codeUnique = await generateUniqueCode();
+    const qrCodeUrl = await saveQrCode(codeUnique, billetId);
+    const colonnes = { ...champs, code_unique: codeUnique, qr_code_url: qrCodeUrl };
+    try {
+      await run(
+        `UPDATE participants
+         SET ${Object.keys(colonnes).map((nom) => `${nom} = ?`).join(", ")},
+             numero_badge = COALESCE(numero_badge,
+               (SELECT n FROM (SELECT COALESCE(MAX(numero_badge), 0) + 1 AS n FROM participants) AS prochain))
+         WHERE id = ?`,
+        [...Object.values(colonnes), billetId],
+      );
+      return codeUnique;
+    } catch (error) {
+      if (!aRejouer(error) || essai >= 20) throw error;
+      console.warn(`Code ou numero de badge deja pris, nouvel essai (${essai}).`);
+      await new Promise((resolve) => setTimeout(resolve, 20 + Math.random() * 80 * essai));
+    }
+  }
+}
+
 // Validations en cours, par achat. Le webhook FedaPay et la page de retour
 // confirment souvent le MEME paiement au meme instant : sans file d'attente,
 // les deux passaient le controle « deja valide ? » avant que l'un ait ecrit
 // (la creation du QR est asynchrone), chacun tirait un code different et
 // l'acheteur recevait deux e-mails, dont un avec un code refuse a l'entree.
-const finalisationsEnCours = new Map();
-
-function finalizePaidParticipant(participant, transaction, settings) {
+//
+// La file est un verrou par achat (avecVerrou) : en memoire avec sql.js,
+// dans MySQL chez l'hebergeur, ou les deux confirmations arrivent souvent sur
+// deux processus differents. La suivante relit la ligne : si la precedente a
+// valide, elle le voit.
+async function finalizePaidParticipant(participant, transaction, settings) {
   if (!participant) {
-    return Promise.reject(new Error("Participant introuvable."));
+    throw new Error("Participant introuvable.");
   }
 
   const cle = participant.groupe_id || participant.id;
-  const precedente = finalisationsEnCours.get(cle) || Promise.resolve();
-  // La suivante relit la ligne : si la precedente a valide, elle le verra.
-  const suivante = precedente
-    .catch(() => {})
-    .then(() => finaliserAchat(getParticipantById(participant.id) || participant, transaction, settings));
-
-  finalisationsEnCours.set(cle, suivante);
-  suivante
-    .finally(() => { if (finalisationsEnCours.get(cle) === suivante) finalisationsEnCours.delete(cle); })
-    .catch(() => {});
-  return suivante;
+  return avecVerrou(`feja:achat:${cle}`, async () =>
+    finaliserAchat((await getParticipantById(participant.id)) || participant, transaction, settings));
 }
 
 async function finaliserAchat(participant, transaction, settings) {
   // Un achat couvre un ou plusieurs billets, mais toujours un seul paiement :
   // on valide le groupe entier ou rien. Valider ligne par ligne laisserait un
   // acheteur avec trois billets sur cinq si l'envoi echouait au milieu.
-  const groupe = getParticipantsDuGroupe(participant);
+  const groupe = await getParticipantsDuGroupe(participant);
 
   if (groupe.every((b) => b.statut_paiement === "Valide" && b.code_unique)) {
     return {
-      participant: getParticipantById(participant.id),
+      participant: await getParticipantById(participant.id),
       billets: groupe,
       emailSent: false,
       alreadyFinalized: true,
@@ -3613,7 +3744,7 @@ async function finaliserAchat(participant, transaction, settings) {
 
   // La transaction appartient bien a cet achat. Un identifiant deja utilise
   // par un AUTRE groupe signalerait un rejeu.
-  const dejaLiee = getParticipantByFedapayTransactionId(transaction.id);
+  const dejaLiee = await getParticipantByFedapayTransactionId(transaction.id);
   if (dejaLiee && !groupe.some((b) => b.id === dejaLiee.id)) {
     signalerFraudePaiement("Transaction déjà utilisée par une autre inscription", participant, transaction, null);
     throw new Error("Cette transaction est deja liee a une inscription.");
@@ -3625,37 +3756,19 @@ async function finaliserAchat(participant, transaction, settings) {
   for (const billet of groupe) {
     if (billet.statut_paiement === "Valide" && billet.code_unique) continue;
 
-    const codeUnique = generateUniqueCode();
-    const qrCodeUrl = await saveQrCode(codeUnique, billet.id);
-
-    // Tire APRES l'await : entre la lecture du maximum et l'UPDATE, aucune
-    // autre validation ne peut s'intercaler.
-    run(
-      `
-        UPDATE participants
-        SET statut_paiement = ?, code_unique = ?, statut_code = ?, preuve_paiement = ?, preuve_url = ?,
-            fedapay_reference = ?, fedapay_status = ?, qr_code_url = ?, validation_at = ?,
-            numero_badge = COALESCE(numero_badge, ?)
-        WHERE id = ?
-      `,
-      [
-        "Valide",
-        codeUnique,
-        "actif",
-        transaction.receipt_url || billet.preuve_paiement || null,
-        transaction.receipt_url || billet.preuve_url || null,
-        reference,
-        transaction.status || "approved",
-        qrCodeUrl,
-        validationAt,
-        prochainNumeroBadge(),
-        billet.id,
-      ],
-    );
+    await enregistrerValidation(billet.id, {
+      statut_paiement: "Valide",
+      statut_code: "actif",
+      preuve_paiement: transaction.receipt_url || billet.preuve_paiement || null,
+      preuve_url: transaction.receipt_url || billet.preuve_url || null,
+      fedapay_reference: reference,
+      fedapay_status: transaction.status || "approved",
+      validation_at: validationAt,
+    });
   }
   await persistDatabase();
 
-  const billets = getParticipantsDuGroupe(getParticipantById(participant.id));
+  const billets = await getParticipantsDuGroupe(await getParticipantById(participant.id));
   const updatedParticipant = billets.find((b) => b.id === participant.id) || billets[0];
 
   // Un seul e-mail pour tout l'achat : cinq messages pour cinq billets
@@ -3698,7 +3811,7 @@ function normalizeParticipant(p) {
 async function handleApi(request, response, url) {
   try {
     if (url.pathname === "/api/public-config" && request.method === "GET") {
-      sendJson(response, 200, publicSettings());
+      sendJson(response, 200, publicSettings(await getSettings()));
       return;
     }
 
@@ -3708,7 +3821,7 @@ async function handleApi(request, response, url) {
     if (url.pathname === "/api/install/qr.png" && request.method === "GET") {
       const target = String(url.searchParams.get("target") || "scan");
       const pagePath = target === "admin" ? "/admin.html" : "/scan.html";
-      const base = (getPublicBaseUrl() || `http://${request.headers.host}`).replace(/\/+$/, "");
+      const base = (getPublicBaseUrl(await getSettings()) || `http://${request.headers.host}`).replace(/\/+$/, "");
       const installUrl = `${base}${pagePath}`;
 
       const buffer = await QRCode.toBuffer(installUrl, {
@@ -3730,14 +3843,14 @@ async function handleApi(request, response, url) {
         "Content-Type": "image/svg+xml; charset=utf-8",
         "Cache-Control": "no-cache",
       });
-      response.end(buildDefaultIcon());
+      response.end(buildDefaultIcon(await getSettings()));
       return;
     }
 
     // Manifests PWA generes a la volee : l'icone de l'app installee suit le
     // logo choisi dans l'admin, et le nom suit celui de l'evenement.
     if (url.pathname.startsWith("/api/manifest/") && request.method === "GET") {
-      const settings = getSettings();
+      const settings = await getSettings();
       const theme = resolveTheme(settings);
       const eventName = settings.event_name || DEFAULT_SETTINGS.event_name;
       const icon = settings.logo_url || "/api/branding/default-icon.svg";
@@ -3782,12 +3895,12 @@ async function handleApi(request, response, url) {
         "Content-Type": "text/css; charset=utf-8",
         "Cache-Control": "no-cache",
       });
-      response.end(buildThemeCss());
+      response.end(buildThemeCss(await getSettings()));
       return;
     }
 
     if (url.pathname === "/api/public-stats" && request.method === "GET") {
-      sendJson(response, 200, { participants: getStats().total });
+      sendJson(response, 200, { participants: getStats(await getParticipants()).total });
       return;
     }
 
@@ -3795,7 +3908,7 @@ async function handleApi(request, response, url) {
       // Plafond large mais present : un formulaire ouvert peut etre soumis
       // en boucle par un script, jamais par une vraie personne qui ecrit un
       // message.
-      const retryAfter = rateLimit(request, "contact", 5, 30 * 60 * 1000);
+      const retryAfter = await rateLimit(request, "contact", 5, 30 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop de messages envoyes. Patiente un instant.");
         return;
@@ -3819,7 +3932,7 @@ async function handleApi(request, response, url) {
         return;
       }
 
-      const settings = getSettings();
+      const settings = await getSettings();
       const sent = await sendInternalAlert(
         "Nouveau message de contact",
         [["Email", email], ["WhatsApp", whatsapp || "—"]],
@@ -3834,7 +3947,7 @@ async function handleApi(request, response, url) {
     if (url.pathname === "/api/public/verify-code" && request.method === "POST") {
       // Le code fait 6 caracteres : sans plafond, on peut le deviner par
       // essais successifs et decouvrir le nom du participant associe.
-      const retryAfter = rateLimit(request, "verify", 60, 5 * 60 * 1000);
+      const retryAfter = await rateLimit(request, "verify", 60, 5 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop de vérifications. Patiente quelques minutes.");
         return;
@@ -3848,7 +3961,7 @@ async function handleApi(request, response, url) {
         return;
       }
 
-      const participant = getParticipantByCode(code);
+      const participant = await getParticipantByCode(code);
       if (!participant || participant.statut_paiement !== "Valide") {
         const ipCode = getClientIp(request);
         if (sentinelle.franchit(`codes-faux:${ipCode}`, 25, 10 * 60 * 1000)) {
@@ -3860,7 +3973,7 @@ async function handleApi(request, response, url) {
 
       let itemsReceived = {};
       try { itemsReceived = JSON.parse(participant.items_received || "{}"); } catch {}
-      const settings2 = getSettings();
+      const settings2 = await getSettings();
       let eventItems2 = [];
       try { eventItems2 = JSON.parse(settings2.event_items_json || "[]"); } catch {}
       sendJson(response, 200, {
@@ -3893,8 +4006,8 @@ async function handleApi(request, response, url) {
         return;
       }
 
-      const settings = getSettings();
-      const id = generateParticipantId();
+      const settings = await getSettings();
+      const id = await generateParticipantId();
       const proofUrl = saveReceiptProof(proof, id);
       const opMeta = getOperatorMeta(settings, method === "mtn" ? "mtn" : "moov");
       const amount = getParticipationAmount(settings);
@@ -3933,7 +4046,7 @@ async function handleApi(request, response, url) {
         retrait_effectue_at:    null,
       };
 
-      insertParticipant(participant);
+      await insertParticipant(participant);
       await persistDatabase();
 
       const base = process.env.PUBLIC_BASE_URL || settings.public_base_url || "";
@@ -3954,7 +4067,7 @@ async function handleApi(request, response, url) {
     // tester des milliers d'adresses et apprendre qui participe.
     // ---------------------------------------------------------------------
     if (url.pathname === "/api/public/ticket/request" && request.method === "POST") {
-      const attenteIp = rateLimit(request, "ticket-req", 60, 60 * 60 * 1000);
+      const attenteIp = await rateLimit(request, "ticket-req", 60, 60 * 60 * 1000);
       if (attenteIp) {
         sendRateLimited(response, attenteIp, "Trop de demandes. Réessaie dans un moment.");
         return;
@@ -3962,7 +4075,7 @@ async function handleApi(request, response, url) {
 
       const body = await parseJsonBody(request);
       const email = normalizeEmail(body.email);
-      const settings = getSettings();
+      const settings = await getSettings();
 
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 200) {
         sendJson(response, 400, { error: "Adresse email invalide." });
@@ -3971,28 +4084,36 @@ async function handleApi(request, response, url) {
 
       // Plafond par ADRESSE : protege la boite de la personne visee, meme si
       // l'attaquant change d'IP entre chaque demande.
-      const attenteEmail = rateLimitKey(`ticket-req-mail:${email}`, 3, 15 * 60 * 1000);
+      const attenteEmail = await rateLimitKey(`ticket-req-mail:${email}`, 3, 15 * 60 * 1000);
       if (attenteEmail) {
         sendRateLimited(response, attenteEmail, "Un code a déjà été envoyé récemment. Vérifie ta boîte mail.");
         return;
       }
 
-      const trouves = getValidatedParticipantsByEmail(email);
+      const trouves = await getValidatedParticipantsByEmail(email);
 
       if (trouves.length) {
         const code = generateTicketCode();
         // Le code est stocke HACHE : une lecture de la base ne donne pas
         // acces aux billets. Une nouvelle demande ecrase la precedente.
         run(
-          `INSERT INTO ticket_codes (email, code_hash, expires_at, attempts, created_at)
-           VALUES (?, ?, ?, 0, ?)
-           ON CONFLICT(email) DO UPDATE SET
-             code_hash = excluded.code_hash,
-             expires_at = excluded.expires_at,
-             attempts = 0,
-             created_at = excluded.created_at`,
+          MODE_MYSQL
+            ? `INSERT INTO ticket_codes (email, code_hash, expires_at, attempts, created_at)
+               VALUES (?, ?, ?, 0, ?)
+               ON DUPLICATE KEY UPDATE
+                 code_hash = VALUES(code_hash),
+                 expires_at = VALUES(expires_at),
+                 attempts = 0,
+                 created_at = VALUES(created_at)`
+            : `INSERT INTO ticket_codes (email, code_hash, expires_at, attempts, created_at)
+               VALUES (?, ?, ?, 0, ?)
+               ON CONFLICT(email) DO UPDATE SET
+                 code_hash = excluded.code_hash,
+                 expires_at = excluded.expires_at,
+                 attempts = 0,
+                 created_at = excluded.created_at`,
           [email, hashPassword(code), Date.now() + TICKET_CODE_TTL_MS, Date.now()],
-        );
+        ).catch((error) => console.error("Code de billet non enregistre:", error.message));
         // Pas d'attente ici non plus, pour la meme raison de temps de reponse.
         // Perdu sur une coupure, le code se redemande en un clic.
         persistDatabase();
@@ -4024,7 +4145,7 @@ async function handleApi(request, response, url) {
     // Recuperation de billet : verification du code
     // ---------------------------------------------------------------------
     if (url.pathname === "/api/public/ticket/verify" && request.method === "POST") {
-      const attenteIp = rateLimit(request, "ticket-verify", 100, 15 * 60 * 1000);
+      const attenteIp = await rateLimit(request, "ticket-verify", 100, 15 * 60 * 1000);
       if (attenteIp) {
         sendRateLimited(response, attenteIp, "Trop d'essais. Réessaie dans quelques minutes.");
         return;
@@ -4047,40 +4168,44 @@ async function handleApi(request, response, url) {
 
       if (!email || !/^\d{6}$/.test(code)) { echec(); return; }
 
-      const ligne = statementGet(
+      const ligne = await statementGet(
         "SELECT code_hash, expires_at, attempts FROM ticket_codes WHERE email = ?",
         [email],
       );
       if (!ligne) { echec(); return; }
 
       if (Number(ligne.expires_at) < Date.now()) {
-        run("DELETE FROM ticket_codes WHERE email = ?", [email]);
+        await run("DELETE FROM ticket_codes WHERE email = ?", [email]);
         await persistDatabase();
         echec();
         return;
       }
 
-      const essais = Number(ligne.attempts) + 1;
-      if (essais > TICKET_CODE_MAX_ATTEMPTS) {
+      // Increment atomique, refuse au-dela du plafond : lire puis ecrire le
+      // compteur laissait des essais envoyes en rafale (sur plusieurs
+      // processus) lire tous le meme nombre et depasser les cinq essais.
+      const essaiCompte = await run(
+        "UPDATE ticket_codes SET attempts = attempts + 1 WHERE email = ? AND attempts < ?",
+        [email, TICKET_CODE_MAX_ATTEMPTS],
+      );
+      if (!essaiCompte) {
         // Le code est detruit : la force brute sur six chiffres s'arrete a
         // cinq essais, il faut redemander un code et donc acceder a la boite.
-        run("DELETE FROM ticket_codes WHERE email = ?", [email]);
+        await run("DELETE FROM ticket_codes WHERE email = ?", [email]);
         await persistDatabase();
         sendJson(response, 429, { error: "Trop d'essais. Demande un nouveau code." });
         return;
       }
-
-      run("UPDATE ticket_codes SET attempts = ? WHERE email = ?", [essais, email]);
       await persistDatabase();
 
       // Comparaison a temps constant, assuree par verifyPassword.
       if (!verifyPassword(code, ligne.code_hash).ok) { echec(); return; }
 
       // Code juste : usage unique, il disparait immediatement.
-      run("DELETE FROM ticket_codes WHERE email = ?", [email]);
-      const token = createTicketSession(email);
+      await run("DELETE FROM ticket_codes WHERE email = ?", [email]);
+      const token = await createTicketSession(email);
 
-      const billets = getValidatedParticipantsByEmail(email).map((p) => ({
+      const billets = (await getValidatedParticipantsByEmail(email)).map((p) => ({
         id: p.id,
         nom: p.nom,
         code: p.code_unique,
@@ -4106,8 +4231,8 @@ async function handleApi(request, response, url) {
     // Recuperation de billet : telechargement du PDF
     // ---------------------------------------------------------------------
     if (url.pathname === "/api/public/ticket/pdf" && request.method === "GET") {
-      const attenteIp = rateLimit(request, "ticket-pdf", 400, 15 * 60 * 1000)
-        || rateLimitKey(`ticket-pdf-jeton:${url.searchParams.get("token") || ""}`, 60, 15 * 60 * 1000);
+      const attenteIp = await rateLimit(request, "ticket-pdf", 400, 15 * 60 * 1000)
+        || await rateLimitKey(`ticket-pdf-jeton:${url.searchParams.get("token") || ""}`, 60, 15 * 60 * 1000);
       if (attenteIp) {
         sendRateLimited(response, attenteIp, "Trop de téléchargements. Patiente un instant.");
         return;
@@ -4119,7 +4244,7 @@ async function handleApi(request, response, url) {
         .split(",").map((s) => s.trim()).filter(Boolean).slice(0, MAX_BILLETS_PAR_ACHAT);
       const participants = [];
       for (const id of ids.length ? ids : [""]) {
-        const resultat = getParticipantForTicketSession(url.searchParams.get("token"), id);
+        const resultat = await getParticipantForTicketSession(url.searchParams.get("token"), id);
         if (resultat.erreur === "session") {
           sendJson(response, 401, { error: "Session expirée. Redemande un code." });
           return;
@@ -4133,7 +4258,7 @@ async function handleApi(request, response, url) {
         participants.push(resultat.participant);
       }
 
-      const pdf = await renderTicketPdf(participants.length === 1 ? participants[0] : participants);
+      const pdf = await renderTicketPdf(participants.length === 1 ? participants[0] : participants, await getSettings());
       const nomFichier = participants.length === 1
         ? `badge-${formaterNumeroBadge(participants[0].numero_badge) || "feja"}.pdf`
         : `badges-feja-${participants.length}.pdf`;
@@ -4151,7 +4276,7 @@ async function handleApi(request, response, url) {
       // Chaque appel ecrit une photo sur le disque et cree un client chez
       // FedaPay. Sans plafond, une boucle remplissait le disque du serveur et
       // polluait le compte de paiement.
-      const retryAfter = rateLimit(request, "payment", 60, 10 * 60 * 1000);
+      const retryAfter = await rateLimit(request, "payment", 60, 10 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop d'inscriptions depuis cet appareil. Réessaie dans quelques minutes.");
         return;
@@ -4163,13 +4288,13 @@ async function handleApi(request, response, url) {
       }
 
       const body = await parseJsonBody(request);
-      const settings = getSettings();
+      const settings = await getSettings();
       const telephone = String(body.telephone || "").trim();
       const email = String(body.email || "").trim();
 
       // Plafond par acheteur : c'est lui qui protege du remplissage du disque,
       // le plafond par IP restant large a cause des IP partagees.
-      const attenteAcheteur = rateLimitKey(`payment-mail:${email.toLowerCase()}`, 6, 10 * 60 * 1000);
+      const attenteAcheteur = await rateLimitKey(`payment-mail:${email.toLowerCase()}`, 6, 10 * 60 * 1000);
       if (attenteAcheteur) {
         sendRateLimited(response, attenteAcheteur, "Trop d'inscriptions avec cette adresse. Réessaie dans quelques minutes.");
         return;
@@ -4221,12 +4346,19 @@ async function handleApi(request, response, url) {
       // doivent toutes le porter des l'insertion, sinon un paiement confirme
       // entre-temps ne validerait qu'une partie du groupe.
       const groupeId = "GRP-" + crypto.randomBytes(9).toString("hex").toUpperCase();
-      const construire = (billet, index) =>
-        buildPendingParticipant(body, settings, billet, {
-          id: groupeId,
-          index: index + 1,
-          taille: billetsDemandes.length,
-        });
+      // Les lignes de l'achat, une par billet. En sequence : chacune tire un
+      // identifiant libre dans la base.
+      const construireTout = async () => {
+        const lignes = [];
+        for (const [index, billet] of billetsDemandes.entries()) {
+          lignes.push(await buildPendingParticipant(body, settings, billet, {
+            id: groupeId,
+            index: index + 1,
+            taille: billetsDemandes.length,
+          }));
+        }
+        return lignes;
+      };
 
       const resume = (ligne) => ({
         id: ligne.id,
@@ -4240,14 +4372,13 @@ async function handleApi(request, response, url) {
       // En demonstration, on n'appelle jamais l'operateur : getPaymentCredentials
       // leverait "Cle secrete de paiement non configuree" et bloquerait tout.
       if (isDemoMode(settings)) {
-        const demos = billetsDemandes.map((billet, index) => {
-          const d = construire(billet, index);
+        const demos = await construireTout();
+        for (const d of demos) {
           d.paiement = DEMO_PAYMENT_TAG;
           d.operateur_paiement = "Démonstration";
           d.fedapay_status = "demo_pending";
-          insertParticipant(d);
-          return d;
-        });
+          await insertParticipant(d);
+        }
         await persistDatabase();
 
         // La premiere ligne porte le paiement : c'est son identifiant que la
@@ -4274,7 +4405,7 @@ async function handleApi(request, response, url) {
       }
 
       getPaymentCredentials(settings);
-      const groupe = billetsDemandes.map(construire);
+      const groupe = await construireTout();
       const participant = groupe[0];   // porte le paiement pour tout l'achat
       const customer = await createPaymentCustomer(settings, participant);
       const transaction = await createPaymentTransaction(settings, participant, customer, groupe.length);
@@ -4284,19 +4415,19 @@ async function handleApi(request, response, url) {
         throw new Error("Transaction de paiement non creee.");
       }
 
-      if (getParticipantByFedapayTransactionId(transactionId)) {
+      if (await getParticipantByFedapayTransactionId(transactionId)) {
         throw new Error("Cette transaction est deja liee a une inscription.");
       }
 
       // Toutes les lignes portent la meme transaction : la finalisation les
       // valide ensemble, et un rejeu sur une autre inscription reste detecte.
-      groupe.forEach((ligne) => {
+      for (const ligne of groupe) {
         ligne.fedapay_transaction_id = transactionId;
         ligne.fedapay_customer_id = customer.id ? String(customer.id) : null;
         ligne.fedapay_reference = transaction.reference || transaction.merchant_reference || participant.id;
         ligne.fedapay_status = transaction.status || "pending";
-        insertParticipant(ligne);
-      });
+        await insertParticipant(ligne);
+      }
 
       // Le jeton sert aux deux chemins : la page hebergee s'ouvre avec lui, et
       // la demande envoyee au telephone le porte aussi.
@@ -4347,14 +4478,14 @@ async function handleApi(request, response, url) {
       // Cette route renvoie le code d'entree du participant : sans plafond,
       // elle permettait de moissonner les codes en essayant des identifiants.
       // La page de retour interroge jusqu'a 10 fois, d'ou une limite large.
-      const retryAfter = rateLimit(request, "status", 600, 10 * 60 * 1000);
+      const retryAfter = await rateLimit(request, "status", 600, 10 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop de requêtes. Patiente quelques minutes.");
         return;
       }
 
       const body = await parseJsonBody(request);
-      const settings = getSettings();
+      const settings = await getSettings();
       const participantId = String(body.participant_id || "").trim();
       const requestedTransactionId = String(body.fedapay_transaction_id || body.transaction_id || "").trim();
 
@@ -4365,13 +4496,13 @@ async function handleApi(request, response, url) {
 
       // Plafond par achat : chaque appel peut interroger FedaPay. L'attente
       // d'un paiement (une requete toutes les 3 a 6 s) reste tres en dessous.
-      const attenteAchat = rateLimitKey(`status-achat:${participantId}`, 120, 10 * 60 * 1000);
+      const attenteAchat = await rateLimitKey(`status-achat:${participantId}`, 120, 10 * 60 * 1000);
       if (attenteAchat) {
         sendRateLimited(response, attenteAchat, "Trop de requêtes. Patiente quelques minutes.");
         return;
       }
 
-      const participant = getParticipantById(participantId);
+      const participant = await getParticipantById(participantId);
       if (!participant) {
         sendJson(response, 404, { error: "Participant introuvable." });
         return;
@@ -4382,7 +4513,7 @@ async function handleApi(request, response, url) {
       if (String(participant.paiement || "") === DEMO_PAYMENT_TAG) {
         const result = await finalizePaidParticipant(
           participant,
-          buildDemoTransaction(participant, settings),
+          await buildDemoTransaction(participant, settings),
           settings,
         );
         sendJson(response, 200, {
@@ -4397,7 +4528,7 @@ async function handleApi(request, response, url) {
           // Jeton de telechargement du billet. Le participant vient de payer
           // et se trouve sur SA page de retour : lui faire redemander un code
           // par e-mail pour un billet qu'il vient d'acheter serait absurde.
-          ticket_token: createTicketSession(result.participant.email),
+          ticket_token: await createTicketSession(result.participant.email),
         });
         return;
       }
@@ -4417,7 +4548,7 @@ async function handleApi(request, response, url) {
       }
 
       const transaction = await getPaymentTransaction(fedapayTransactionId, settings);
-      updateParticipantPaymentStatus(participant.id, transaction);
+      await updateParticipantPaymentStatus(participant.id, transaction);
 
       if (String(transaction.status || "").toLowerCase() === "approved") {
         const result = await finalizePaidParticipant(participant, transaction, settings);
@@ -4433,7 +4564,7 @@ async function handleApi(request, response, url) {
           billets: (result.billets || [result.participant]).map(billetPublic),
           email_sent: result.emailSent,
           already_finalized: result.alreadyFinalized,
-          ticket_token: createTicketSession(result.participant.email),
+          ticket_token: await createTicketSession(result.participant.email),
         });
         return;
       }
@@ -4446,14 +4577,14 @@ async function handleApi(request, response, url) {
     }
 
     if (url.pathname === "/api/participants" && request.method === "POST") {
-      const retryAfter = rateLimit(request, "status", 600, 10 * 60 * 1000);
+      const retryAfter = await rateLimit(request, "status", 600, 10 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop de requêtes. Patiente quelques minutes.");
         return;
       }
 
       const body = await parseJsonBody(request);
-      const settings = getSettings();
+      const settings = await getSettings();
       const participantId = String(body.participant_id || body.id || "").trim();
       const fedapayTransactionId = String(body.fedapay_transaction_id || body.transaction_id || "").trim();
 
@@ -4462,7 +4593,7 @@ async function handleApi(request, response, url) {
         return;
       }
 
-      const participant = getParticipantById(participantId);
+      const participant = await getParticipantById(participantId);
       if (!participant) {
         sendJson(response, 404, { error: "Participant introuvable." });
         return;
@@ -4494,13 +4625,13 @@ async function handleApi(request, response, url) {
     if (url.pathname === "/api/fedapay/webhook" && request.method === "POST") {
       // FedaPay n'envoie que quelques notifications par paiement ; au-dela,
       // c'est un robot qui tente de remplir la base.
-      const attenteWebhook = rateLimit(request, "webhook", 300, 10 * 60 * 1000);
+      const attenteWebhook = await rateLimit(request, "webhook", 300, 10 * 60 * 1000);
       if (attenteWebhook) {
         sendRateLimited(response, attenteWebhook, "Trop de notifications.");
         return;
       }
 
-      const settings = getSettings();
+      const settings = await getSettings();
       const { body, raw } = await parseJsonBodyWithRaw(request);
 
       if (!verifyFedapayWebhookSignature(request, raw, settings)) {
@@ -4514,7 +4645,7 @@ async function handleApi(request, response, url) {
       const eventType = String(body.name || body.type || body.event || "");
       const eventId = String(body.id || body.event_id || `${eventType || "fedapay"}-${transaction?.id || Date.now()}`);
 
-      if (getWebhookEventById(eventId)) {
+      if (await getWebhookEventById(eventId)) {
         sendJson(response, 200, { received: true, duplicate: true });
         return;
       }
@@ -4523,7 +4654,7 @@ async function handleApi(request, response, url) {
         transaction &&
         (String(transaction.status || "").toLowerCase() === "approved" || eventType.toLowerCase().includes("approved"));
 
-      const participantConnu = transaction && transaction.id ? getParticipantByFedapayTransactionId(transaction.id) : null;
+      const participantConnu = transaction && transaction.id ? await getParticipantByFedapayTransactionId(transaction.id) : null;
 
       if (isApprovedEvent && participantConnu) {
         const verifiedTransaction = await verifyPaymentTransaction(transaction.id, participantConnu, settings);
@@ -4539,7 +4670,7 @@ async function handleApi(request, response, url) {
       // tronquees : sans secret configure, n'importe qui peut poster ici, et
       // chaque message de 5 Mo gonflait la base reecrite a chaque inscription.
       if (participantConnu) {
-        insertWebhookEvent({
+        await insertWebhookEvent({
           id: eventId,
           type: eventType,
           object_id: String(transaction.id),
@@ -4559,24 +4690,24 @@ async function handleApi(request, response, url) {
     if (url.pathname === "/api/admin/login" && request.method === "POST") {
       // 10 essais par quart d'heure et par adresse : un humain qui se trompe
       // n'est pas gene, une force brute est arretee net.
-      const retryAfter = rateLimit(request, "login", 10, 15 * 60 * 1000);
+      const retryAfter = await rateLimit(request, "login", 10, 15 * 60 * 1000);
       if (retryAfter) {
         sendRateLimited(response, retryAfter, "Trop de tentatives. Reessayez dans quelques minutes.");
         return;
       }
 
       const body = await parseJsonBody(request);
-      const settings = getSettings();
+      const settings = await getSettings();
       const submitted = String(body.password || "");
 
       const adminCheck = verifyPassword(submitted, settings.admin_password || DEFAULT_SETTINGS.admin_password);
 
       if (adminCheck.ok) {
         if (adminCheck.needsRehash) {
-          saveSettings({ admin_password: hashPassword(submitted) });
+          await saveSettings({ admin_password: hashPassword(submitted) });
         }
-        noterConnexionAdmin(getClientIp(request), settings);
-        sendJson(response, 200, { token: createSession("admin"), role: "admin" });
+        await noterConnexionAdmin(getClientIp(request), settings);
+        sendJson(response, 200, { token: await createSession("admin"), role: "admin" });
         return;
       }
 
@@ -4588,9 +4719,9 @@ async function handleApi(request, response, url) {
         const scanCheck = verifyPassword(submitted, scanPassword);
         if (scanCheck.ok) {
           if (scanCheck.needsRehash) {
-            saveSettings({ scan_password: hashPassword(submitted) });
+            await saveSettings({ scan_password: hashPassword(submitted) });
           }
-          sendJson(response, 200, { token: createSession("scan"), role: "scan" });
+          sendJson(response, 200, { token: await createSession("scan"), role: "scan" });
           return;
         }
       }
@@ -4609,7 +4740,7 @@ async function handleApi(request, response, url) {
     }
 
     if (url.pathname.startsWith("/api/admin/")) {
-      const role = getSessionRole(request);
+      const role = await getSessionRole(request);
 
       if (!role) {
         sendJson(response, 401, { error: "Session admin invalide." });
@@ -4623,14 +4754,14 @@ async function handleApi(request, response, url) {
       }
 
       if (url.pathname === "/api/admin/participants" && request.method === "GET") {
-        const participants = getParticipants();
+        const participants = await getParticipants();
         const normalized = participants.map(normalizeParticipant);
         sendJson(response, 200, { participants: normalized, stats: getStats(participants) });
         return;
       }
 
       if (url.pathname === "/api/admin/settings" && request.method === "GET") {
-        sendJson(response, 200, maskSecretSettings(getSettings()));
+        sendJson(response, 200, maskSecretSettings(await getSettings()));
         return;
       }
 
@@ -4694,8 +4825,8 @@ async function handleApi(request, response, url) {
           toSave[name] = hashPassword(value);
         });
 
-        signalerReglagesSensibles(getSettings(), toSave, getClientIp(request));
-        saveSettings(toSave);
+        signalerReglagesSensibles(await getSettings(), toSave, getClientIp(request));
+        await saveSettings(toSave);
         // Un changement de parametre SMTP doit prendre effet tout de suite :
         // sans cela, le transporteur en cache garderait l'ancienne connexion.
         if (Object.keys(toSave).some((k) => k.startsWith("smtp_") || k === "mail_from")) {
@@ -4703,8 +4834,8 @@ async function handleApi(request, response, url) {
         }
         // Une annee de badge saisie en retard sur l'edition en cours est
         // avancee aussitot, pour que l'admin affiche ce qui sera imprime.
-        if (Object.keys(toSave).some((k) => k.startsWith("badge_"))) appliquerBasculeBadge();
-        sendJson(response, 200, maskSecretSettings(getSettings()));
+        if (Object.keys(toSave).some((k) => k.startsWith("badge_"))) await appliquerBasculeBadge();
+        sendJson(response, 200, maskSecretSettings(await getSettings()));
         return;
       }
 
@@ -4718,14 +4849,14 @@ async function handleApi(request, response, url) {
           const media = saveHeroMedia(body.media_base64);
           // Un nouvel import reactive l'affichage : sans cela, on televerse un
           // fichier et rien ne change a l'ecran, ce qui laisse croire a un bug.
-          saveSettings({ hero_media_url: media.url, hero_media_active: "1" });
+          await saveSettings({ hero_media_url: media.url, hero_media_active: "1" });
           sendJson(response, 200, media);
           return;
         }
 
         if (request.method === "DELETE") {
           removeHeroMedia();
-          saveSettings({ hero_media_url: "" });
+          await saveSettings({ hero_media_url: "" });
           sendJson(response, 200, { url: "" });
           return;
         }
@@ -4735,17 +4866,17 @@ async function handleApi(request, response, url) {
         const body = await parseJsonBody(request);
         const logoUrl = saveBrandingLogo(body.logo_base64);
         clearTicketCache();
-        saveSettings({ logo_url: logoUrl });
+        await saveSettings({ logo_url: logoUrl });
         // Reduction faite ici, pendant que l'organisateur attend : sinon le
         // premier visiteur suivant paierait le decodage du logo d'origine.
-        getTicketLogoPath(getSettings());
+        getTicketLogoPath(await getSettings());
         sendJson(response, 200, { logo_url: logoUrl });
         return;
       }
 
       // Journal de securite et destinataire des alertes.
       if (url.pathname === "/api/admin/securite" && request.method === "GET") {
-        const settings = getSettings();
+        const settings = await getSettings();
         const source = String(process.env.MAIL_SECURITE_TO || "").trim()
           ? "fichier .env (MAIL_SECURITE_TO)"
           : String(settings.securite_email || "").trim() ? "réglage ci-dessus" : "adresse des alertes internes";
@@ -4774,7 +4905,7 @@ async function handleApi(request, response, url) {
       if (url.pathname === "/api/admin/branding/logo" && request.method === "DELETE") {
         removeBrandingLogo();
         clearTicketCache();
-        saveSettings({ logo_url: "" });
+        await saveSettings({ logo_url: "" });
         sendJson(response, 200, { logo_url: "" });
         return;
       }
@@ -4783,12 +4914,12 @@ async function handleApi(request, response, url) {
       // c'est le comportement demande, on previent donc dans la reponse
       // combien de lignes ont ete supprimees.
       if (url.pathname === "/api/admin/demo" && request.method === "GET") {
-        const current = getSettings();
+        const current = await getSettings();
         sendJson(response, 200, {
           enabled: isDemoMode(current),
-          demo_participants: statementGet(
+          demo_participants: (await statementGet(
             "SELECT COUNT(*) AS n FROM participants WHERE paiement = ?", [DEMO_PAYMENT_TAG],
-          ).n,
+          )).n,
         });
         return;
       }
@@ -4799,11 +4930,11 @@ async function handleApi(request, response, url) {
         let purged = 0;
 
         if (!enabled) {
-          purged = purgeDemoParticipants();
+          purged = await purgeDemoParticipants();
         }
 
-        const etaitActif = isDemoMode(getSettings());
-        saveSettings({ demo_mode: enabled ? "1" : "0" });
+        const etaitActif = isDemoMode(await getSettings());
+        await saveSettings({ demo_mode: enabled ? "1" : "0" });
         if (enabled && !etaitActif) {
           sentinelle.signaler({ gravite: "critique", type: "demo", titre: "Mode démonstration ACTIVÉ : badges délivrés sans paiement",
             ip: getClientIp(request), cle: `demo-on:${Date.now()}` });
@@ -4822,7 +4953,7 @@ async function handleApi(request, response, url) {
       // Billet PDF d'un participant, pour l'imprimer ou le montrer sur place.
       if (url.pathname === "/api/admin/ticket.pdf" && request.method === "GET") {
         const participantId = String(url.searchParams.get("id") || "").trim();
-        const participant = participantId ? getParticipantById(participantId) : null;
+        const participant = participantId ? await getParticipantById(participantId) : null;
 
         if (!participant) {
           sendJson(response, 404, { error: "Participant introuvable." });
@@ -4834,7 +4965,7 @@ async function handleApi(request, response, url) {
           return;
         }
 
-        const pdf = await renderTicketPdf(participant);
+        const pdf = await renderTicketPdf(participant, await getSettings());
         const nom = `badge-${formaterNumeroBadge(participant.numero_badge) || participant.code_unique}.pdf`;
         response.writeHead(200, {
           "Content-Type": "application/pdf",
@@ -4849,14 +4980,14 @@ async function handleApi(request, response, url) {
       }
 
       if (url.pathname === "/api/admin/stats" && request.method === "GET") {
-        sendJson(response, 200, buildStats());
+        sendJson(response, 200, await buildStats());
         return;
       }
 
       // Export tableur de la liste des participants.
       if (url.pathname === "/api/admin/export.csv" && request.method === "GET") {
-        const csv = buildParticipantsCsv();
-        const settings = getSettings();
+        const csv = await buildParticipantsCsv();
+        const settings = await getSettings();
         const base = (settings.event_name || DEFAULT_SETTINGS.event_name)
           .toLowerCase().replace(/[^a-z0-9]+/g, "-");
         const nom = `${base}-participants-${getDateKeyBenin()}.csv`;
@@ -4876,7 +5007,7 @@ async function handleApi(request, response, url) {
       const rapportMatch = url.pathname.match(/^\/api\/admin\/rapport\.(pdf|docx)$/);
       if (rapportMatch && request.method === "GET") {
         const format = rapportMatch[1];
-        const settings = getSettings();
+        const settings = await getSettings();
         const base = (settings.event_name || DEFAULT_SETTINGS.event_name)
           .toLowerCase().replace(/[^a-z0-9]+/g, "-");
         const nom = `${base}-rapport-${getDateKeyBenin()}.${format}`;
@@ -4903,7 +5034,7 @@ async function handleApi(request, response, url) {
       // envoyer de message. Permet de distinguer un probleme de connexion
       // d'un probleme de remise.
       if (url.pathname === "/api/admin/mail/verify" && request.method === "GET") {
-        const settings = getSettings();
+        const settings = await getSettings();
         const resultat = await mail.verifySmtp(settings);
         const cfg = mail.getSmtpConfig(settings);
         sendJson(response, 200, {
@@ -4923,7 +5054,7 @@ async function handleApi(request, response, url) {
       // Envoi reel d'un message de test.
       if (url.pathname === "/api/admin/mail/test" && request.method === "POST") {
         const body = await parseJsonBody(request);
-        const settings = getSettings();
+        const settings = await getSettings();
         const destinataire = String(body.email || "").trim() ||
           String(settings.alert_email || "").trim() ||
           String(settings.vendeur_email || "").trim();
@@ -4971,13 +5102,13 @@ async function handleApi(request, response, url) {
       }
 
       if (url.pathname === "/api/admin/health" && request.method === "GET") {
-        sendJson(response, 200, getConfigHealth());
+        sendJson(response, 200, getConfigHealth(await getSettings()));
         return;
       }
 
       if (url.pathname === "/api/admin/theme" && request.method === "GET") {
         sendJson(response, 200, {
-          current: resolveTheme(),
+          current: resolveTheme(await getSettings()),
           presets: Object.entries(THEME_PRESETS).map(([key, preset]) => ({
             key,
             label: preset.label,
@@ -5008,43 +5139,42 @@ async function handleApi(request, response, url) {
           rotation = [...new Set(body.rotation.filter((key) => THEME_PRESETS[key]))];
         }
 
-        saveSettings({
+        await saveSettings({
           theme_preset: preset,
           theme_custom_json: JSON.stringify(custom),
           theme_rotation_json: JSON.stringify(rotation),
         });
-        sendJson(response, 200, { current: resolveTheme() });
+        sendJson(response, 200, { current: resolveTheme(await getSettings()) });
         return;
       }
 
       if (url.pathname === "/api/admin/validate-payment" && request.method === "POST") {
         const body = await parseJsonBody(request);
-        const participant = getParticipantById(body.id);
-        const settings = getSettings();
+        const participant = await getParticipantById(body.id);
+        const settings = await getSettings();
 
         if (!participant) {
           sendJson(response, 404, { error: "Participant introuvable." });
           return;
         }
 
-        if (participant.statut_paiement === "Valide") {
-          sendJson(response, 200, { participant, email_sent: false });
+        // Sous le verrou de l'achat : un webhook FedaPay qui validerait la meme
+        // ligne au meme instant tirerait sinon un second code.
+        const codeUnique = await avecVerrou(`feja:achat:${participant.groupe_id || participant.id}`, async () => {
+          const actuel = await getParticipantById(participant.id);
+          if (!actuel || actuel.statut_paiement === "Valide") return null;
+          return await enregistrerValidation(participant.id, {
+            statut_paiement: "Valide",
+            statut_code: "actif",
+            lieu_retrait: participant.lieu_retrait || settings.pickup_location,
+            validation_at: Date.now(),
+          });
+        });
+
+        if (!codeUnique) {
+          sendJson(response, 200, { participant: await getParticipantById(participant.id), email_sent: false });
           return;
         }
-
-        const codeUnique = generateUniqueCode();
-        const qrCodeUrl = await saveQrCode(codeUnique, participant.id);
-        const validationAt = Date.now();
-        run(
-          `
-            UPDATE participants
-            SET statut_paiement = ?, code_unique = ?, statut_code = ?, qr_code_url = ?, lieu_retrait = ?, validation_at = ?,
-                numero_badge = COALESCE(numero_badge, ?)
-            WHERE id = ?
-          `,
-          ["Valide", codeUnique, "actif", qrCodeUrl, participant.lieu_retrait || settings.pickup_location, validationAt,
-            prochainNumeroBadge(), participant.id],
-        );
         await persistDatabase();
         sentinelle.signaler({
           gravite: "alerte",
@@ -5055,7 +5185,7 @@ async function handleApi(request, response, url) {
           details: [["Participant", `${participant.nom} (${participant.id})`], ["Code délivré", codeUnique]],
         });
 
-        const updatedParticipant = getParticipantById(participant.id);
+        const updatedParticipant = await getParticipantById(participant.id);
         const emailSent = await sendValidationEmail(updatedParticipant, settings).catch((error) => {
           console.error("Email Resend non envoye:", error.message);
           return false;
@@ -5074,12 +5204,12 @@ async function handleApi(request, response, url) {
           sendJson(response, 400, { error: "participant_id et item_id obligatoires." });
           return;
         }
-        const p = getParticipantById(participantId);
+        const p = await getParticipantById(participantId);
         if (!p) { sendJson(response, 404, { error: "Participant introuvable." }); return; }
         let items = {};
         try { items = JSON.parse(p.items_received || "{}"); } catch {}
         items[itemId] = received;
-        run("UPDATE participants SET items_received = ? WHERE id = ?", [JSON.stringify(items), participantId]);
+        await run("UPDATE participants SET items_received = ? WHERE id = ?", [JSON.stringify(items), participantId]);
         await persistDatabase();
         sendJson(response, 200, { participant_id: participantId, item_id: itemId, received, items_received: items });
         return;
@@ -5088,11 +5218,11 @@ async function handleApi(request, response, url) {
       // Instantane telecharge par l'app de scan pour fonctionner sans reseau.
       // On n'envoie que le strict necessaire a l'ecran de controle.
       if (url.pathname === "/api/admin/scan/snapshot" && request.method === "GET") {
-        const settings = getSettings();
+        const settings = await getSettings();
         let eventItems = [];
         try { eventItems = JSON.parse(settings.event_items_json || "[]"); } catch {}
 
-        const codes = getParticipants()
+        const codes = (await getParticipants())
           .filter((p) => p.statut_paiement === "Valide" && p.code_unique)
           .map((p) => {
             let itemsReceived = {};
@@ -5141,7 +5271,7 @@ async function handleApi(request, response, url) {
             continue;
           }
 
-          const participant = getParticipantByCode(code);
+          const participant = await getParticipantByCode(code);
 
           if (!participant || participant.statut_paiement !== "Valide") {
             results.push({ code, status: "not_found" });
@@ -5161,10 +5291,27 @@ async function handleApi(request, response, url) {
             continue;
           }
 
-          run(
-            "UPDATE participants SET statut_code = ?, retrait_effectue_at = ?, scan_device_id = ? WHERE id = ?",
-            ["utilise", scannedAt, deviceId, participant.id],
+          // Ecriture conditionnelle : deux postes qui envoient le meme badge au
+          // meme instant (souvent a deux processus differents) passaient tous
+          // les deux le controle ci-dessus. Seul celui dont l'UPDATE modifie
+          // la ligne l'a reellement fait entrer.
+          const pris = await run(
+            "UPDATE participants SET statut_code = ?, retrait_effectue_at = ?, scan_device_id = ? WHERE id = ? AND (statut_code IS NULL OR statut_code <> ?)",
+            ["utilise", scannedAt, deviceId, participant.id, "utilise"],
           );
+          if (!pris) {
+            const actuel = (await getParticipantById(participant.id)) || participant;
+            const memePoste = String(actuel.scan_device_id || "") === deviceId;
+            if (!memePoste) signalerDoubleEntree(actuel, `poste ${deviceId}`);
+            results.push({
+              code,
+              status: memePoste ? "applied" : "conflict",
+              nom: actuel.nom,
+              used_at: actuel.retrait_effectue_at || null,
+              used_by: actuel.scan_device_id || null,
+            });
+            continue;
+          }
 
           if (scan.items && typeof scan.items === "object") {
             let items = {};
@@ -5172,7 +5319,7 @@ async function handleApi(request, response, url) {
             Object.entries(scan.items).forEach(([itemId, received]) => {
               items[String(itemId)] = received !== false;
             });
-            run("UPDATE participants SET items_received = ? WHERE id = ?", [JSON.stringify(items), participant.id]);
+            await run("UPDATE participants SET items_received = ? WHERE id = ?", [JSON.stringify(items), participant.id]);
           }
 
           results.push({ code, status: "applied", nom: participant.nom });
@@ -5193,7 +5340,7 @@ async function handleApi(request, response, url) {
       if (url.pathname === "/api/admin/verify-code" && request.method === "POST") {
         const body = await parseJsonBody(request);
         const code = String(body.code || "").trim().toUpperCase();
-        const participant = getParticipantByCode(code);
+        const participant = await getParticipantByCode(code);
 
         if (!participant) {
           sendJson(response, 404, { status: "not_found", error: "Code incorrect." });
@@ -5214,13 +5361,19 @@ async function handleApi(request, response, url) {
           return;
         }
 
-        run("UPDATE participants SET statut_code = ?, retrait_effectue_at = ? WHERE id = ?", [
-          "utilise",
-          Date.now(),
-          participant.id,
-        ]);
+        // Ecriture conditionnelle : le meme badge presente au meme instant a
+        // deux postes ne doit entrer qu'une fois, meme sur deux processus.
+        const pris = await run(
+          "UPDATE participants SET statut_code = ?, retrait_effectue_at = ? WHERE id = ? AND (statut_code IS NULL OR statut_code <> ?)",
+          ["utilise", Date.now(), participant.id, "utilise"],
+        );
+        if (!pris) {
+          signalerDoubleEntree(participant, "vérification manuelle");
+          sendJson(response, 200, { status: "already_used", participant: await getParticipantById(participant.id) });
+          return;
+        }
         await persistDatabase();
-        sendJson(response, 200, { status: "valid", participant: getParticipantById(participant.id) });
+        sendJson(response, 200, { status: "valid", participant: await getParticipantById(participant.id) });
         return;
       }
     }
@@ -5274,8 +5427,21 @@ function applySecurityHeaders(response, { isHtml }) {
   );
 }
 
+// Promesse de la base ouverte. Avec MySQL, le serveur ecoute AVANT qu'elle
+// soit prete : Hostinger arrete une appli qui n'a pas appele listen() dans les
+// 3 secondes. Les requetes arrivees entre-temps attendent ici.
+let basePrete = null;
+
 const server = http.createServer(async (request, response) => {
   const debut = Date.now();
+  if (basePrete) {
+    try {
+      await basePrete;
+    } catch {
+      sendJson(response, 503, { error: "Service momentanément indisponible. Réessaie dans un instant." });
+      return;
+    }
+  }
   response.on("finish", () => {
     try {
       sentinelle.observerRequete({
@@ -5333,7 +5499,13 @@ function listen(port) {
   });
 
   server.listen(port, () => {
-    const settings = getSettings();
+    basePrete.then(() => annoncerDemarrage(port)).catch(() => {});
+  });
+}
+
+async function annoncerDemarrage(port) {
+  {
+    const settings = await getSettings();
     console.log(`${settings.event_name || DEFAULT_SETTINGS.event_name} disponible sur http://localhost:${port}`);
 
     // Les erreurs de configuration sont annoncees au demarrage : sinon elles ne
@@ -5361,7 +5533,7 @@ function listen(port) {
       console.log(`Detail complet dans l'admin, onglet Reglages.`);
       console.log("");
     }
-  });
+  }
 }
 
 // Une erreur imprevue dans un traitement ne doit pas eteindre le site pour
@@ -5391,32 +5563,47 @@ process.on("uncaughtException", (error) => {
   }
 });
 
-initDatabase()
-  .then(() => {
-    migrateStraySettingKeys();
-    purgeExpiredSessions();
-    appliquerBasculeBadge();
-    setInterval(appliquerBasculeBadge, 15 * 60 * 1000).unref();
-    surveillancePeriodique();
-    setInterval(surveillancePeriodique, 5 * 60 * 1000).unref();
-    // Logo reduit du badge prepare des maintenant : le premier visiteur
-    // n'attend pas le decodage du logo d'origine (plus d'un Mo).
-    getTicketLogoPath(getSettings());
-    backupDatabase();
-    setInterval(backupDatabase, 60 * 60 * 1000).unref();
-    setInterval(purgeExpiredSessions, 6 * 60 * 60 * 1000).unref();
-    setInterval(purgeRateBuckets, 10 * 60 * 1000).unref();
-    // Codes et sessions de billet expires : ils ne servent qu'a faire
-    // grossir la base, et un code perime ne doit pas trainer.
-    purgeTicketAccess();
-    setInterval(purgeTicketAccess, 15 * 60 * 1000).unref();
-    // Demarre tout de suite : sinon le tout premier badge genere paierait le
-    // cout de lancement du thread (chargement des polices, etc.) en plus de
-    // son propre dessin.
-    demarrerPoolPdf();
-    listen(PORT);
-  })
-  .catch((error) => {
-    console.error("Impossible de demarrer la base SQL:", error);
-    process.exit(1);
-  });
+// Tache de fond : lancee tout de suite puis a intervalle, par un seul
+// processus a la fois avec MySQL. Une erreur est journalisee, jamais fatale.
+function periodique(nom, fn, intervalleMs) {
+  const lancer = () => tacheUnique(nom, fn).catch((error) => console.warn(`Tache ${nom} en echec:`, error.message));
+  lancer();
+  setInterval(lancer, intervalleMs).unref();
+}
+
+async function demarrerServices() {
+  await tacheUnique("migration-reglages", migrateStraySettingKeys);
+  periodique("bascule-badge", appliquerBasculeBadge, 15 * 60 * 1000);
+  periodique("surveillance", surveillancePeriodique, 5 * 60 * 1000);
+  // Logo reduit du badge prepare des maintenant : le premier visiteur
+  // n'attend pas le decodage du logo d'origine (plus d'un Mo).
+  getTicketLogoPath(await getSettings());
+  // La sauvegarde prend elle-meme son verrou (backupDatabase).
+  const sauvegarder = () => backupDatabase().catch((error) => console.warn("Sauvegarde:", error.message));
+  sauvegarder();
+  setInterval(sauvegarder, 60 * 60 * 1000).unref();
+  periodique("purge-sessions", purgeExpiredSessions, 6 * 60 * 60 * 1000);
+  const purgerLimites = () => purgeRateBuckets().catch((error) => console.warn("Purge des limites:", error.message));
+  setInterval(purgerLimites, 10 * 60 * 1000).unref();
+  // Codes et sessions de billet expires : ils ne servent qu'a faire
+  // grossir la base, et un code perime ne doit pas trainer.
+  periodique("purge-billets", purgeTicketAccess, 15 * 60 * 1000);
+  // Demarre tout de suite : sinon le tout premier badge genere paierait le
+  // cout de lancement du thread (chargement des polices, etc.) en plus de
+  // son propre dessin.
+  demarrerPoolPdf();
+}
+
+basePrete = initDatabase().then(demarrerServices);
+basePrete.catch((error) => {
+  console.error("Impossible de demarrer la base SQL:", error);
+  process.exit(1);
+});
+
+if (MODE_MYSQL) {
+  listen(PORT);
+} else {
+  // Base locale : on n'ecoute qu'une fois la base ouverte, pour qu'un second
+  // serveur refuse par le verrou ne prenne jamais le port.
+  basePrete.then(() => listen(PORT), () => {});
+}

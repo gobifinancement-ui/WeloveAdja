@@ -3,12 +3,13 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/mail.test.js test/badge.test.js test/sentinelle.test.js"
+    "test": "node --test test/mail.test.js test/badge.test.js test/sentinelle.test.js test/parcours.test.js"
   },
   "dependencies": {
     "docx": "^9.7.1",
     "dotenv": "^17.4.2",
     "jsqr": "^1.4.0",
+    "mysql2": "^3.24.6",
     "nodemailer": "^10.0.1",
     "pdfkit": "^0.20.2",
     "pngjs": "^7.0.0",
