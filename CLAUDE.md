@@ -13,7 +13,7 @@ l'entrée en vérifiant sa photo.
 
 ```bash
 npm start          # http://localhost:3000
-npm test           # e-mails, badge et surveillance (29 tests), sans réseau
+npm test           # e-mails, badge, surveillance, référencement (37 tests), sans réseau
 ```
 
 Aucun framework, aucune étape de build. `node server.js` sert les pages et
@@ -71,6 +71,11 @@ verification.html       Vérification d'un code d'accès (public).
 admin.html              Administration : participants, réglages, stats, apparence.
 scan.html               Poste de scan à l'entrée (hors-ligne).
 installer.html          Page d'installation de l'app de scan.
+conditions.html         Conditions générales de vente (badges).
+confidentialite.html    Politique de confidentialité.
+mentions-legales.html   Mentions légales.
+css/pages-legales.css   Style commun des trois pages légales.
+js/pages-legales.js     Coordonnées et informations légales réglées dans l'admin.
 sw.js                   Service worker : scan et admin utilisables sans réseau.
 
 js/branding.js          Applique logo et nom d'événement (les couleurs viennent de /api/theme.css).
@@ -92,6 +97,9 @@ lib/mail/senders.js     Une classe par type d'e-mail.
 test/mail.test.js       Un test par type d'e-mail, transport simulé.
 test/badge.test.js      Mise en page, PDF, et lisibilité du QR malgré le sceau.
 lib/sentinelle.js       Surveillance : fraude, attaques, incidents coûteux → journal + e-mail.
+lib/seo.js              Référencement : balises, données structurées, robots.txt, sitemap.
+test/seo.test.js        Textes, dates de l'événement, échappement, robots.
+img/partage-festival-adja.jpg  Image d'aperçu des liens partagés (1200 × 630).
 test/sentinelle.test.js Détection, regroupement, anti-doublon, plafond d'e-mails.
 data/                   Base SQLite (non versionné).
 uploads/                Photos des participants, QR, images de marque (non versionné).
@@ -403,6 +411,52 @@ mémoire saturés, base ou sauvegarde en échec.
   disque plein bloquerait la base elle-même.
 
 ---
+
+## Référencement (SEO) et pages légales
+
+Les balises de référencement sont écrites **par le serveur** dans le HTML
+(`lib/seo.js`, `servirPageReferencee` dans server.js), pas par le script de
+la page : WhatsApp, Facebook et la première lecture de Google n'exécutent pas
+le JavaScript. Sans ça, un lien collé dans WhatsApp n'avait ni titre ni image.
+
+- **Pages référencées** : `PAGES_REFERENCEES` (accueil + trois pages
+  légales). Chacune reçoit description, adresse canonique, Open Graph /
+  Twitter (image `img/partage-festival-adja.jpg`), icônes.
+- **Accueil** : titre et description **calculés depuis les réglages du badge**
+  (titre, année, édition, dates, lieu, activités) : ils changent d'année avec
+  la bascule du 30/08. Données structurées `Festival` (dates lues dans
+  `badge_dates`, lieu, prix, artistes), `Organization`, `WebSite`. Les textes
+  d'exemple du HTML (année, prix, lieu, date) sont remplacés avant l'envoi
+  (`prerendreAccueil`, attribut `data-cfg`).
+- Pages légales : leur `<title>` et leur `<meta name="description">` restent
+  dans le fichier ; le serveur ajoute le reste.
+- `/robots.txt` et `/sitemap.xml` sont engendrés avec l'adresse publique.
+  Photos, QR et API sont exclus.
+- **`X-Robots-Tag: noindex`** sur l'admin, le scan, la page de retour, la
+  vérification, l'API et `/uploads/` (photos des participants).
+- `/img/` est mis en cache un jour (vitesse, forfaits mobiles).
+- **Poids des pages** (Google mesure la vitesse) : le site affiche le logo
+  réduit `uploads/branding/logo-site.png` (320 px, `getSiteLogoPath`) et non
+  l'original de 1,3 Mo ; les fichiers de `uploads/branding/` (adresses en
+  `?v=`) sont mis en cache 7 jours ; les icônes des objectifs sont en 192 px ;
+  la vidéo de fond est sautée pour les connexions lentes, l'économie de
+  données et `prefers-reduced-motion`. Mesure du 2 octobre 2026 : 9,6 Mo à
+  chaque visite avant ; après, 7,6 Mo à la première visite (dont 7 Mo de
+  vidéo) et 0,28 Mo aux suivantes. Une vidéo de fond doit rester sous 1,5 Mo.
+- `Admin → Réglages → Référencement Google` : code Search Console (balise
+  `google-site-verification`) et pages officielles (`sameAs`).
+- Sans `PUBLIC_BASE_URL`, les adresses absolues prennent l'hôte de la
+  requête : à régler avant la mise en ligne, comme pour le paiement.
+
+Les **pages légales** (conditions, confidentialité, mentions) décrivent ce que
+le code fait réellement : données collectées, prestataires (FedaPay, e-mail,
+hébergeur, WaChap, Google Fonts), absence de cookie, durées. **Toute nouvelle
+donnée collectée ou tout nouveau prestataire doit y être ajouté.** Adresse du
+siège, responsable de la publication et hébergeur se règlent dans
+`Admin → Réglages → Informations légales` ; vides, ils ne s'affichent pas et
+l'état de préparation le signale. Les durées de conservation annoncées
+(photos 3 mois, inscriptions 12 mois après l'édition) **ne sont pas encore
+appliquées automatiquement** : suppression à faire à la main pour l'instant.
 
 ## Conventions
 

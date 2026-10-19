@@ -735,6 +735,25 @@ button{font-family:var(--body);cursor:pointer}
         </div>
       </div>
 
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg> Informations légales</h3>
+        <p class="gsub">Affichées sur les pages <a href="/mentions-legales.html" target="_blank" rel="noopener">Mentions légales</a>, <a href="/confidentialite.html" target="_blank" rel="noopener">Confidentialité</a> et <a href="/conditions.html" target="_blank" rel="noopener">Conditions</a>. Un champ vide n'est pas affiché. L'email de contact ci-dessus sert aussi aux demandes sur les données personnelles.</p>
+        <div class="grid2">
+          <div class="f"><label>Adresse du siège de l'association</label><input class="in" data-set="legalAdresse" placeholder="Quartier, commune, département, Bénin"></div>
+          <div class="f"><label>Responsable de la publication</label><span class="desc">Nom et fonction de la personne qui répond du contenu du site.</span><input class="in" data-set="legalResponsable" placeholder="Ex. Prénom Nom, Président de FEJA"></div>
+          <div class="f" style="grid-column:1/-1"><label>Hébergeur du site</label><span class="desc">Nom, adresse et site web de la société qui héberge le site.</span><input class="in" data-set="legalHebergeur" placeholder="Ex. Société, adresse, site web"></div>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg> Référencement Google</h3>
+        <p class="gsub">Le titre, la description et l'image d'aperçu (WhatsApp, Facebook) sont faits automatiquement à partir des textes du badge. Ici, seulement deux réglages facultatifs.</p>
+        <div class="grid2">
+          <div class="f"><label>Code de validation Google Search Console</label><span class="desc">Dans Search Console, méthode « Balise HTML » : colle la balise entière ou seulement le code.</span><input class="in" data-set="seoGoogle" placeholder='<meta name="google-site-verification" content="…">'></div>
+          <div class="f"><label>Pages officielles</label><span class="desc">Adresse de vos pages TikTok, Facebook, Instagram… une par ligne, en https://. Google les reliera au festival.</span><textarea class="in" data-set="seoReseaux" rows="3" style="resize:vertical" placeholder="https://www.tiktok.com/@…"></textarea></div>
+        </div>
+      </div>
+
       <div class="set-group" id="securiteGroup">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4M12 16h.01"/></svg> Sécurité & alertes</h3>
         <p class="gsub">Le site se surveille en continu : tentatives de fraude au paiement, fausses notifications FedaPay, mots de passe admin devinés, robots qui cherchent des failles, codes devinés, badges présentés deux fois à l'entrée, réglages sensibles modifiés, pannes FedaPay ou d'e-mail, disque plein… Chaque alerte part par e-mail et reste dans le journal ci-dessous.</p>
@@ -1623,6 +1642,11 @@ const SETTINGS_MAP = {
   waLink:                'wa_link',
   email:                 'vendeur_email',
   tiktokUrl:             'tiktok_guide_url',
+  legalAdresse:          'legal_adresse',
+  legalResponsable:      'legal_responsable',
+  legalHebergeur:        'legal_hebergeur',
+  seoGoogle:             'seo_google_verification',
+  seoReseaux:            'seo_reseaux',
   badgeTitre:            'badge_titre',
   badgeAnnee:            'badge_annee',
   badgeEdition:          'badge_edition',
