@@ -71,22 +71,71 @@
     if (navigator.vibrate) navigator.vibrate(pattern);
   }
 
-  // Un bip synthetise : pas de fichier audio a charger, donc ca marche
+  // Sons synthetises : pas de fichier audio a charger, donc ca marche
   // hors-ligne des le premier scan.
+  //
+  // Facon terminal de paiement, pour qu'on les reconnaisse dans le bruit de
+  // l'entree sans regarder l'ecran : accepte = « bi-bip » aigu et bref,
+  // refuse = deux notes graves qui descendent, plus longues.
+  //
+  // Safari (iPhone) ne laisse sortir le son qu'apres un geste de
+  // l'utilisateur. Un scan par la camera n'en est pas un : sans deblocage,
+  // l'iPhone restait muet. Le contexte audio est donc cree et reveille au
+  // premier toucher (connexion, bouton, n'importe ou sur l'ecran).
   let audioContext = null;
-  function beep(ok) {
+  function contexteAudio() {
     try {
       audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      oscillator.connect(gain);
-      gain.connect(audioContext.destination);
-      oscillator.frequency.value = ok ? 880 : 240;
-      oscillator.type = ok ? "sine" : "square";
-      gain.gain.setValueAtTime(0.14, audioContext.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + (ok ? 0.16 : 0.32));
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + (ok ? 0.16 : 0.32));
+      if (audioContext.state === "suspended") audioContext.resume().catch(() => {});
+      return audioContext;
+    } catch {
+      return null;
+    }
+  }
+  function debloquerAudio() {
+    const ctx = contexteAudio();
+    if (!ctx) return;
+    // Un son muet joue pendant le geste suffit a ouvrir la sortie audio.
+    const tampon = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = tampon;
+    source.connect(ctx.destination);
+    source.start(0);
+  }
+  ["pointerdown", "touchend", "keydown"].forEach((type) =>
+    window.addEventListener(type, debloquerAudio, { passive: true }));
+
+  function note(ctx, debut, frequence, duree, forme, volume) {
+    const oscillateur = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillateur.type = forme;
+    oscillateur.frequency.setValueAtTime(frequence, debut);
+    // Attaque tres courte, puis extinction : un « clic » sec comme un TPE,
+    // sans craquement en debut et fin de note.
+    gain.gain.setValueAtTime(0.0001, debut);
+    gain.gain.exponentialRampToValueAtTime(volume, debut + 0.008);
+    gain.gain.setValueAtTime(volume, debut + duree * 0.7);
+    gain.gain.exponentialRampToValueAtTime(0.0001, debut + duree);
+    oscillateur.connect(gain);
+    gain.connect(ctx.destination);
+    oscillateur.start(debut);
+    oscillateur.stop(debut + duree + 0.02);
+  }
+
+  function beep(ok) {
+    const ctx = contexteAudio();
+    if (!ctx) return; /* audio indisponible : le verdict visuel suffit */
+    try {
+      const t = ctx.currentTime + 0.01;
+      if (ok) {
+        // Accepte : deux bips aigus rapproches.
+        note(ctx, t, 2093, 0.07, "square", 0.18);
+        note(ctx, t + 0.1, 2637, 0.12, "square", 0.18);
+      } else {
+        // Refuse : deux notes graves qui descendent, impossibles a confondre.
+        note(ctx, t, 392, 0.22, "sawtooth", 0.22);
+        note(ctx, t + 0.26, 262, 0.38, "sawtooth", 0.22);
+      }
     } catch {
       /* audio indisponible : le verdict visuel suffit */
     }
@@ -620,19 +669,48 @@
 
   /* ---------------- Mot de passe ---------------- */
 
-  function askPassword() {
+  // Lien d'acces de l'agent : https://…/scan.html#acces=<jeton>. Accepte aussi
+  // le lien colle tel quel dans l'app installee (sur iPhone, l'app de l'ecran
+  // d'accueil ne voit pas ce qui a ete ouvert dans Safari).
+  function jetonDepuisLien(texte) {
+    const valeur = String(texte || "").trim();
+    const trouve = /[#&?]acces=([A-Za-z0-9_-]{20,200})/.exec(valeur);
+    return trouve ? trouve[1] : "";
+  }
+
+  // Echeance de l'acces de 24 h, pour la rappeler a l'agent.
+  const EXPIRE_KEY = "adja_scan_expire";
+  function heureFin(ms) {
+    return new Date(ms).toLocaleString("fr-FR", { weekday: "long", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function askPassword(jetonRecu) {
     if (document.getElementById("pwOverlay")) return;
+
+    // Un acces de 24 h qui vient d'expirer : on le dit, plutot que de
+    // reposer la question sans explication.
+    const expire = Number(localStorage.getItem(EXPIRE_KEY) || 0);
+    const accesExpire = !jetonRecu && expire && expire < Date.now();
+    if (accesExpire) localStorage.removeItem(EXPIRE_KEY);
 
     const overlay = document.createElement("div");
     overlay.id = "pwOverlay";
     overlay.className = "modal show";
     overlay.innerHTML = `
       <div class="box">
-        <h3>Connexion</h3>
-        <p class="gsub">Saisis le mot de passe administrateur pour autoriser ce poste à télécharger la liste des codes.</p>
+        <h3>${jetonRecu ? "Accès agent de scan" : "Connexion"}</h3>
+        <p class="gsub">${jetonRecu
+          ? "Saisis le mot de passe reçu avec ton lien d'accès."
+          : accesExpire
+            ? "Ton accès de 24 h a expiré. Demande un nouveau lien à l'organisation, puis ouvre-le ou colle-le ci-dessous."
+            : "Ouvre le lien d'accès reçu de l'organisation, ou colle-le ci-dessous avec son mot de passe."}</p>
+        <div class="f" id="pwLienBloc" ${jetonRecu ? 'style="display:none"' : ""}>
+          <label>Lien d'accès reçu</label>
+          <input class="in" id="pwLien" type="url" placeholder="https://…/scan.html#acces=…" autocomplete="off">
+        </div>
         <div class="f">
           <label>Mot de passe</label>
-          <input class="in" id="pwIn" type="password" autocomplete="current-password">
+          <input class="in" id="pwIn" type="password" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX">
         </div>
         <div id="pwErr" class="gsub" style="color:var(--ko);display:none"></div>
         <button class="btn btn-gold" id="pwGo" style="width:100%">Se connecter</button>
@@ -642,19 +720,35 @@
 
     const submit = async () => {
       const password = document.getElementById("pwIn").value;
+      const jeton = jetonRecu || jetonDepuisLien(document.getElementById("pwLien").value);
       const error = document.getElementById("pwErr");
       try {
-        const response = await fetch("/api/admin/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password }),
-        });
+        // Avec un lien : acces d'agent (24 h). Sans lien : mot de passe des
+        // postes de scan ou de l'administrateur, comme avant.
+        const response = jeton
+          ? await fetch("/api/scan/acces", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jeton, mot_de_passe: password }),
+          })
+          : await fetch("/api/admin/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password }),
+          });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Échec");
         setToken(data.token);
+        if (data.expire_le) {
+          localStorage.setItem(EXPIRE_KEY, String(data.expire_le));
+          toast(`Accès valable jusqu'à ${heureFin(data.expire_le)}`);
+        } else {
+          localStorage.removeItem(EXPIRE_KEY);
+        }
         overlay.remove();
         await refreshSnapshot(false);
         await syncQueue(true);
+        if (jeton) proposerInstallation(jeton);
       } catch (err) {
         error.textContent = err.message;
         error.style.display = "block";
@@ -715,6 +809,75 @@
     window.addEventListener("appinstalled", () => {
       button.style.display = "none";
     });
+  }
+
+  // Apres l'ouverture d'un lien d'acces, on recommande d'installer l'app sur
+  // l'ecran d'accueil : elle s'ouvre en un geste, en plein ecran, et l'agent
+  // ne la perd pas au milieu de ses onglets le jour J.
+  function estInstallee() {
+    return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  }
+  function estIphone() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
+  function proposerInstallation(jeton) {
+    if (estInstallee() || document.getElementById("installOverlay")) return;
+    const lien = `${location.origin}/scan.html#acces=${jeton}`;
+    const iphone = estIphone();
+    const boutonInstaller = !iphone && installPrompt;
+
+    const overlay = document.createElement("div");
+    overlay.id = "installOverlay";
+    overlay.className = "modal show";
+    // Sur iPhone, l'app de l'ecran d'accueil ne partage pas la connexion
+    // faite dans Safari : il faut y recoller le lien. Sur Android, la
+    // connexion est partagee, rien a refaire.
+    overlay.innerHTML = `
+      <div class="box">
+        <h3>Installe l'app de scan</h3>
+        <p class="gsub">Ajoute-la à l'écran d'accueil de ton téléphone : elle s'ouvre en un geste, en plein écran, et continue de marcher si le réseau tombe à l'entrée.</p>
+        ${iphone ? `
+          <ol class="gsub install-etapes">
+            <li>En bas de Safari, touche <b>Partager</b> (le carré avec une flèche vers le haut).</li>
+            <li>Choisis <b>« Sur l'écran d'accueil »</b>, puis <b>Ajouter</b>.</li>
+            <li>Ouvre l'app depuis l'écran d'accueil, colle ton lien (bouton ci-dessous) et ton mot de passe.</li>
+          </ol>
+          <button class="btn btn-gold" id="installCopier" style="width:100%;margin-bottom:8px">Copier mon lien d'accès</button>`
+        : boutonInstaller ? "" : `
+          <ol class="gsub install-etapes">
+            <li>Ouvre le menu du navigateur (<b>⋮</b> en haut à droite).</li>
+            <li>Choisis <b>« Installer l'application »</b> ou <b>« Ajouter à l'écran d'accueil »</b>.</li>
+          </ol>`}
+        ${boutonInstaller ? '<button class="btn btn-gold" id="installGo" style="width:100%;margin-bottom:8px">Installer l\'app</button>' : ""}
+        <button class="btn btn-ghost" id="installPlusTard" style="width:100%">Plus tard</button>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const fermer = () => overlay.remove();
+    $("installPlusTard").addEventListener("click", fermer);
+    const installer = $("installGo");
+    if (installer) {
+      installer.addEventListener("click", async () => {
+        installPrompt.prompt();
+        const choix = await installPrompt.userChoice;
+        installPrompt = null;
+        if (choix.outcome === "accepted") toast("Application installée");
+        fermer();
+      });
+    }
+    const copier = $("installCopier");
+    if (copier) {
+      copier.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(lien);
+          toast("Lien copié : colle-le dans l'app installée");
+        } catch {
+          prompt("Copie ce lien :", lien);
+        }
+      });
+    }
   }
 
   /* ---------------- Démarrage ---------------- */
@@ -779,7 +942,15 @@
 
     setupInstall();
 
-    if (!getToken()) {
+    // Ouvert par un lien d'acces d'agent : le jeton est retire tout de suite
+    // de la barre d'adresse (une capture d'ecran ou un partage ne le
+    // montrerait plus), puis on demande le mot de passe qui l'accompagne.
+    const jetonLien = jetonDepuisLien(location.hash);
+    if (jetonLien) history.replaceState(null, "", location.pathname + location.search);
+
+    if (jetonLien) {
+      askPassword(jetonLien);
+    } else if (!getToken()) {
       askPassword();
     } else {
       await refreshSnapshot(true);

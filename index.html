@@ -289,9 +289,14 @@ footer{border-top:1px solid var(--stroke);margin-top:clamp(40px,7vw,72px);paddin
 .mobile-cta .btn{box-shadow:0 -2px 30px -8px rgba(0,0,0,.6),0 14px 34px -12px color-mix(in oklab,var(--brand-green) 70%,transparent)}
 /* L'accueil s'eloigne pendant que le disque grandit. Duree calee sur la phase
    d'expansion (.42s) et courbe ease-in-out, comme demande. */
-#home{transition:transform .42s cubic-bezier(.4,0,.2,1),opacity .42s cubic-bezier(.4,0,.2,1),filter .42s cubic-bezier(.4,0,.2,1)}
+/* Sans flou : flouter toute la page d'accueil (video, verre depoli, compte a
+   rebours) a chaque ouverture du formulaire faisait ramer les telephones.
+   Une fois effacee, la page est masquee : le navigateur n'a plus a la
+   composer sous le formulaire. */
+#home{transition:transform .42s cubic-bezier(.4,0,.2,1),opacity .42s cubic-bezier(.4,0,.2,1),visibility 0s}
 body.sheet-open{overflow:hidden}
-body.sheet-open #home{transform:scale(1.04);opacity:0;filter:blur(6px)}
+body.sheet-open #home{transform:scale(1.04);opacity:0;visibility:hidden;
+  transition:transform .42s cubic-bezier(.4,0,.2,1),opacity .42s cubic-bezier(.4,0,.2,1),visibility 0s linear .42s}
 .sheet{position:fixed;inset:0;z-index:120;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none}
 .sheet.open{display:block}
 .sheet .mesh-layer{position:fixed;inset:0;z-index:-1;pointer-events:none}
@@ -647,12 +652,12 @@ body.pay-open .sheet-body{padding-bottom:calc(var(--pay-bar-h,0px) + 18px)}
   from{opacity:0;transform:translateY(22px)}
   to{opacity:1;transform:none}
 }
-/* Le formulaire arrive d'un peu plus bas, un peu plus petit et flou, puis se
+/* Le formulaire arrive d'un peu plus bas et un peu plus petit, puis se
    pose. Le depassement est volontairement minuscule (3px / 0,8%) : au-dela on
    bascule dans le rebond joueur, qui ne va pas a une page de paiement. */
 @keyframes form-entrance{
-  0%{opacity:0;transform:translateY(26px) scale(.965);filter:blur(6px)}
-  45%{opacity:1;filter:blur(0)}
+  0%{opacity:0;transform:translateY(26px) scale(.965)}
+  45%{opacity:1}
   78%{transform:translateY(-3px) scale(1.008)}
   100%{transform:translateY(0) scale(1)}
 }
@@ -1470,6 +1475,32 @@ function mesurerBarre(){
 }
 addEventListener('resize', mesurerBarre, { passive: true });
 
+/* Lance la video de fond. Safari peut la refuser (mode economie d'energie,
+   reglages) : play() echoue alors sans bruit. On retente au premier contact
+   avec la page, ce qui suffit a l'autoriser. */
+function lancerVideoFond(video){
+  const essayer = () => {
+    const p = video.play();
+    if(p && p.catch) p.catch(() => {});
+  };
+  essayer();
+  const auContact = () => {
+    if(video.paused && !document.body.classList.contains('sheet-open')) essayer();
+  };
+  addEventListener('touchstart', auContact, { once:true, passive:true });
+  addEventListener('click', auContact, { once:true });
+}
+
+/* Video de fond en pause pendant que le formulaire couvre l'accueil : la
+   decoder et la composer sous un formulaire translucide ralentissait
+   l'ouverture sur les telephones modestes. */
+function videoFond(jouer){
+  const video = document.querySelector('#heroMedia video');
+  if(!video) return;
+  if(jouer){ const p = video.play(); if(p && p.catch) p.catch(() => {}); }
+  else video.pause();
+}
+
 function renderHeroMedia(){
   const hote = document.getElementById('heroMedia');
   const hero = document.querySelector('.hero');
@@ -1499,10 +1530,20 @@ function renderHeroMedia(){
 
   if(media.type === 'video'){
     // muted et playsinline ne sont pas decoratifs : sans eux, iOS et Android
-    // REFUSENT la lecture automatique et l'en-tete reste noir.
-    hote.innerHTML =
-      '<video autoplay muted loop playsinline preload="metadata" ' +
-      'poster="" src="' + escHtml(media.url) + '"></video>';
+    // REFUSENT la lecture automatique et l'en-tete reste noir. Poses en
+    // proprietes ET en attributs : Safari sur iPhone ignorait le « muted »
+    // d'une video inseree par innerHTML et refusait alors de la lancer.
+    const video = document.createElement('video');
+    video.muted = true;
+    video.defaultMuted = true;
+    video.loop = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    ['muted', 'playsinline', 'webkit-playsinline', 'autoplay', 'loop'].forEach((a) => video.setAttribute(a, ''));
+    video.preload = 'auto';
+    video.src = media.url;
+    hote.replaceChildren(video);
+    lancerVideoFond(video);
   }else{
     hote.innerHTML = '<img src="' + escHtml(media.url) + '" alt="" decoding="async">';
   }
@@ -1803,6 +1844,7 @@ function openSheet(name){
   revealDisc(lastClickX, lastClickY);
   // Des maintenant : l'accueil s'eloigne et s'efface sous le disque.
   document.body.classList.add('sheet-open');
+  videoFond(false);
   majBarrePaiement();
 
   setTimeout(() => {
@@ -1835,7 +1877,7 @@ function closeSheet(){
   sh.classList.add('leave');
   document.body.classList.remove('sheet-open');
   majBarrePaiement();
-  sh.addEventListener('animationend',()=>{sh.classList.remove('open','leave');activeSheet=null;},{once:true});
+  sh.addEventListener('animationend',()=>{sh.classList.remove('open','leave');activeSheet=null;videoFond(true);},{once:true});
 }
 document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openSheet(b.dataset.open)));
 // Les pages legales renvoient ici pour ecrire a l'organisation : /#contact

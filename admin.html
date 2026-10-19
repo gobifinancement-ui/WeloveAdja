@@ -206,6 +206,17 @@ button{font-family:var(--body);cursor:pointer}
 .set-group h3{font-family:var(--display);font-weight:600;font-size:1.18rem;margin-bottom:4px;display:flex;align-items:center;gap:10px}
 .set-group h3 svg{color:var(--brand-green-br)}
 .set-group .gsub{color:var(--cream-52);font-size:.84rem;margin-bottom:18px}
+/* Acces des agents de scan */
+.acces-nouveau{margin-top:18px;padding:16px;border:1px solid var(--brand-green-stroke);border-radius:14px;background:rgba(0,0,0,.18)}
+.acces-ligne{display:flex;gap:8px;align-items:center}
+.acces-ligne .in{flex:1;min-width:0;font-size:.9rem}
+.acces-mdp{font-family:var(--display);font-weight:700;letter-spacing:.18em;font-size:1.15rem!important}
+.acces-liste{margin-top:18px;display:flex;flex-direction:column;gap:8px}
+.acces-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--stroke);border-radius:12px;font-size:.88rem}
+.acces-item .quoi{flex:1;min-width:0}
+.acces-item .quoi b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acces-item .quoi span{color:var(--cream-52);font-size:.8rem}
+.acces-item.inactif{opacity:.55}
 .grid2{display:grid;grid-template-columns:1fr;gap:16px}
 .f label{display:block;font-size:.78rem;font-weight:700;letter-spacing:.03em;margin-bottom:7px;color:var(--cream)}
 .f .desc{color:var(--cream-52);font-weight:400;font-size:.74rem;display:block;margin-top:-3px;margin-bottom:7px}
@@ -874,10 +885,30 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Mot de passe admin</label><span class="desc">Pour accéder à cet espace. Laisse le champ tel quel pour ne pas le changer.</span>
             <div class="ipwrap"><input class="in" data-set="adminPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
-          <div class="f"><label>Mot de passe des postes de scan</label><span class="desc">Donné aux agents à l'entrée. Il n'ouvre que l'app de scan, pas les réglages ni les clés de paiement.</span>
+          <div class="f"><label>Mot de passe des postes de scan</label><span class="desc">Donné aux agents à l'entrée. Il n'ouvre que l'app de scan, pas les réglages ni les clés de paiement. Préfère les liens d'accès de 24 h ci-dessous.</span>
             <div class="ipwrap"><input class="in" data-set="scanPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
         </div>
+      </div>
+
+      <div class="set-group" id="accesScan">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg> Accès des agents de scan</h3>
+        <p class="gsub">Un lien et un mot de passe par agent (ou par poste), valables <b>24 heures</b>. Ensuite, le lien et le mot de passe ne marchent plus et le téléphone est déconnecté. L'agent n'a jamais accès aux réglages ni aux clés. Envoie le lien et le mot de passe dans <b>deux messages séparés</b>.</p>
+        <div class="f"><label>Pour qui ?</label><span class="desc">Ex. « Entrée principale – Koffi ». Sert à t'y retrouver dans la liste.</span>
+          <input class="in" id="accesLibelle" maxlength="80" placeholder="Entrée principale – Koffi" autocomplete="off">
+        </div>
+        <button class="btn btn-gold btn-sm" id="accesCreer" type="button">Créer un lien d'accès (24 h)</button>
+        <div class="acces-nouveau" id="accesNouveau" hidden>
+          <div class="f"><label>Lien à envoyer à l'agent</label>
+            <div class="acces-ligne"><input class="in" id="accesLien" readonly><button class="btn btn-ghost btn-sm" data-copier="accesLien" type="button">Copier</button></div>
+          </div>
+          <div class="f"><label>Mot de passe — affiché une seule fois</label>
+            <div class="acces-ligne"><input class="in acces-mdp" id="accesMdp" readonly><button class="btn btn-ghost btn-sm" data-copier="accesMdp" type="button">Copier</button></div>
+          </div>
+          <p class="gsub" id="accesExpire"></p>
+          <a class="btn btn-ghost btn-sm" id="accesWhatsapp" target="_blank" rel="noopener">Envoyer le lien par WhatsApp</a>
+        </div>
+        <div class="acces-liste" id="accesListe"></div>
       </div>
 
       <div class="card demo-card" id="demoCard">
@@ -945,6 +976,7 @@ async function openApp() {
   await loadTheme();
   await loadHealth();
   await loadDemo();
+  chargerAccesScan();
   paintLogo((window.__brand && window.__brand.logoUrl) || '');
 }
 
@@ -1215,6 +1247,73 @@ function toast(t, s) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
+
+/* ---------- ACCÈS DES AGENTS DE SCAN ----------
+   Un lien + un mot de passe par agent, valables 24 h. Le mot de passe n'est
+   montre qu'a la creation : le serveur n'en garde que l'empreinte. */
+function quandFr(ms) {
+  return new Date(ms).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+async function chargerAccesScan() {
+  const hote = document.getElementById('accesListe');
+  if (!hote) return;
+  try {
+    const res = await apiFetch('/api/admin/acces-scan');
+    const d = await res.json();
+    const liste = d.acces || [];
+    hote.innerHTML = liste.length ? liste.map((a) => `
+      <div class="acces-item${a.actif ? '' : ' inactif'}">
+        <div class="quoi"><b>${esc(a.libelle || 'Sans nom')}</b>
+          <span>${a.revoque ? 'Révoqué' : a.actif ? 'Valable jusqu\'au ' + esc(quandFr(a.expire_le)) : 'Expiré le ' + esc(quandFr(a.expire_le))}</span></div>
+        ${a.actif ? `<button class="btn btn-ghost btn-sm" data-revoquer="${esc(a.id)}" type="button">Révoquer</button>` : ''}
+      </div>`).join('') : '';
+  } catch (e) { /* liste indisponible : la creation reste possible */ }
+}
+
+document.getElementById('accesCreer').addEventListener('click', async () => {
+  const bouton = document.getElementById('accesCreer');
+  const libelle = document.getElementById('accesLibelle').value.trim();
+  bouton.disabled = true;
+  try {
+    const res = await apiFetch('/api/admin/acces-scan', { method: 'POST', body: JSON.stringify({ libelle }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Création impossible.');
+    document.getElementById('accesLien').value = d.lien;
+    document.getElementById('accesMdp').value = d.mot_de_passe;
+    document.getElementById('accesExpire').textContent =
+      'Valable jusqu\'au ' + quandFr(d.expire_le) + '. Note le mot de passe maintenant : il ne sera plus affiché.';
+    // Le lien seul part par WhatsApp : le mot de passe doit voyager a part,
+    // sinon un message transfere donne les deux d'un coup.
+    const texte = `Lien de scan${libelle ? ' (' + libelle + ')' : ''} pour l'entrée du festival, valable 24 h :\n${d.lien}\n\n` +
+      'Ouvre-le sur ton téléphone, puis ajoute l\'app à ton écran d\'accueil. Le mot de passe t\'est envoyé dans un autre message.';
+    document.getElementById('accesWhatsapp').href = 'https://wa.me/?text=' + encodeURIComponent(texte);
+    document.getElementById('accesNouveau').hidden = false;
+    document.getElementById('accesLibelle').value = '';
+    chargerAccesScan();
+  } catch (e) {
+    toast('Erreur', e.message);
+  } finally {
+    bouton.disabled = false;
+  }
+});
+
+document.getElementById('accesScan').addEventListener('click', async (event) => {
+  const copier = event.target.closest('[data-copier]');
+  if (copier) {
+    const valeur = document.getElementById(copier.dataset.copier).value;
+    try { await navigator.clipboard.writeText(valeur); toast('Copié', ''); }
+    catch { document.getElementById(copier.dataset.copier).select(); }
+    return;
+  }
+  const revoquer = event.target.closest('[data-revoquer]');
+  if (revoquer) {
+    if (!confirm('Révoquer ce lien ? Les téléphones connectés avec lui seront déconnectés tout de suite.')) return;
+    await apiFetch('/api/admin/acces-scan/revoquer', { method: 'POST', body: JSON.stringify({ id: revoquer.dataset.revoquer }) });
+    toast('Lien révoqué', '');
+    chargerAccesScan();
+  }
+});
 
 /* ---------- VÉRIFIER (admin, jour J) ---------- */
 document.getElementById('vbtn').addEventListener('click', adminVerify);

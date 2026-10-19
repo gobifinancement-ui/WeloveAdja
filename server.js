@@ -55,6 +55,8 @@ const MIME_TYPES = {
   ".js": "application/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  // llms.txt : presentation du festival pour les assistants IA.
+  ".txt": "text/plain; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -651,7 +653,6 @@ async function serveStaticFile(request, response, pathname) {
     const targetPath = filePath;
     const extname = path.extname(targetPath).toLowerCase();
     const contentType = MIME_TYPES[extname] || "application/octet-stream";
-    const fileContent = await fs.promises.readFile(targetPath);
 
     // filePath peut etre hors de ROOT quand uploads/ est relocalise : on teste
     // l'appartenance a UPLOADS_ROOT directement, pas via un chemin relatif a ROOT.
@@ -680,8 +681,45 @@ async function serveStaticFile(request, response, pathname) {
       headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
     }
 
-    response.writeHead(200, headers);
-    response.end(request.method === "HEAD" ? undefined : fileContent);
+    // Envoi par morceaux (en-tete Range). Safari sur iPhone ne lit une video
+    // QUE si le serveur sait en renvoyer un morceau (206) : sans cela la video
+    // de fond restait noire sur iPhone alors qu'Android la lisait. Le fichier
+    // est lu en flux, et non charge en entier en memoire a chaque visite.
+    headers["Accept-Ranges"] = "bytes";
+    const taille = stat.size;
+    const plage = /^bytes=(\d*)-(\d*)$/.exec(String(request.headers.range || "").trim());
+    let debut = 0;
+    let fin = taille - 1;
+    let statut = 200;
+    if (plage && (plage[1] !== "" || plage[2] !== "")) {
+      if (plage[1] === "") {
+        // « bytes=-500 » : les 500 derniers octets.
+        debut = Math.max(0, taille - Number(plage[2]));
+      } else {
+        debut = Number(plage[1]);
+        if (plage[2] !== "") fin = Math.min(Number(plage[2]), taille - 1);
+      }
+      if (debut > fin || debut >= taille) {
+        response.writeHead(416, { "Content-Range": `bytes */${taille}`, "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      statut = 206;
+      headers["Content-Range"] = `bytes ${debut}-${fin}/${taille}`;
+    }
+    headers["Content-Length"] = String(taille === 0 ? 0 : fin - debut + 1);
+
+    response.writeHead(statut, headers);
+    if (request.method === "HEAD" || taille === 0) {
+      response.end();
+      return;
+    }
+    const flux = fs.createReadStream(targetPath, { start: debut, end: fin });
+    flux.on("error", (error) => {
+      console.error("Erreur serveur statique:", error);
+      response.destroy(error);
+    });
+    flux.pipe(response);
   } catch (error) {
     if (error.code === "ENOENT") {
       sendJson(response, 404, { error: "Fichier introuvable." });
@@ -964,6 +1002,16 @@ function aRejouer(error) {
   return /ER_DUP_ENTRY|ER_LOCK_DEADLOCK|ER_LOCK_WAIT_TIMEOUT|UNIQUE constraint failed/.test(texte);
 }
 
+// Une colonne deja presente (ajoutee entre la lecture et l'ALTER) n'est pas
+// une erreur : le resultat voulu est atteint.
+async function ajouterColonne(table, nom, definition) {
+  try {
+    await run(`ALTER TABLE ${table} ADD COLUMN ${nom} ${definition}`);
+  } catch (error) {
+    if (!/ER_DUP_FIELDNAME|duplicate column/i.test(`${error.code || ""} ${error.message || ""}`)) throw error;
+  }
+}
+
 async function ensureParticipantColumns() {
   const existingColumns = await colonnesDe("participants");
   const requiredColumns = [
@@ -990,7 +1038,7 @@ async function ensureParticipantColumns() {
     if (!existingColumns.has(name)) {
       // MySQL : INTEGER devient BIGINT, comme dans le schema de base-mysql.
       const type = MODE_MYSQL && definition === "INTEGER" ? "BIGINT" : definition;
-      await run(`ALTER TABLE participants ADD COLUMN ${name} ${type}`);
+      await ajouterColonne("participants", name, type);
     }
   }
 
@@ -1043,7 +1091,12 @@ async function numeroterBadgesExistants() {
 async function ensureSessionColumns() {
   const columns = await colonnesDe("sessions");
   if (!columns.has("role")) {
-    await run(`ALTER TABLE sessions ADD COLUMN role ${MODE_MYSQL ? "VARCHAR(32)" : "TEXT"} NOT NULL DEFAULT 'admin'`);
+    await ajouterColonne("sessions", "role", `${MODE_MYSQL ? "VARCHAR(32)" : "TEXT"} NOT NULL DEFAULT 'admin'`);
+  }
+  // Lien d'acces de scan qui a ouvert la session : le revoquer coupe aussi
+  // les sessions qu'il a deja ouvertes.
+  if (!columns.has("acces_id")) {
+    await ajouterColonne("sessions", "acces_id", MODE_MYSQL ? "VARCHAR(64)" : "TEXT");
   }
 }
 
@@ -1157,6 +1210,14 @@ async function initDatabase() {
     await ouvrirBaseLocale();
   }
 
+  // Mises a jour de la base faites par UN processus a la fois : Hostinger en
+  // demarre plusieurs ensemble apres un deploiement, et deux ALTER TABLE
+  // simultanes sur la meme colonne faisaient planter le second (« Duplicate
+  // column name »). Les suivants attendent, puis trouvent tout en place.
+  await avecVerrou("feja:migration", () => migrerBase());
+}
+
+async function migrerBase() {
   await ensureParticipantColumns();
   await ensureSessionColumns();
 
@@ -1324,6 +1385,19 @@ async function ouvrirBaseLocale() {
       object_id TEXT,
       payload TEXT,
       created_at INTEGER NOT NULL
+    );
+
+    -- Liens d'acces des agents de scan : un lien + un mot de passe, valables
+    -- 24 h. Jeton et mot de passe ne sont stockes que hashes.
+    CREATE TABLE IF NOT EXISTS acces_scan (
+      id TEXT PRIMARY KEY,
+      jeton_hash TEXT NOT NULL UNIQUE,
+      mot_de_passe_hash TEXT NOT NULL,
+      libelle TEXT,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      revoque INTEGER NOT NULL DEFAULT 0,
+      essais INTEGER NOT NULL DEFAULT 0
     );
   `);
 }
@@ -1519,10 +1593,13 @@ function sendRateLimited(response, retryAfter, message) {
   response.end(JSON.stringify({ error: message, retry_after: retryAfter }));
 }
 
-async function createSession(role = "admin") {
+// options.expiresAt / options.accesId : session ouverte par un lien d'acces
+// de scan. Elle s'arrete a l'echeance du lien et n'est jamais prolongee.
+async function createSession(role = "admin", options = {}) {
   const token = crypto.randomBytes(32).toString("hex");
-  const expiresAt = Date.now() + SESSION_TTL_MS;
-  await run("INSERT INTO sessions (token, expires_at, role) VALUES (?, ?, ?)", [token, expiresAt, role]);
+  const expiresAt = options.expiresAt || Date.now() + SESSION_TTL_MS;
+  await run("INSERT INTO sessions (token, expires_at, role, acces_id) VALUES (?, ?, ?, ?)",
+    [token, expiresAt, role, options.accesId || null]);
   persistDatabase();
   return token;
 }
@@ -1545,7 +1622,7 @@ async function getSessionRole(request) {
 
   if (!token) return null;
 
-  const row = await statementGet("SELECT expires_at, role FROM sessions WHERE token = ?", [token]);
+  const row = await statementGet("SELECT expires_at, role, acces_id FROM sessions WHERE token = ?", [token]);
 
   if (!row || Number(row.expires_at) < Date.now()) {
     if (row) {
@@ -1558,8 +1635,10 @@ async function getSessionRole(request) {
   // Expiration glissante. On n'ecrit sur le disque que si l'echeance a
   // sensiblement bouge : sinon chaque requete de l'admin (rafraichissement
   // toutes les quelques secondes) reecrirait toute la base.
+  // Jamais pour une session ouverte par un lien d'acces de scan : son
+  // echeance est celle du lien (24 h), elle ne doit pas glisser.
   const nextExpiry = Date.now() + SESSION_TTL_MS;
-  if (nextExpiry - Number(row.expires_at) > 60 * 60 * 1000) {
+  if (!row.acces_id && nextExpiry - Number(row.expires_at) > 60 * 60 * 1000) {
     await run("UPDATE sessions SET expires_at = ? WHERE token = ?", [nextExpiry, token]);
     persistDatabase();
   }
@@ -1606,6 +1685,9 @@ async function migrateStraySettingKeys() {
 // Les sessions expirees ne servent qu'a faire grossir la base.
 async function purgeExpiredSessions() {
   await run("DELETE FROM sessions WHERE expires_at < ?", [Date.now()]);
+  // Les liens d'acces de scan restent visibles un mois dans l'admin (qui a
+  // eu acces, et quand), puis disparaissent.
+  await run("DELETE FROM acces_scan WHERE expires_at < ?", [Date.now() - 30 * 24 * 60 * 60 * 1000]);
   persistDatabase();
 }
 
@@ -1903,7 +1985,7 @@ function getConfigHealth(settings) {
 
   if (!settings.scan_password) {
     add("warn", "scan_password", "Pas de mot de passe dédié au scan",
-      "Les téléphones à l'entrée se connectent avec le mot de passe administrateur : chacun peut alors lire les clés de paiement. Définis-en un séparé.");
+      "Sans lien d'accès ni mot de passe de scan, les téléphones à l'entrée se connectent avec le mot de passe administrateur et peuvent lire les clés de paiement. Crée plutôt un lien d'accès de 24 h par agent (Réglages → Accès des agents de scan).");
   } else {
     add("ok", "scan_password", "Mot de passe de scan distinct", null);
   }
@@ -3936,6 +4018,26 @@ function normalizeParticipant(p) {
   };
 }
 
+// --- Liens d'acces des agents de scan ---------------------------------------
+// L'organisateur cree un lien et un mot de passe par agent (ou par poste),
+// valables 24 h : l'agent n'a jamais le mot de passe admin, et un telephone
+// perdu le lendemain n'ouvre plus rien. Le jeton est dans le fragment (#) de
+// l'adresse : il ne part ni dans les journaux du serveur ni dans un Referer.
+const DUREE_ACCES_SCAN_MS = 24 * 60 * 60 * 1000;
+const ESSAIS_ACCES_SCAN = 10;
+const ALPHABET_MDP_SCAN = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans O/0 ni I/1
+
+function genererMotDePasseScan() {
+  let mdp = "";
+  for (let i = 0; i < 8; i += 1) mdp += ALPHABET_MDP_SCAN[crypto.randomInt(ALPHABET_MDP_SCAN.length)];
+  return `${mdp.slice(0, 4)}-${mdp.slice(4)}`;
+}
+
+// Saisi sur un telephone : majuscules, tiret et espaces ne doivent pas compter.
+function normaliserMotDePasseScan(mdp) {
+  return String(mdp || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 async function handleApi(request, response, url) {
   try {
     if (url.pathname === "/api/public-config" && request.method === "GET") {
@@ -4815,6 +4917,38 @@ async function handleApi(request, response, url) {
       return;
     }
 
+    if (url.pathname === "/api/scan/acces" && request.method === "POST") {
+      const retryAfter = await rateLimit(request, "acces-scan", 30, 15 * 60 * 1000);
+      if (retryAfter) {
+        sendRateLimited(response, retryAfter, "Trop de tentatives. Réessaie dans quelques minutes.");
+        return;
+      }
+      const body = await parseJsonBody(request);
+      const jeton = String(body.jeton || "").trim();
+      const refus = () => sendJson(response, 401, { error: "Lien d'accès invalide ou expiré. Demande un nouveau lien à l'organisation." });
+      if (!jeton || jeton.length > 200) { refus(); return; }
+
+      const acces = await statementGet("SELECT * FROM acces_scan WHERE jeton_hash = ?", [hashToken(jeton)]);
+      if (!acces || Number(acces.revoque) || Number(acces.expires_at) < Date.now()) { refus(); return; }
+
+      // Increment atomique, refuse au-dela du plafond : des essais en rafale
+      // sur plusieurs processus ne peuvent pas lire le meme compteur.
+      const essaiCompte = await run("UPDATE acces_scan SET essais = essais + 1 WHERE id = ? AND essais < ?", [acces.id, ESSAIS_ACCES_SCAN]);
+      if (!essaiCompte) {
+        sendJson(response, 429, { error: "Trop d'essais : ce lien est bloqué. Demande un nouveau lien à l'organisation." });
+        return;
+      }
+      if (!verifyPassword(normaliserMotDePasseScan(body.mot_de_passe), acces.mot_de_passe_hash).ok) {
+        sendJson(response, 401, { error: "Mot de passe incorrect." });
+        return;
+      }
+      await run("UPDATE acces_scan SET essais = 0 WHERE id = ?", [acces.id]);
+      const token = await createSession("scan", { expiresAt: Number(acces.expires_at), accesId: acces.id });
+      await persistDatabase();
+      sendJson(response, 200, { token, role: "scan", expire_le: Number(acces.expires_at), libelle: acces.libelle || "" });
+      return;
+    }
+
     if (url.pathname === "/api/admin/login" && request.method === "POST") {
       // 10 essais par quart d'heure et par adresse : un humain qui se trompe
       // n'est pas gene, une force brute est arretee net.
@@ -5043,6 +5177,61 @@ async function handleApi(request, response, url) {
       // Mode demonstration. L'extinction efface les inscriptions d'essai :
       // c'est le comportement demande, on previent donc dans la reponse
       // combien de lignes ont ete supprimees.
+      if (url.pathname === "/api/admin/acces-scan" && request.method === "GET") {
+        const lignes = await statementAll(
+          "SELECT id, libelle, expires_at, created_at, revoque FROM acces_scan ORDER BY created_at DESC LIMIT 50",
+        );
+        const maintenant = Date.now();
+        sendJson(response, 200, {
+          acces: lignes.map((l) => ({
+            id: l.id,
+            libelle: l.libelle || "",
+            cree_le: Number(l.created_at),
+            expire_le: Number(l.expires_at),
+            revoque: Boolean(Number(l.revoque)),
+            actif: !Number(l.revoque) && Number(l.expires_at) > maintenant,
+          })),
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/acces-scan" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const settings = await getSettings();
+        const libelle = String(body.libelle || "").trim().slice(0, 80);
+        const jeton = crypto.randomBytes(24).toString("base64url");
+        const motDePasse = genererMotDePasseScan();
+        const id = crypto.randomBytes(9).toString("hex");
+        const maintenant = Date.now();
+        const expireLe = maintenant + DUREE_ACCES_SCAN_MS;
+        await run(
+          `INSERT INTO acces_scan (id, jeton_hash, mot_de_passe_hash, libelle, expires_at, created_at, revoque, essais)
+           VALUES (?, ?, ?, ?, ?, ?, 0, 0)`,
+          [id, hashToken(jeton), hashPassword(normaliserMotDePasseScan(motDePasse)), libelle, expireLe, maintenant],
+        );
+        await persistDatabase();
+        sentinelle.signaler({ gravite: "info", type: "acces_scan",
+          titre: `Lien d'accès de scan créé${libelle ? ` : ${libelle}` : ""}`, ip: getClientIp(request) });
+        // Le mot de passe n'est rendu qu'ici, une seule fois : seule son
+        // empreinte est gardee.
+        sendJson(response, 201, {
+          id, libelle, mot_de_passe: motDePasse, expire_le: expireLe,
+          lien: `${baseDuSite(request, settings)}/scan.html#acces=${jeton}`,
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/admin/acces-scan/revoquer" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const id = String(body.id || "");
+        await run("UPDATE acces_scan SET revoque = 1 WHERE id = ?", [id]);
+        // Les telephones deja connectes par ce lien sont coupes aussitot.
+        await run("DELETE FROM sessions WHERE acces_id = ?", [id]);
+        await persistDatabase();
+        sendJson(response, 200, { ok: true });
+        return;
+      }
+
       if (url.pathname === "/api/admin/demo" && request.method === "GET") {
         const current = await getSettings();
         sendJson(response, 200, {
@@ -5637,9 +5826,23 @@ async function servirPageReferencee(request, response, chemin) {
     eventName: settings.event_name || DEFAULT_SETTINGS.event_name,
     email: settings.vendeur_email || "",
   });
+  html = poserLogoDansLaPage(html, settings);
 
   response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
   response.end(request.method === "HEAD" ? undefined : html);
+}
+
+// Le HTML pointait sur l'icone generique (un rond aux couleurs du theme) et
+// js/branding.js ne mettait le vrai logo qu'apres avoir lu la configuration :
+// on voyait le rond, puis le logo. Le logo est maintenant ecrit dans la page
+// des l'envoi, avec la version reduite (logo-site.png) quand elle existe.
+function poserLogoDansLaPage(html, settings) {
+  const logo = urlLogoSite(settings);
+  if (!logo) return html;
+  const adresse = escapeHtml(logo);
+  return html
+    .replace(/(<img\b[^>]*\bdata-brand-logo\b[^>]*\bsrc=")\/api\/branding\/default-icon\.svg(")/g, `$1${adresse}$2`)
+    .replace(/(<link rel="icon" href=")\/api\/branding\/default-icon\.svg(")/, `$1${adresse}$2`);
 }
 
 async function servirPlanDuSite(request, response) {

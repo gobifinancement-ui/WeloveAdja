@@ -49,7 +49,7 @@ function requete(port, methode, chemin, corps, entetes = {}) {
         const texte = Buffer.concat(morceaux).toString("utf8");
         let json = null;
         try { json = JSON.parse(texte); } catch {}
-        resolve({ statut: res.statusCode, json, texte });
+        resolve({ statut: res.statusCode, json, texte, entetes: res.headers });
       });
     });
     req.on("error", reject);
@@ -248,4 +248,68 @@ test("une validation manuelle dans l'admin, envoyee deux fois en meme temps, ne 
   const codes = new Set(reponses.map((r) => r.json.participant.code_unique));
   assert.equal(codes.size, 1, "un seul code delivre");
   assert.equal(Number(reponses[0].json.participant.numero_badge), 10, "numero suivant, sans trou");
+});
+
+test("la video de fond est servie par morceaux (exige par Safari sur iPhone)", async () => {
+  const config = await requete(port(0), "GET", "/api/public-config");
+  const video = config.json.heroMedia && config.json.heroMedia.url;
+  assert.ok(video, "une video de fond est configuree");
+  const morceau = await requete(port(0), "GET", video, undefined, { Range: "bytes=0-1" });
+  assert.equal(morceau.statut, 206);
+  assert.match(morceau.entetes["content-range"], /^bytes 0-1\/\d+$/);
+  assert.equal(morceau.entetes["content-length"], "2");
+  const entier = await requete(port(0), "GET", video, undefined, { Range: "bytes=999999999-" });
+  assert.equal(entier.statut, 416);
+});
+
+test("le logo est ecrit dans la page des l'envoi, sans l'icone ronde par defaut", async () => {
+  const page = await requete(port(0), "GET", "/");
+  assert.equal(page.statut, 200);
+  assert.match(page.texte, /data-brand-logo src="\/uploads\/branding\/logo(-site)?\.png\?v=\d+"/);
+  assert.ok(!/<img[^>]*data-brand-logo[^>]*default-icon\.svg/.test(page.texte), "plus d'icone par defaut dans les <img>");
+  const ia = await requete(port(0), "GET", "/llms.txt");
+  assert.equal(ia.statut, 200);
+  assert.match(ia.entetes["content-type"], /^text\/plain/);
+  assert.match(ia.texte, /Festival Adja/);
+});
+
+test("un lien d'acces de scan ouvre le scan seulement, et sa revocation coupe le telephone", async () => {
+  const cree = await admin(port(0), "POST", "/api/admin/acces-scan", { libelle: "Entree test" });
+  assert.equal(cree.statut, 201, cree.texte);
+  const jeton = /#acces=([A-Za-z0-9_-]+)$/.exec(cree.json.lien)[1];
+  assert.match(cree.json.mot_de_passe, /^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+
+  const faux = await requete(port(1), "POST", "/api/scan/acces", { jeton, mot_de_passe: "AAAA-AAAA" });
+  assert.equal(faux.statut, 401);
+  // Saisi en minuscules et sans tiret : accepte quand meme.
+  const saisi = cree.json.mot_de_passe.replace("-", "").toLowerCase();
+  const ok = await requete(port(1), "POST", "/api/scan/acces", { jeton, mot_de_passe: saisi });
+  assert.equal(ok.statut, 200, ok.texte);
+  assert.equal(ok.json.role, "scan");
+  assert.ok(ok.json.expire_le > Date.now() + 23 * 3600 * 1000 && ok.json.expire_le <= Date.now() + 24 * 3600 * 1000);
+
+  const agent = (i, methode, chemin) => requete(port(i), methode, chemin, undefined, { Authorization: `Bearer ${ok.json.token}` });
+  assert.equal((await agent(0, "GET", "/api/admin/scan/snapshot")).statut, 200);
+  assert.equal((await agent(0, "GET", "/api/admin/settings")).statut, 403, "pas d'acces aux reglages");
+
+  const liste = await admin(port(0), "GET", "/api/admin/acces-scan");
+  assert.ok(liste.json.acces.some((a) => a.id === cree.json.id && a.actif));
+
+  const revoque = await admin(port(0), "POST", "/api/admin/acces-scan/revoquer", { id: cree.json.id });
+  assert.equal(revoque.statut, 200);
+  assert.equal((await agent(1, "GET", "/api/admin/scan/snapshot")).statut, 401, "telephone deconnecte");
+  assert.equal((await requete(port(0), "POST", "/api/scan/acces", { jeton, mot_de_passe: saisi })).statut, 401, "lien inutilisable");
+});
+
+test("un lien d'acces expire ne marche plus, et le telephone est deconnecte", { skip: !URL_MYSQL && "base locale : echeance non modifiable depuis le test" }, async () => {
+  const cree = await admin(port(0), "POST", "/api/admin/acces-scan", { libelle: "Expire" });
+  const jeton = /#acces=([A-Za-z0-9_-]+)$/.exec(cree.json.lien)[1];
+  const ok = await requete(port(0), "POST", "/api/scan/acces", { jeton, mot_de_passe: cree.json.mot_de_passe });
+  assert.equal(ok.statut, 200);
+  // On avance l'horloge du lien et de sa session de 24 h.
+  await mysqlBrut(`UPDATE ${nomBase}.acces_scan SET expires_at = expires_at - 86400001 WHERE id = '${cree.json.id}'`);
+  await mysqlBrut(`UPDATE ${nomBase}.sessions SET expires_at = expires_at - 86400001 WHERE acces_id = '${cree.json.id}'`);
+  const apres = await requete(port(1), "GET", "/api/admin/scan/snapshot", undefined, { Authorization: `Bearer ${ok.json.token}` });
+  assert.equal(apres.statut, 401);
+  assert.equal((await requete(port(2), "POST", "/api/scan/acces", { jeton, mot_de_passe: cree.json.mot_de_passe })).statut, 401);
 });
