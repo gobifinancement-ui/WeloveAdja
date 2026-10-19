@@ -206,6 +206,27 @@ button{font-family:var(--body);cursor:pointer}
 .set-group h3{font-family:var(--display);font-weight:600;font-size:1.18rem;margin-bottom:4px;display:flex;align-items:center;gap:10px}
 .set-group h3 svg{color:var(--brand-green-br)}
 .set-group .gsub{color:var(--cream-52);font-size:.84rem;margin-bottom:18px}
+/* Reglages : un menu, une section a la fois. Tout dans une seule page, on
+   faisait defiler sans fin sans retrouver les agents ni le badge. */
+.panel.settings.show{display:grid;grid-template-columns:240px minmax(0,1fr);gap:0 26px;align-items:start}
+.panel.settings>*{grid-column:2}
+.panel.settings>.set-nav{grid-column:1;grid-row:1/span 60;position:sticky;top:20px;align-self:start}
+.set-nav{display:flex;flex-direction:column;gap:3px;background:var(--glass);border:1px solid var(--stroke);border-radius:18px;padding:8px}
+.set-nav button{display:flex;align-items:center;gap:10px;text-align:left;background:none;border:0;color:var(--cream-72);font:600 .92rem var(--body);padding:11px 12px;border-radius:12px;cursor:pointer;transition:background .15s,color .15s}
+.set-nav button:hover{background:rgba(255,255,255,.05);color:var(--cream)}
+.set-nav button.sel{background:color-mix(in oklab,var(--brand-green) 28%,transparent);color:var(--cream);box-shadow:inset 3px 0 0 var(--brand-green-br)}
+.set-nav .ico{width:22px;text-align:center;font-size:1.05rem}
+.panel.settings [data-section].cache{display:none!important}
+details.avance{margin-top:18px;border-top:1px solid var(--stroke);padding-top:14px}
+details.avance summary{cursor:pointer;color:var(--cream-72);font-weight:600;font-size:.9rem;margin-bottom:14px}
+@media(max-width:899px){
+  .panel.settings.show{display:block}
+  .set-nav{position:sticky;top:0;z-index:14;flex-direction:row;overflow-x:auto;scrollbar-width:none;margin-bottom:16px;padding:6px;background:color-mix(in oklab,var(--bg) 88%,transparent);backdrop-filter:blur(12px)}
+  .set-nav::-webkit-scrollbar{display:none}
+  .set-nav button{white-space:nowrap;flex:0 0 auto;padding:10px 12px;font-size:.84rem}
+  .set-nav button.sel{box-shadow:inset 0 -3px 0 var(--brand-green-br)}
+}
+@media(max-width:639px){.set-nav{top:122px}}
 /* Acces des agents de scan */
 .acces-nouveau{margin-top:18px;padding:16px;border:1px solid var(--brand-green-stroke);border-radius:14px;background:rgba(0,0,0,.18)}
 .acces-ligne{display:flex;gap:8px;align-items:center}
@@ -615,14 +636,15 @@ button{font-family:var(--body);cursor:pointer}
     </div>
 
     <div class="panel settings" data-panel="settings">
-      <div class="set-group" id="healthGroup">
+      <nav class="set-nav" id="setNav" aria-label="Sections des réglages"></nav>
+      <div class="set-group" id="healthGroup" data-section="jourj">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Prêt pour le jour J ?</h3>
         <p class="gsub">Contrôle automatique de la configuration. Vérifie ce tableau <b class="gold">avant l'événement</b>.</p>
         <div id="healthList" class="health-list"><div class="health-loading">Vérification…</div></div>
         <button class="btn btn-ghost btn-sm" id="healthRefresh" type="button" style="margin-top:12px">Revérifier</button>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="evenement">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg> Événement</h3>
         <p class="gsub">Ces valeurs s'affichent directement sur la page publique.</p>
         <div class="grid2">
@@ -636,7 +658,7 @@ button{font-family:var(--body);cursor:pointer}
         </div>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="evenement">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><circle cx="12" cy="9" r="3"/><path d="M8 17h8"/></svg> Badge</h3>
         <p class="gsub">Textes imprimés sur le badge de chaque participant (PDF et image). La photo, le nom et le code de chacun sont ajoutés automatiquement. Un champ laissé vide reprend le texte de la maquette.</p>
         <div class="badge-reglages">
@@ -656,7 +678,7 @@ button{font-family:var(--body);cursor:pointer}
         </div>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="apparence">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="13" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="10" cy="20" r="2.5"/><path d="M12 2a10 10 0 1 0 0 20c1 0 1.5-.6 1.5-1.3 0-1.5-1.5-1.6-1.5-3.2 0-1 .8-1.5 2-1.5h1.5A6.5 6.5 0 0 0 22 9.5C22 5.4 17.5 2 12 2z"/></svg> Apparence du site</h3>
         <p class="gsub">Le logo et les couleurs choisis ici s'appliquent <b class="gold">immédiatement</b> sur le site public, l'admin, la page de vérification et l'app de scan.</p>
 
@@ -726,7 +748,7 @@ button{font-family:var(--body);cursor:pointer}
         </div>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="paiement">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 9.5V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2.5a2 2 0 0 0 0 5V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.5a2 2 0 0 0 0-5z"/></svg> Participation & paiement</h3>
         <p class="gsub">Le montant modifié ici change <b class="gold">partout</b> sur le site.</p>
         <div class="grid2">
@@ -737,7 +759,7 @@ button{font-family:var(--body);cursor:pointer}
         </div>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="contact">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.94.36 1.86.7 2.74a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.34-1.34a2 2 0 0 1 2.11-.45c.88.34 1.8.57 2.74.7A2 2 0 0 1 22 16.92z"/></svg> Contact</h3>
         <div class="grid2">
           <div class="f"><label>Lien WhatsApp</label><span class="desc">Ex. https://wa.me/229…</span><input class="in" data-set="waLink"></div>
@@ -746,7 +768,7 @@ button{font-family:var(--body);cursor:pointer}
         </div>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="contact">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg> Informations légales</h3>
         <p class="gsub">Affichées sur les pages <a href="/mentions-legales.html" target="_blank" rel="noopener">Mentions légales</a>, <a href="/confidentialite.html" target="_blank" rel="noopener">Confidentialité</a> et <a href="/conditions.html" target="_blank" rel="noopener">Conditions</a>. Un champ vide n'est pas affiché. L'email de contact ci-dessus sert aussi aux demandes sur les données personnelles.</p>
         <div class="grid2">
@@ -756,7 +778,7 @@ button{font-family:var(--body);cursor:pointer}
         </div>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="contact">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg> Référencement Google</h3>
         <p class="gsub">Le titre, la description et l'image d'aperçu (WhatsApp, Facebook) sont faits automatiquement à partir des textes du badge. Ici, seulement deux réglages facultatifs.</p>
         <div class="grid2">
@@ -765,7 +787,7 @@ button{font-family:var(--body);cursor:pointer}
         </div>
       </div>
 
-      <div class="set-group" id="securiteGroup">
+      <div class="set-group" id="securiteGroup" data-section="emails">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4M12 16h.01"/></svg> Sécurité & alertes</h3>
         <p class="gsub">Le site se surveille en continu : tentatives de fraude au paiement, fausses notifications FedaPay, mots de passe admin devinés, robots qui cherchent des failles, codes devinés, badges présentés deux fois à l'entrée, réglages sensibles modifiés, pannes FedaPay ou d'e-mail, disque plein… Chaque alerte part par e-mail et reste dans le journal ci-dessous.</p>
         <div class="grid2">
@@ -779,28 +801,28 @@ button{font-family:var(--body);cursor:pointer}
         <div class="sec-journal" id="secJournal"><p class="sec-vide">Chargement…</p></div>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="accueil">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg> Chefs de la fête</h3>
         <p class="gsub">Nom, rôle et photo de chaque responsable. Affichés en ronds sur la page d'accueil.</p>
         <div id="chiefsEditor"></div>
         <button class="rep-add" id="addChief"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Ajouter un chef</button>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="evenement">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Inclus dans la fête</h3>
         <p class="gsub">Liste ce que chaque participant doit recevoir (bracelet, kit, t-shirt…). Gérable le jour J depuis l'onglet Vérifier.</p>
         <div id="itemsEditor"></div>
         <button class="rep-add" id="addItem"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Ajouter un élément</button>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="accueil">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> Sponsors & partenaires</h3>
         <p class="gsub">Initiale (ou emoji) + nom. Affichés dans la bande « Avec le soutien de ».</p>
         <div id="sponsorsEditor"></div>
         <button class="rep-add" id="addSponsor"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Ajouter un sponsor</button>
       </div>
 
-      <div class="set-group">
+      <div class="set-group" data-section="accueil">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Artistes invités</h3>
         <p class="gsub">Importe l'affiche de chaque artiste. Les images sont compressées automatiquement avant l'envoi.</p>
         <div id="artistsEditor"></div>
@@ -819,9 +841,9 @@ button{font-family:var(--body);cursor:pointer}
         <p class="gsub" style="margin-top:12px">Enregistre, puis ouvre le site et fais défiler jusqu'à « Artistes invités » pour voir le rendu.</p>
       </div>
 
-      <div class="set-group">
-        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M15 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3"/><circle cx="12" cy="11" r="2"/><path d="M12 13v3"/></svg> Clés & sécurité</h3>
-        <p class="gsub">Clés techniques stockées côté serveur uniquement. Ne jamais partager.</p>
+      <div class="set-group" data-section="paiement">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> Paiement en ligne (FedaPay)</h3>
+        <p class="gsub">Clés de ton compte FedaPay. Stockées côté serveur uniquement : ne les partage jamais.</p>
         <div class="grid2">
           <div class="f"><label>Clé secrète paiement</label><span class="desc">Utilisée côté serveur pour créer les transactions</span>
             <div class="ipwrap"><input class="in" data-set="paymentSecretKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
@@ -835,15 +857,37 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>URL publique du site</label><span class="desc">Ex. https://fejafestival.com (pour les webhooks)</span>
             <input class="in" data-set="publicBaseUrl" placeholder="https://…">
           </div>
-          <div class="f"><label>Clé API WaChap</label><span class="desc">Notifications WhatsApp à l'organisateur</span>
-            <div class="ipwrap"><input class="in" data-set="wachapKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
-          </div>
+        </div>
+      </div>
+
+      <div class="set-group" data-section="emails">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg> Envoi des e-mails</h3>
+        <p class="gsub">Badges, codes de récupération et alertes. Avec Brevo, la clé et l'expéditeur suffisent : laisse la partie SMTP vide.</p>
+        <div class="grid2">
           <div class="f"><label>Clé API Brevo</label><span class="desc">Envoi par l'API de Brevo (xkeysib-…), utilisée si le SMTP n'est pas rempli. Pour passer par le relais SMTP de Brevo, remplis plutôt les champs SMTP plus bas (smtp-relay.brevo.com, port 587).</span>
             <div class="ipwrap"><input class="in" data-set="brevoKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
           <div class="f"><label>Email expéditeur Brevo</label><span class="desc">Une adresse validée dans ton compte Brevo. Ex. FEJA &lt;noreply@fejafestival.com&gt;</span>
             <input class="in" data-set="brevoFrom" placeholder="FEJA &lt;noreply@…&gt;">
           </div>
+          <div class="f"><label>Adresse des alertes internes</label><span class="desc">Reçoit un e-mail à chaque inscription payée. Différente de l'adresse de contact publique.</span>
+            <input class="in" data-set="alertEmail" placeholder="organisation@tondomaine.bj" autocomplete="off">
+          </div>
+          <div class="f"><label>Clé API WaChap</label><span class="desc">Notifications WhatsApp à l'organisateur</span>
+            <div class="ipwrap"><input class="in" data-set="wachapKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          </div>
+          <div class="mail-diag">
+            <div class="mail-diag-acts">
+              <button class="btn btn-ghost btn-sm" id="mailVerify" type="button">Tester la connexion</button>
+              <button class="btn btn-gold btn-sm" id="mailTest" type="button">Envoyer un e-mail de test</button>
+              <button class="btn btn-ghost btn-sm" id="mailExemple" type="button">Recevoir un exemple de l'e-mail de confirmation</button>
+            </div>
+            <div class="mail-diag-out" id="mailDiag">Enregistre d'abord tes réglages, puis teste la connexion.</div>
+          </div>
+        </div>
+        <details class="avance">
+          <summary>Options avancées (Resend, SMTP)</summary>
+          <div class="grid2">
           <div class="f"><label>Clé API Resend</label><span class="desc">Envoi des emails de confirmation</span>
             <div class="ipwrap"><input class="in" data-set="resendKey" type="password" autocomplete="off"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
@@ -869,29 +913,21 @@ button{font-family:var(--body);cursor:pointer}
           <div class="f"><label>Expéditeur affiché</label><span class="desc">Ce que voit le destinataire. Laisse vide pour utiliser l'utilisateur SMTP : une adresse d'un autre domaine ferait échouer SPF et partirait en indésirables.</span>
             <input class="in" data-set="mailFrom" placeholder="FEJA &lt;no-reply@tondomaine.bj&gt;" autocomplete="off">
           </div>
-          <div class="f"><label>Adresse des alertes internes</label><span class="desc">Reçoit un e-mail à chaque inscription payée. Différente de l'adresse de contact publique.</span>
-            <input class="in" data-set="alertEmail" placeholder="organisation@tondomaine.bj" autocomplete="off">
           </div>
+        </details>
+      </div>
 
-          <div class="mail-diag">
-            <div class="mail-diag-acts">
-              <button class="btn btn-ghost btn-sm" id="mailVerify" type="button">Tester la connexion</button>
-              <button class="btn btn-gold btn-sm" id="mailTest" type="button">Envoyer un e-mail de test</button>
-              <button class="btn btn-ghost btn-sm" id="mailExemple" type="button">Recevoir un exemple de l'e-mail de confirmation</button>
-            </div>
-            <div class="mail-diag-out" id="mailDiag">Enregistre d'abord tes réglages, puis teste la connexion.</div>
-          </div>
-
+      <div class="set-group" data-section="compte">
+        <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Mot de passe administrateur</h3>
+        <p class="gsub">Celui qui ouvre cet espace. Long, unique, et jamais donné aux agents de scan.</p>
+        <div class="grid2">
           <div class="f"><label>Mot de passe admin</label><span class="desc">Pour accéder à cet espace. Laisse le champ tel quel pour ne pas le changer.</span>
             <div class="ipwrap"><input class="in" data-set="adminPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
-          </div>
-          <div class="f"><label>Mot de passe des postes de scan</label><span class="desc">Donné aux agents à l'entrée. Il n'ouvre que l'app de scan, pas les réglages ni les clés de paiement. Préfère les liens d'accès de 24 h ci-dessous.</span>
-            <div class="ipwrap"><input class="in" data-set="scanPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           </div>
         </div>
       </div>
 
-      <div class="set-group" id="accesScan">
+      <div class="set-group" id="accesScan" data-section="scan">
         <h3><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg> Accès des agents de scan</h3>
         <p class="gsub">Un lien et un mot de passe par agent (ou par poste), valables <b>24 heures</b>. Ensuite, le lien et le mot de passe ne marchent plus et le téléphone est déconnecté. L'agent n'a jamais accès aux réglages ni aux clés. Envoie le lien et le mot de passe dans <b>deux messages séparés</b>.</p>
         <div class="f"><label>Pour qui ?</label><span class="desc">Ex. « Entrée principale – Koffi ». Sert à t'y retrouver dans la liste.</span>
@@ -909,9 +945,14 @@ button{font-family:var(--body);cursor:pointer}
           <a class="btn btn-ghost btn-sm" id="accesWhatsapp" target="_blank" rel="noopener">Envoyer le lien par WhatsApp</a>
         </div>
         <div class="acces-liste" id="accesListe"></div>
+        <div class="grid2" style="margin-top:18px">
+          <div class="f"><label>Mot de passe des postes de scan</label><span class="desc">Donné aux agents à l'entrée. Il n'ouvre que l'app de scan, pas les réglages ni les clés de paiement. Facultatif : préfère les liens d'accès de 24 h ci-dessus.</span>
+            <div class="ipwrap"><input class="in" data-set="scanPassword" type="password" autocomplete="new-password"><button class="reveal-btn" data-reveal><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          </div>
+        </div>
       </div>
 
-      <div class="card demo-card" id="demoCard">
+      <div class="card demo-card" id="demoCard" data-section="paiement">
         <div class="demo-head">
           <div>
             <b>Mode démonstration</b>
@@ -1247,6 +1288,42 @@ function toast(t, s) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
+
+/* ---------- RÉGLAGES : MENU DES SECTIONS ----------
+   Une section affichee a la fois. Le bouton Enregistrer, lui, enregistre
+   tous les champs, quelle que soit la section ouverte. */
+const SECTIONS_REGLAGES = [
+  ['jourj', '🏁', 'Prêt pour le jour J'],
+  ['evenement', '🎉', 'Événement & badge'],
+  ['accueil', '🖼️', "Page d'accueil"],
+  ['apparence', '🎨', 'Apparence'],
+  ['paiement', '💳', 'Billetterie & paiement'],
+  ['emails', '✉️', 'E-mails & alertes'],
+  ['scan', '📱', 'Agents de scan'],
+  ['contact', '📄', 'Contact & légal'],
+  ['compte', '🔐', 'Mon compte'],
+];
+const navReglages = document.getElementById('setNav');
+navReglages.innerHTML = SECTIONS_REGLAGES.map(([id, ico, nom]) =>
+  `<button type="button" data-aller="${id}"><span class="ico">${ico}</span>${esc(nom)}</button>`).join('');
+function allerSection(id, defiler) {
+  if (!SECTIONS_REGLAGES.some((s) => s[0] === id)) id = 'jourj';
+  document.querySelectorAll('.panel.settings [data-section]').forEach((g) => g.classList.toggle('cache', g.dataset.section !== id));
+  navReglages.querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.aller === id));
+  try { localStorage.setItem('admin_section', id); } catch (e) { /* stockage indisponible : on garde la section en memoire */ }
+  const choisi = navReglages.querySelector('.sel');
+  if (choisi) choisi.scrollIntoView({ inline: 'center', block: 'nearest' });
+  // Remonte au debut de la section, sous la barre du haut et les onglets
+  // qui restent fixes sur telephone.
+  if (defiler) window.scrollTo({ top: navReglages.closest('.panel').getBoundingClientRect().top + window.scrollY - 130, behavior: 'smooth' });
+}
+navReglages.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-aller]');
+  if (b) allerSection(b.dataset.aller, true);
+});
+let sectionDepart = 'jourj';
+try { sectionDepart = localStorage.getItem('admin_section') || 'jourj'; } catch (e) { /* idem */ }
+allerSection(sectionDepart, false);
 
 /* ---------- ACCÈS DES AGENTS DE SCAN ----------
    Un lien + un mot de passe par agent, valables 24 h. Le mot de passe n'est
