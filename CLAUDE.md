@@ -110,6 +110,10 @@ lib/seo.js              Référencement : balises, données structurées, robots
 test/seo.test.js        Textes, dates de l'événement, échappement, robots.
 img/partage-festival-adja.jpg  Image d'aperçu des liens partagés (1200 × 630).
 test/sentinelle.test.js Détection, regroupement, anti-doublon, plafond d'e-mails.
+test/parcours.test.js   Parcours complet sur de vrais serveurs (1 en sql.js, 3 sur MySQL).
+lib/base-mysql.js       Base MySQL de l'hébergement (pool, verrous GET_LOCK, schéma).
+reglages-initiaux/      Réglages de l'organisation, logo et vidéo, posés une fois sur une
+                        base neuve (appliquerReglagesInitiaux). Jamais servi tel quel.
 data/                   Base SQLite (non versionné).
 uploads/                Photos des participants, QR, images de marque (non versionné).
 ```
@@ -381,6 +385,20 @@ transforme les erreurs de configuration silencieuses en liste de contrôle :
 clé absente, adresse publique locale, environnement encore en sandbox.
 
 ---
+
+## Réglages initiaux
+
+Le contenu du site (nom, prix, lieu, dates, thème, logo, vidéo) vit dans la
+table `settings`, pas dans le code : une base neuve affichait les valeurs
+d'exemple (« WeloveAdja », 10 000 FCFA, aucun logo). C'est arrivé le
+19/10/2026 au passage à MySQL.
+
+`reglages-initiaux/reglages.json` porte les valeurs de l'organisation, avec
+le logo et la vidéo à côté. Au démarrage, `appliquerReglagesInitiaux()` les
+pose **une fois par `version`**, et seulement là où le réglage est encore vide
+ou à sa valeur par défaut : ce qui a été changé dans l'admin n'est jamais
+écrasé. Le logo et la vidéo sont copiés dans `uploads/branding/`, comme un
+téléversement depuis l'admin. Pour reposer des valeurs, changer `version`.
 
 ## Plusieurs processus (MySQL, hébergement)
 

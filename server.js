@@ -525,6 +525,12 @@ function sendJson(response, statusCode, payload) {
 // admin, participants, codes d'entree). C'est la premiere barriere.
 const PRIVATE_PREFIXES = [
   "data",          // base SQLite + sauvegardes
+  "reglages-initiaux", // source des reglages poses au demarrage (voir appliquerReglagesInitiaux)
+  // Code du serveur et ses tests : aucune page ne les charge. Ils etaient
+  // lisibles par tous (constate le 19/10/2026) alors que CLAUDE.md les
+  // annoncait prives ; ils decrivent la base, les verrous et les alertes.
+  "lib",
+  "test",
   "node_modules",
   ".git",
   ".sixth",
@@ -1169,9 +1175,61 @@ async function initDatabase() {
     await saveSettings({ admin_password: hashPassword(storedPassword) });
     console.log("Mot de passe admin migre vers un stockage hache.");
   }
+  await appliquerReglagesInitiaux();
   // Base locale : les colonnes ajoutees ci-dessus partent sur le disque tout
   // de suite, sans attendre la prochaine inscription.
   await persistDatabase();
+}
+
+// --- Reglages initiaux ------------------------------------------------------
+// Le contenu du site (nom, prix, lieu, logo, video...) vit dans la base, pas
+// dans le code : une base neuve affichait les valeurs d'exemple du code
+// (« WeloveAdja », 10 000 FCFA, aucun logo). C'est arrive le 19/10/2026 au
+// passage a MySQL. reglages-initiaux/ porte les valeurs de l'organisation ;
+// elles sont posees UNE fois par version, et seulement la ou le reglage est
+// encore vide ou a sa valeur par defaut : ce qui a ete change dans l'admin
+// n'est jamais ecrase.
+const DOSSIER_REGLAGES_INITIAUX = path.join(ROOT, "reglages-initiaux");
+
+async function appliquerReglagesInitiaux() {
+  let donnees;
+  try {
+    donnees = JSON.parse(fs.readFileSync(path.join(DOSSIER_REGLAGES_INITIAUX, "reglages.json"), "utf8"));
+  } catch {
+    return;
+  }
+  const version = String(donnees.version || "");
+  if (!version) return;
+
+  // Sous verrou : plusieurs processus demarrent souvent ensemble.
+  await avecVerrou("feja:reglages-initiaux", async () => {
+    const actuels = await getSettings();
+    if (actuels.reglages_initiaux_version === version) return;
+
+    const intact = (cle) => {
+      const valeur = String(actuels[cle] ?? "");
+      return valeur === "" || valeur === String(DEFAULT_SETTINGS[cle] ?? "");
+    };
+    const aEcrire = {};
+    for (const [cle, valeur] of Object.entries(donnees.reglages || {})) {
+      if (intact(cle)) aEcrire[cle] = String(valeur);
+    }
+    // Logo et video : copies la ou l'admin les range, pour qu'ils se
+    // comportent comme un televersement (cache du badge, remplacement).
+    for (const fichier of donnees.fichiers || []) {
+      if (!intact(fichier.reglage)) continue;
+      fs.mkdirSync(BRANDING_DIR, { recursive: true });
+      fs.copyFileSync(path.join(DOSSIER_REGLAGES_INITIAUX, path.basename(fichier.source)),
+        path.join(BRANDING_DIR, path.basename(fichier.cible)));
+      aEcrire[fichier.reglage] = `/uploads/branding/${path.basename(fichier.cible)}?v=${Date.now()}`;
+    }
+
+    const nombre = Object.keys(aEcrire).length;
+    aEcrire.reglages_initiaux_version = version;
+    await saveSettings(aEcrire);
+    if (aEcrire.logo_url) clearTicketCache();
+    console.log(`Reglages initiaux ${version} : ${nombre} valeur(s) posee(s).`);
+  });
 }
 
 async function ouvrirBaseLocale() {
@@ -2290,19 +2348,25 @@ async function appliquerBasculeBadge() {
 function urlLogoSite(settings) {
   const chemin = getSiteLogoPath(settings);
   if (!chemin) return settings.logo_url || "";
-  try {
-    const relatif = path.relative(ROOT, chemin).split(path.sep).join("/");
-    return `/${relatif}?v=${Math.round(fs.statSync(chemin).mtimeMs)}`;
-  } catch {
-    return settings.logo_url || "";
-  }
+  return urlFichierVersionnee(chemin) || settings.logo_url || "";
 }
 
 function urlSceauBadge(settings) {
   const chemin = getTicketLogoPath(settings);
   if (!chemin) return "";
+  return urlFichierVersionnee(chemin);
+}
+
+// Adresse publique d'un fichier, versionnee par sa date. Un fichier televerse
+// se calcule depuis UPLOADS_ROOT et non depuis ROOT : en production uploads/
+// est hors du dossier de l'appli, et le chemin relatif a ROOT donnait une
+// adresse en « /../../ » (logo et sceau du badge absents).
+function urlFichierVersionnee(chemin) {
   try {
-    const relatif = path.relative(ROOT, chemin).split(path.sep).join("/");
+    const dansUploads = chemin === UPLOADS_ROOT || chemin.startsWith(UPLOADS_ROOT + path.sep);
+    const relatif = dansUploads
+      ? `uploads/${path.relative(UPLOADS_ROOT, chemin).split(path.sep).join("/")}`
+      : path.relative(ROOT, chemin).split(path.sep).join("/");
     return `/${relatif}?v=${Math.round(fs.statSync(chemin).mtimeMs)}`;
   } catch {
     return "";

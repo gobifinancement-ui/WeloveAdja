@@ -1,0 +1,21 @@
+{
+  "version": "2026-10-19",
+  "origine": "Reglages de l'organisation, repris de la base de l'ordinateur de travail (dossier FEJA-complet, 2 octobre 2026). Prix confirme le 19/10/2026.",
+  "reglages": {
+    "event_name": "FEJA",
+    "participation_fee": "15000",
+    "pickup_location": "Terrain Omnisports CEG2 AZOVÈ",
+    "event_date_label": "15 août",
+    "event_date": "2026-08-15T10:00:00",
+    "event_annual": "1",
+    "theme_preset": "emeraude",
+    "scroll_animation": "bascule",
+    "hero_media_active": "1",
+    "hero_media_veil": "98",
+    "tiktok_guide_url": "https://vt.tiktok.com/ZSbf6YqKg/"
+  },
+  "fichiers": [
+    { "reglage": "logo_url", "source": "logo.png", "cible": "logo.png" },
+    { "reglage": "hero_media_url", "source": "video-accueil.mp4", "cible": "hero-media.mp4" }
+  ]
+}

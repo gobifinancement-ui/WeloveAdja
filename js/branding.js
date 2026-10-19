@@ -36,7 +36,14 @@
       document.querySelectorAll("[data-brand-name]").forEach((element) => {
         element.textContent = config.eventName;
       });
-      document.title = document.title.replace(/^[^—|]+/, `${config.eventName} `).trim();
+      // Les pages referencees finissent leur titre par « | <nom> » (ecrit par
+      // le serveur) ; ailleurs, seul le nom d'exemple est remplace. Remplacer
+      // tout le debut du titre donnait « FEJA | FEJA » et effacait le titre
+      // prepare pour Google.
+      const titre = document.title;
+      document.title = titre.includes("|")
+        ? titre.replace(/\|[^|]*$/, `| ${config.eventName}`)
+        : titre.replace(/WeloveAdja/g, config.eventName);
     }
 
     // Toujours une icone : sans logo, le monogramme genere prend le relais.

@@ -137,6 +137,24 @@ test.after(async () => {
   fs.rmSync(dossier, { recursive: true, force: true });
 });
 
+test("une base neuve recoit les reglages de l'organisation, logo compris", async () => {
+  const config = await requete(port(0), "GET", "/api/public-config");
+  assert.equal(config.statut, 200, config.texte);
+  assert.equal(config.json.eventName, "FEJA");
+  assert.equal(Number(config.json.amount), 15000);
+  // Version reduite du logo (logo-site.png) ou l'original, toujours sous /uploads/.
+  assert.match(config.json.logoUrl, /^\/uploads\/branding\/logo(-site)?\.png\?v=\d+$/);
+  const logo = await requete(port(0), "GET", config.json.logoUrl);
+  assert.equal(logo.statut, 200, "le logo est servi");
+  // La source des reglages n'est jamais servie telle quelle.
+  const source = await requete(port(0), "GET", "/reglages-initiaux/reglages.json");
+  assert.equal(source.statut, 404);
+  // Le code du serveur et les tests ne sont pas servis non plus.
+  for (const chemin of ["/lib/base-mysql.js", "/lib/sentinelle.js", "/test/parcours.test.js", "/server.js"]) {
+    assert.equal((await requete(port(0), "GET", chemin)).statut, 404, chemin);
+  }
+});
+
 test(`un paiement confirme en meme temps sur ${NB_SERVEURS} serveur(s) ne delivre qu'un jeu de badges`, async () => {
   const achat = await acheter(0, 3, "groupe@example.com");
   const id = achat.participant.id;
@@ -216,6 +234,9 @@ test("les donnees survivent au redemarrage d'un serveur", async () => {
   const liste = await admin(port(0), "GET", "/api/admin/participants");
   assert.equal(liste.statut, 200, liste.texte);
   assert.equal(liste.json.participants.filter((p) => p.statut_paiement === "Valide").length, 9);
+  // Le nom change dans l'admin n'est pas remplace par les reglages initiaux.
+  const config = await requete(port(0), "GET", "/api/public-config");
+  assert.equal(config.json.eventName, "FEJA Parcours");
 });
 
 test("une validation manuelle dans l'admin, envoyee deux fois en meme temps, ne delivre qu'un badge", async () => {
