@@ -17,11 +17,21 @@ const { Sentinelle } = require("./lib/sentinelle");
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
-const DATA_DIR = path.join(ROOT, "data");
-const UPLOADS_DIR = path.join(ROOT, "uploads", "proofs");
-const PARTICIPANT_PHOTOS_DIR = path.join(ROOT, "uploads", "participants");
-const QRCODES_DIR = path.join(ROOT, "uploads", "qrcodes");
-const BRANDING_DIR = path.join(ROOT, "uploads", "branding");
+
+// Donnees persistantes (base + photos). Par defaut sous ROOT, pratique en
+// developpement. Mais un hebergement qui redeploie en remplacant le dossier de
+// l'appli (par exemple Hostinger, .../hbuilds/current) effacerait tout a chaque
+// mise en ligne : en production, FEJA_DATA_DIR et FEJA_UPLOADS_DIR les pointent
+// vers un dossier conserve en dehors du build.
+function cheminPersistant(valeur, defaut) {
+  return valeur && valeur.trim() ? path.resolve(valeur.trim()) : defaut;
+}
+const DATA_DIR = cheminPersistant(process.env.FEJA_DATA_DIR, path.join(ROOT, "data"));
+const UPLOADS_ROOT = cheminPersistant(process.env.FEJA_UPLOADS_DIR, path.join(ROOT, "uploads"));
+const UPLOADS_DIR = path.join(UPLOADS_ROOT, "proofs");
+const PARTICIPANT_PHOTOS_DIR = path.join(UPLOADS_ROOT, "participants");
+const QRCODES_DIR = path.join(UPLOADS_ROOT, "qrcodes");
+const BRANDING_DIR = path.join(UPLOADS_ROOT, "branding");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const MAX_BACKUPS = 24;
 const DB_PATH = path.join(DATA_DIR, "weloveadja.sqlite");
@@ -542,6 +552,22 @@ function resolveFilePath(urlPathname) {
   if (cleanPath.includes("\u0000")) return null;
 
   const relativePath = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
+  const segments = relativePath.split(/[\\/]+/).filter(Boolean);
+
+  // Les fichiers de /uploads/ peuvent vivre hors de ROOT (dossier persistant en
+  // production, voir UPLOADS_ROOT). On les resout contre ce dossier, avec le
+  // meme controle de confinement, mais sans les regles "prive" propres a ROOT
+  // (data, .env...) qui n'ont pas de sens hors de l'arborescence du code.
+  if (segments[0] === "uploads") {
+    if (segments.some((segment) => segment.startsWith("."))) return null;
+    const dansUploads = path.normalize(path.join(UPLOADS_ROOT, ...segments.slice(1)));
+    if (dansUploads !== UPLOADS_ROOT && !dansUploads.startsWith(UPLOADS_ROOT + path.sep)) {
+      return null;
+    }
+    if (!MIME_TYPES[path.extname(dansUploads).toLowerCase()]) return null;
+    return dansUploads;
+  }
+
   const filePath = path.join(ROOT, relativePath);
   const normalized = path.normalize(filePath);
 
@@ -588,11 +614,15 @@ async function serveStaticFile(request, response, pathname) {
     const contentType = MIME_TYPES[extname] || "application/octet-stream";
     const fileContent = await fs.promises.readFile(targetPath);
 
+    // filePath peut etre hors de ROOT quand uploads/ est relocalise : on teste
+    // l'appartenance a UPLOADS_ROOT directement, pas via un chemin relatif a ROOT.
+    const estUpload = filePath === UPLOADS_ROOT || filePath.startsWith(UPLOADS_ROOT + path.sep);
+
     const headers = {
       "Content-Type": contentType,
       // Les polices du badge ne changent jamais et pesent pres de 500 Ko :
       // les retelecharger a chaque badge affiche couterait cher en donnees.
-      "Cache-Control": path.relative(ROOT, filePath).split(path.sep)[0] === "fonts"
+      "Cache-Control": !estUpload && path.relative(ROOT, filePath).split(path.sep)[0] === "fonts"
         ? "public, max-age=604800"
         : "no-store",
     };
@@ -602,7 +632,7 @@ async function serveStaticFile(request, response, pathname) {
     // onglet, il peut executer du script sur NOTRE domaine et voler la session
     // admin. Cette politique le neutralise sans empecher son affichage en
     // <img>, et vaut pour tout ce dossier par principe.
-    if (path.relative(ROOT, filePath).split(path.sep)[0] === "uploads") {
+    if (estUpload) {
       headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
     }
 
@@ -2186,11 +2216,13 @@ function removeBrandingLogo(base = "logo") {
 // ici pour le controle de sante de la config (logo trop lourd) ; la version
 // dont se sert la construction du badge vit desormais dans lib/ticket-pdf.js.
 function localFileFromUrl(url) {
-  const clean = String(url || "").split("?")[0].replace(/^\/+/, "");
-  if (!clean) return null;
-  const filePath = path.join(ROOT, clean);
   // Ne jamais sortir de uploads/ : cette fonction recoit une valeur de reglage.
-  if (!filePath.startsWith(path.join(ROOT, "uploads"))) return null;
+  // Les URL stockees sont de la forme /uploads/<sous-dossier>/<fichier> ; on les
+  // resout contre UPLOADS_ROOT, qui peut etre deplace hors de ROOT en production.
+  const segments = String(url || "").split("?")[0].split(/[\\/]+/).filter(Boolean);
+  if (segments[0] !== "uploads") return null;
+  const filePath = path.normalize(path.join(UPLOADS_ROOT, ...segments.slice(1)));
+  if (filePath !== UPLOADS_ROOT && !filePath.startsWith(UPLOADS_ROOT + path.sep)) return null;
   return fs.existsSync(filePath) ? filePath : null;
 }
 
@@ -3137,10 +3169,9 @@ function purgeDemoParticipants() {
 
   rows.forEach((row) => {
     [row.participant_photo_url, row.qr_code_url].forEach((url) => {
-      if (!url) return;
-      const filePath = path.join(ROOT, String(url).split("?")[0].replace(/^\/+/, ""));
-      // Garde-fou : on ne supprime que sous uploads/, jamais ailleurs.
-      if (filePath.startsWith(path.join(ROOT, "uploads"))) {
+      // localFileFromUrl borne la suppression a uploads/, jamais ailleurs.
+      const filePath = localFileFromUrl(url);
+      if (filePath) {
         try { fs.unlinkSync(filePath); } catch {}
       }
     });
