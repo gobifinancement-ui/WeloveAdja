@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr" data-anim="montee">
+<html lang="fr" data-anim="montee" data-display="bricolage">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -180,6 +180,14 @@ html[data-display="bricolage"] .section-head h2{font-weight:600;letter-spacing:-
 .obj-steps .step{align-items:center}
 .step h3{font-family:var(--display);font-weight:500;font-size:1.08rem;margin:2px 0 3px}
 .step p{color:var(--cream-72);font-size:.88rem;line-height:1.5;margin:0}
+/* Texte lu par les lecteurs d'ecran et les moteurs, pas affiche : le titre
+   visible ne dit que « FEJA », l'eyebrow au-dessus dit deja le reste. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.foot-legal{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 16px}
+.foot-legal a{color:var(--cream-72);text-decoration:none}
+.foot-legal a:hover{color:var(--brand-green-br)}
+.cgv-note{font-size:.78rem;color:var(--cream-52);text-align:center;margin:14px 0 0;line-height:1.5}
+.cgv-note a{color:var(--cream-72)}
 .legal-note{text-align:center;font-size:.78rem;color:var(--cream-52);margin:22px auto 0;max-width:52ch;line-height:1.6}
 
 /* Entree en cascade au defilement, reutilisable : le conteneur porte
@@ -844,7 +852,10 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
   .field input{font-size:1.05rem}
 }
 @media(min-width:940px){.mobile-cta{display:none!important}}
-@media(max-width:939px){.mobile-cta{display:block}}
+@media(max-width:939px){.mobile-cta{display:block}
+  /* Place pour le bouton « Participer » fixe : sans elle, il recouvrait le bas
+     du pied de page, dont les liens vers les pages legales. */
+  footer{padding-bottom:calc(110px + env(safe-area-inset-bottom))}}
 @media(max-width:430px){
   .brand .txt span{display:none}
   .nav-cta .btn-verify span{display:none}
@@ -883,8 +894,8 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
     <div class="hero-media" id="heroMedia" hidden aria-hidden="true"></div>
     <div class="wrap">
       <div class="inner">
-        <span class="eyebrow solo anim a1">Festival Adja • Édition <span data-year>2026</span></span>
-        <h1 class="anim a2"><span id="typedName" data-cfg="eventName">FEJA</span><span class="caret" aria-hidden="true"></span></h1>
+        <span class="eyebrow solo anim a1">Festival Adja • Édition <span data-cfg="anneeFestival">2027</span></span>
+        <h1 class="anim a2"><span id="typedName" data-cfg="eventName">FEJA</span><span class="caret" aria-hidden="true"></span><span class="sr-only"> – <span data-cfg="festivalEnClair">Festival Adja 2027 à Azovè</span></span></h1>
         <p class="acronym anim a3">Fraternité pour l'Épanouissement de la Jeunesse d'Aplahoué</p>
         <p class="lead anim a3">FEJA rassemble la jeunesse d'Adja et du Bénin autour de la fraternité, de la solidarité et de l'esprit d'entraide, à travers l'art, la culture et des activités saines, pour un cadre de vie meilleur, ensemble.</p>
         <div class="hero-actions anim a4">
@@ -997,13 +1008,14 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
   <div class="wrap">
     <div class="foot-grid">
       <div class="foot-brand">
-        <a href="#top" class="brand"><img class="mark" data-brand-logo src="/api/branding/default-icon.svg" alt="" style="object-fit:contain"><span class="txt"><b data-cfg="eventName">WeloveAdja</b><span>2026</span></span></a>
+        <a href="#top" class="brand"><img class="mark" data-brand-logo src="/api/branding/default-icon.svg" alt="" style="object-fit:contain"><span class="txt"><b data-cfg="eventName">WeloveAdja</b><span data-cfg="anneeFestival">2027</span></span></a>
         <p>Fraternité pour l'Épanouissement de la Jeunesse d'Aplahoué – communautarisme, solidarité et esprit d'entraide, par l'art et la culture.</p>
       </div>
       <div class="foot-col">
         <h4>Paiement</h4>
         <p><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> Moov Money</p>
         <p><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> MTN MoMo</p>
+        <p><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> Celtiis Cash</p>
       </div>
       <div class="foot-col">
         <h4>Contact</h4>
@@ -1019,7 +1031,11 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
     <p class="legal-note">Récépissé n°6PDC/2024A/482/PDC/SGD/SAG/SA du 23 octobre 2024 · Réf. Journal Officiel n°21 du 1ᵉʳ novembre 2024</p>
     <div class="foot-bottom">
       <span>© <span data-year>2026</span> <span data-cfg="eventName">FEJA</span>. Tous droits réservés.</span>
-      <span>Paiement sécurisé · Mobile Money</span>
+      <nav class="foot-legal" aria-label="Informations légales">
+        <a href="/conditions.html">Conditions générales</a>
+        <a href="/confidentialite.html">Confidentialité</a>
+        <a href="/mentions-legales.html">Mentions légales</a>
+      </nav>
     </div>
   </div>
 </footer>
@@ -1209,6 +1225,8 @@ html[data-anim="aucune"]  .reveal-group:not(.in)>*{opacity:1;transform:none}
           <div class="pay-ops" id="payOps" hidden></div>
 
           <p class="note" id="payNote"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span id="payNoteTexte">Redirection vers la <b>page de paiement sécurisée</b>, puis retour ici avec ton badge.</span></p>
+
+          <p class="cgv-note">En payant, tu acceptes les <a href="/conditions.html" target="_blank" rel="noopener">conditions générales</a> et la <a href="/confidentialite.html" target="_blank" rel="noopener">politique de confidentialité</a>.</p>
 
           <div class="reg-actions"><button class="btn btn-back" data-back>← Retour</button></div>
         </div>
@@ -1459,6 +1477,20 @@ function renderHeroMedia(){
 
   const media = CFG.heroMedia;
   if(!media || !media.url){
+    hote.hidden = true;
+    hote.innerHTML = '';
+    hero.classList.remove('has-media');
+    return;
+  }
+
+  // Video de fond (plusieurs Mo) sautee pour qui economise ses donnees, a une
+  // connexion lente ou demande moins d'animations : elle retardait
+  // l'affichage de la page et coutait cher en forfait. Le fond habituel suffit.
+  const conn = navigator.connection || {};
+  const econome = conn.saveData === true
+    || /^(slow-2g|2g|3g)$/.test(conn.effectiveType || '')
+    || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if(media.type === 'video' && econome){
     hote.hidden = true;
     hote.innerHTML = '';
     hero.classList.remove('has-media');
@@ -1806,6 +1838,9 @@ function closeSheet(){
   sh.addEventListener('animationend',()=>{sh.classList.remove('open','leave');activeSheet=null;},{once:true});
 }
 document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openSheet(b.dataset.open)));
+// Les pages legales renvoient ici pour ecrire a l'organisation : /#contact
+// ouvre directement le formulaire.
+if(location.hash === '#contact') setTimeout(() => openSheet('contact'), 300);
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeSheet));
 addEventListener('keydown',e=>{if(e.key==='Escape'&&activeSheet)closeSheet();});
 

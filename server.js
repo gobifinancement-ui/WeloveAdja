@@ -11,10 +11,11 @@ const initSqlJs = require("sql.js");
 const QRCode = require("qrcode");
 const PDFDocument = require("pdfkit");
 const mail = require("./lib/mail");
-const { getTicketLogoPath, qrMatrice, textesBadge, MAX_TICKET_LOGO_BYTES, TICKET_LOGO_CACHE } = require("./lib/ticket-pdf");
+const { getTicketLogoPath, getSiteLogoPath, qrMatrice, textesBadge, MAX_TICKET_LOGO_BYTES, TICKET_LOGO_CACHE, SITE_LOGO_CACHE } = require("./lib/ticket-pdf");
 const BadgeLayout = require("./js/badge-layout");
 const { Sentinelle } = require("./lib/sentinelle");
 const baseMysql = require("./lib/base-mysql");
+const seo = require("./lib/seo");
 
 // MySQL des que DB_NAME est defini (hebergement), sinon la base locale sql.js
 // (PC de l'organisation, tests). Voir lib/base-mysql.js pour le pourquoi.
@@ -139,6 +140,15 @@ const DEFAULT_SETTINGS = {
   // aucun bouton "voir la video" affiche, ni sur le parcours de paiement ni
   // en pied de page.
   tiktok_guide_url: "",
+  // Page « Mentions légales ». Vide = ligne non affichée ; l'etat de
+  // preparation signale ce qui manque.
+  legal_adresse: "",
+  legal_responsable: "",
+  legal_hebergeur: "",
+  // Referencement : code de validation Google Search Console (balise
+  // google-site-verification) et pages officielles, une adresse par ligne.
+  seo_google_verification: "",
+  seo_reseaux: "",
   chiefs_json: "[]",
   sponsors_json: "[]",
   event_items_json: "[]",
@@ -289,6 +299,11 @@ const SETTINGS_KEY_MAP = {
   artistsAnimation:     "artists_animation",
   scrollAnimation:      "scroll_animation",
   tiktokUrl:            "tiktok_guide_url",
+  legalAdresse:         "legal_adresse",
+  legalResponsable:     "legal_responsable",
+  legalHebergeur:       "legal_hebergeur",
+  seoGoogle:            "seo_google_verification",
+  seoReseaux:           "seo_reseaux",
   badgeTitre:           "badge_titre",
   badgeAnnee:           "badge_annee",
   badgeEdition:         "badge_edition",
@@ -598,6 +613,17 @@ function resolveFilePath(urlPathname) {
   return normalized;
 }
 
+// Logo, video de fond, sceau du badge : le site les appelle toujours avec
+// ?v=<date>, une nouvelle version change donc d'adresse et le cache ne sert
+// jamais un fichier perime. Sans cache, la video de fond (plusieurs Mo) et le
+// logo etaient retelecharges a chaque visite. Les photos des participants,
+// elles, ne sont jamais mises en cache partage.
+// Compare a BRANDING_DIR et non a ROOT : en production, uploads/ est deplace
+// hors du dossier de l'appli (FEJA_UPLOADS_DIR).
+function estFichierDeMarque(filePath) {
+  return filePath.startsWith(BRANDING_DIR + path.sep);
+}
+
 async function serveStaticFile(request, response, pathname) {
   const filePath = resolveFilePath(pathname);
 
@@ -624,14 +650,19 @@ async function serveStaticFile(request, response, pathname) {
     // filePath peut etre hors de ROOT quand uploads/ est relocalise : on teste
     // l'appartenance a UPLOADS_ROOT directement, pas via un chemin relatif a ROOT.
     const estUpload = filePath === UPLOADS_ROOT || filePath.startsWith(UPLOADS_ROOT + path.sep);
+    const dossier = estUpload ? "" : path.relative(ROOT, filePath).split(path.sep)[0];
 
     const headers = {
       "Content-Type": contentType,
       // Les polices du badge ne changent jamais et pesent pres de 500 Ko :
       // les retelecharger a chaque badge affiche couterait cher en donnees.
-      "Cache-Control": !estUpload && path.relative(ROOT, filePath).split(path.sep)[0] === "fonts"
+      // Les images du site (illustrations, icones, image de partage) pesent
+      // plus d'un mega : une journee de cache, pour les forfaits mobiles et
+      // pour la vitesse d'affichage que mesure Google.
+      "Cache-Control": dossier === "fonts"
         ? "public, max-age=604800"
-        : "no-store",
+        : dossier === "img" ? "public, max-age=86400"
+          : estFichierDeMarque(filePath) ? "public, max-age=604800" : "no-store",
     };
 
     // Les fichiers de /uploads/ sont fournis par l'organisateur ou par les
@@ -1828,6 +1859,19 @@ function getConfigHealth(settings) {
     add("ok", "items", `${eventItems.length} élément(s) à remettre`, null);
   }
 
+  const mentionsManquantes = [
+    [settings.legal_adresse, "adresse du siège"],
+    [settings.legal_responsable, "responsable de la publication"],
+    [settings.legal_hebergeur, "hébergeur"],
+    [settings.vendeur_email, "email de contact"],
+  ].filter(([valeur]) => !String(valeur || "").trim()).map(([, nom]) => nom);
+  if (mentionsManquantes.length) {
+    add("warn", "mentions_legales", "Mentions légales incomplètes",
+      `À renseigner dans Réglages (Contact et Informations légales) : ${mentionsManquantes.join(", ")}. Ces informations s'affichent sur les pages légales du site.`);
+  } else {
+    add("ok", "mentions_legales", "Mentions légales complètes", null);
+  }
+
   return {
     ready: !checks.some((check) => check.level === "error"),
     errors: checks.filter((check) => check.level === "error").length,
@@ -1953,7 +1997,12 @@ function publicSettings(settings) {
     waLink:      settings.wa_link || "",
     email:       settings.vendeur_email || "",
     tiktokUrl:   settings.tiktok_guide_url || "",
-    logoUrl:     settings.logo_url || "",
+    legal: {
+      adresse:     settings.legal_adresse || "",
+      responsable: settings.legal_responsable || "",
+      hebergeur:   settings.legal_hebergeur || "",
+    },
+    logoUrl:     urlLogoSite(settings),
     // Ce que la toile du navigateur doit savoir pour dessiner le meme badge
     // que le PDF : memes textes, meme sceau (la version reduite du logo).
     badge:       Object.assign(textesBadge(settings), {
@@ -2193,8 +2242,10 @@ function saveParticipantPhoto(dataUrl, participantId) {
 // Efface le logo reduit du badge : sans cela, le badge continuerait
 // d'afficher l'ancien logo apres un remplacement.
 function clearTicketCache() {
-  const f = path.join(BRANDING_DIR, TICKET_LOGO_CACHE);
-  try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+  for (const nom of [TICKET_LOGO_CACHE, SITE_LOGO_CACHE]) {
+    const f = path.join(BRANDING_DIR, nom);
+    try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+  }
 }
 
 // Enregistre le passage a l'edition suivante des que le jour de bascule est
@@ -2234,6 +2285,19 @@ async function appliquerBasculeBadge() {
 // d'origine pese plus d'un Mo : le recharger a chaque badge affiche coutait
 // cher en donnees mobiles. Version = date du fichier, pour suivre un
 // remplacement malgre les caches.
+// Adresse du logo affiche par le site : la version reduite quand elle existe
+// (PNG), l'original sinon. Versionnee, donc gardee en cache sans risque.
+function urlLogoSite(settings) {
+  const chemin = getSiteLogoPath(settings);
+  if (!chemin) return settings.logo_url || "";
+  try {
+    const relatif = path.relative(ROOT, chemin).split(path.sep).join("/");
+    return `/${relatif}?v=${Math.round(fs.statSync(chemin).mtimeMs)}`;
+  } catch {
+    return settings.logo_url || "";
+  }
+}
+
 function urlSceauBadge(settings) {
   const chemin = getTicketLogoPath(settings);
   if (!chemin) return "";
@@ -3708,8 +3772,8 @@ async function finalizePaidParticipant(participant, transaction, settings) {
   }
 
   const cle = participant.groupe_id || participant.id;
-  return avecVerrou(`feja:achat:${cle}`, async () =>
-    finaliserAchat((await getParticipantById(participant.id)) || participant, transaction, settings));
+  return await avecVerrou(`feja:achat:${cle}`, async () =>
+    await finaliserAchat((await getParticipantById(participant.id)) || participant, transaction, settings));
 }
 
 async function finaliserAchat(participant, transaction, settings) {
@@ -4869,7 +4933,9 @@ async function handleApi(request, response, url) {
         await saveSettings({ logo_url: logoUrl });
         // Reduction faite ici, pendant que l'organisateur attend : sinon le
         // premier visiteur suivant paierait le decodage du logo d'origine.
-        getTicketLogoPath(await getSettings());
+        const reglagesLogo = await getSettings();
+        getTicketLogoPath(reglagesLogo);
+        getSiteLogoPath(reglagesLogo);
         sendJson(response, 200, { logo_url: logoUrl });
         return;
       }
@@ -5427,6 +5493,105 @@ function applySecurityHeaders(response, { isHtml }) {
   );
 }
 
+// --- Referencement (lib/seo.js) ----------------------------------------------
+// Pages ouvertes aux moteurs de recherche. Le serveur y ecrit titre,
+// description, image de partage et donnees structurees : WhatsApp, Facebook
+// et la premiere lecture de Google ne lancent pas le JavaScript de la page.
+const PAGES_REFERENCEES = {
+  "/": { fichier: "index.html", priorite: "1.0", frequence: "weekly" },
+  "/confidentialite.html": { fichier: "confidentialite.html", priorite: "0.3", frequence: "yearly" },
+  "/conditions.html": { fichier: "conditions.html", priorite: "0.3", frequence: "yearly" },
+  "/mentions-legales.html": { fichier: "mentions-legales.html", priorite: "0.2", frequence: "yearly" },
+};
+
+// Pages sans interet pour un moteur, ou privees : la page de retour porte
+// l'identifiant d'un achat, l'admin et le scan sont reserves a l'equipe.
+const PAGES_NON_INDEXEES = /^\/(admin|scan|installer|retour-paiement|verification)\.html$/;
+
+function baseDuSite(request, settings) {
+  const configuree = getPublicBaseUrl(settings);
+  if (configuree) return configuree.replace(/\/+$/, "");
+  // Sans adresse publique (essais en local) : l'hote de la requete, filtre,
+  // puisque l'en-tete Host est ecrit par le client.
+  const hote = String(request.headers.host || "").replace(/[^a-zA-Z0-9.:[\]-]/g, "") || "localhost";
+  return `http://${hote}`;
+}
+
+/* Accueil : les valeurs ecrites en dur dans le HTML (annee, prix, date...)
+   sont remplacees par celles des reglages avant l'envoi. Le script de la page
+   les remettait deja, mais un robot lisait les valeurs d'exemple. */
+function prerendreAccueil(html, settings, textes) {
+  const prix = getParticipationAmount(settings).toLocaleString("fr-FR");
+  return seo.remplirTextes(html, {
+    lieu: settings.pickup_location || "À confirmer",
+    dateLabel: settings.event_date_label || "",
+    anneeFestival: textes.annee,
+    festivalEnClair: `Festival Adja ${textes.annee} à ${textes.lieu}`,
+  })
+    .replace(/(<([a-z0-9]+)\b[^>]*\sdata-amount\b[^>]*>)[\s\S]*?(<\/\2>)/g, `$1${prix} <small>XOF</small>$3`)
+    .replace(/(<([a-z0-9]+)\b[^>]*\sdata-cta-amount\b[^>]*>)[^<]*(<\/\2>)/g, `$1Participer – ${prix} XOF$3`);
+}
+
+async function servirPageReferencee(request, response, chemin) {
+  const page = PAGES_REFERENCEES[chemin];
+  let html;
+  try {
+    html = await fs.promises.readFile(path.join(ROOT, page.fichier), "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      sendJson(response, 404, { error: "Fichier introuvable." });
+      return;
+    }
+    throw error;
+  }
+
+  const settings = await getSettings();
+  const base = baseDuSite(request, settings);
+  const textes = textesBadge(settings);
+  let titre = seo.lireTitre(html);
+  let description = seo.lireDescription(html);
+  let donnees = [];
+
+  if (chemin === "/") {
+    const t = seo.textesAccueil(textes);
+    titre = t.titre;
+    description = t.description;
+    let artistes = [];
+    try { artistes = JSON.parse(settings.artists_json || "[]"); } catch { /* liste illisible : sans artistes */ }
+    donnees = seo.donneesAccueil({
+      base, textes, description, artistes,
+      lieu: settings.pickup_location || "",
+      prix: getParticipationAmount(settings),
+      reseaux: seo.pagesOfficielles(settings.seo_reseaux),
+    });
+    html = prerendreAccueil(html, settings, textes);
+  }
+
+  const verificationGoogle = seo.codeVerificationGoogle(settings.seo_google_verification);
+  html = seo.injecter(html, { titre, tete: seo.balisesTete({ base, chemin, titre, description, donnees, verificationGoogle }) });
+  html = seo.remplirTextes(html, {
+    eventName: settings.event_name || DEFAULT_SETTINGS.event_name,
+    email: settings.vendeur_email || "",
+  });
+
+  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(request.method === "HEAD" ? undefined : html);
+}
+
+async function servirPlanDuSite(request, response) {
+  const settings = await getSettings();
+  const base = baseDuSite(request, settings);
+  const pages = [];
+  for (const [chemin, p] of Object.entries(PAGES_REFERENCEES)) {
+    try {
+      const stat = await fs.promises.stat(path.join(ROOT, p.fichier));
+      pages.push({ chemin, modif: stat.mtime.toISOString().slice(0, 10), priorite: p.priorite, frequence: p.frequence });
+    } catch { /* page absente : hors du plan */ }
+  }
+  response.writeHead(200, { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(request.method === "HEAD" ? undefined : seo.sitemapXml(base, pages));
+}
+
 // Promesse de la base ouverte. Avec MySQL, le serveur ecoute AVANT qu'elle
 // soit prete : Hostinger arrete une appli qui n'a pas appele listen() dans les
 // 3 secondes. Les requetes arrivees entre-temps attendent ici.
@@ -5467,6 +5632,12 @@ const server = http.createServer(async (request, response) => {
     isHtml: !url.pathname.startsWith("/api/") && /(^\/$|\.html$)/.test(url.pathname),
   });
 
+  // Ni les reponses de l'API, ni les pages privees, ni les fichiers deposes
+  // (photos des participants, QR d'entree) n'ont a figurer dans un moteur.
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/uploads/") || PAGES_NON_INDEXEES.test(url.pathname)) {
+    response.setHeader("X-Robots-Tag", "noindex, nofollow");
+  }
+
   if (url.pathname.startsWith("/api/")) {
     await handleApi(request, response, url);
     return;
@@ -5474,6 +5645,28 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method !== "GET" && request.method !== "HEAD") {
     sendJson(response, 405, { error: "Methode non autorisee." });
+    return;
+  }
+
+  try {
+    if (url.pathname === "/robots.txt") {
+      response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      response.end(request.method === "HEAD" ? undefined : seo.robotsTxt(baseDuSite(request, await getSettings())));
+      return;
+    }
+    if (url.pathname === "/sitemap.xml") {
+      await servirPlanDuSite(request, response);
+      return;
+    }
+    // /index.html et / sont la meme page : une seule adresse canonique.
+    const chemin = url.pathname === "/index.html" ? "/" : url.pathname;
+    if (PAGES_REFERENCEES[chemin]) {
+      await servirPageReferencee(request, response, chemin);
+      return;
+    }
+  } catch (error) {
+    console.error("Erreur page referencee:", error);
+    sendJson(response, 500, { error: "Erreur serveur." });
     return;
   }
 
@@ -5575,9 +5768,11 @@ async function demarrerServices() {
   await tacheUnique("migration-reglages", migrateStraySettingKeys);
   periodique("bascule-badge", appliquerBasculeBadge, 15 * 60 * 1000);
   periodique("surveillance", surveillancePeriodique, 5 * 60 * 1000);
-  // Logo reduit du badge prepare des maintenant : le premier visiteur
-  // n'attend pas le decodage du logo d'origine (plus d'un Mo).
-  getTicketLogoPath(await getSettings());
+  // Logos reduits (badge et site) prepares des maintenant : le premier
+  // visiteur n'attend pas le decodage du logo d'origine (plus d'un Mo).
+  const reglagesLogos = await getSettings();
+  getTicketLogoPath(reglagesLogos);
+  getSiteLogoPath(reglagesLogos);
   // La sauvegarde prend elle-meme son verrou (backupDatabase).
   const sauvegarder = () => backupDatabase().catch((error) => console.warn("Sauvegarde:", error.message));
   sauvegarder();
