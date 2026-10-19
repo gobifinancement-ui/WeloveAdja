@@ -2251,12 +2251,13 @@ async function demanderPaiementMobile(settings, jeton, operateur, telephone, pay
   const op = OPERATEURS_DIRECTS[operateur];
   if (!op) throw new Error("Operateur inconnu.");
 
-  const numero = String(telephone || "").replace(/\D/g, "");
+  const codePays = resolvePhoneCountry(pays);
+  const numero = numeroLocal(telephone, codePays);
   if (numero.length < 8) throw new Error("Numero de telephone invalide.");
 
   return await fedapayRequest(settings, "POST", `/${op.route}`, {
     token: jeton,
-    phone_number: { number: numero, country: String(pays || "BJ").toLowerCase() },
+    phone_number: { number: numero, country: codePays.toLowerCase() },
   });
 }
 
@@ -3278,6 +3279,29 @@ function getPaymentCredentials(settings) {
   };
 }
 
+// L'API FedaPay enveloppe ses objets sous « v1/transaction », « v1/customer »…
+// (ses propres bibliotheques retirent ce prefixe). Le code ne cherchait que
+// « transaction » : il ne trouvait jamais l'identifiant, et le premier vrai
+// paiement a echoue sur « Transaction de paiement non creee » (19/10/2026).
+function objetFedapay(payload, nom) {
+  const p = payload || {};
+  return p[`v1/${nom}`] || p[nom] || (p.data && (p.data[`v1/${nom}`] || p.data[nom])) || p;
+}
+
+// Numero sans l'indicatif du pays, comme FedaPay l'attend : saisi
+// « +229 01 62 62 75 79 », il partait en 2290162627579 et l'operateur
+// refusait la demande.
+const INDICATIFS = { BJ: "229", TG: "228", CI: "225", SN: "221", NE: "227", BF: "226", ML: "223", GN: "224" };
+function numeroLocal(telephone, pays) {
+  let chiffres = String(telephone || "").replace(/\D/g, "");
+  if (chiffres.startsWith("00")) chiffres = chiffres.slice(2);
+  const indicatif = INDICATIFS[String(pays || "BJ").toUpperCase()] || "";
+  if (indicatif && chiffres.startsWith(indicatif) && chiffres.length > indicatif.length + 7) {
+    chiffres = chiffres.slice(indicatif.length);
+  }
+  return chiffres;
+}
+
 async function fedapayRequest(settings, method, routePath, body = null) {
   const credentials = getPaymentCredentials(settings);
   let response;
@@ -3337,17 +3361,23 @@ function resolvePhoneCountry(value) {
 
 async function createPaymentCustomer(settings, participant) {
   const names = splitFullName(participant.nom);
-  const payload = await fedapayRequest(settings, "POST", "/customers", {
+  const pays = resolvePhoneCountry(participant.pays);
+  const client = {
     firstname: names.firstname,
     lastname: names.lastname,
     email: participant.email,
-    phone_number: {
-      number: normalizePhoneNumber(participant.telephone),
-      country: resolvePhoneCountry(participant.pays),
-    },
-  });
-
-  return payload.customer || payload;
+    phone_number: { number: numeroLocal(participant.telephone, pays), country: pays },
+  };
+  try {
+    return objetFedapay(await fedapayRequest(settings, "POST", "/customers", client), "customer");
+  } catch (error) {
+    // FedaPay refuse un second client avec le meme e-mail : un acheteur qui
+    // revient (ou qui reessaie apres un echec) etait bloque. On recree le
+    // client sans e-mail ; le badge, lui, part par nos propres e-mails.
+    if (!/email/i.test(error.message) || !/disponible|taken|exist/i.test(error.message)) throw error;
+    const { email, ...sansEmail } = client;
+    return objetFedapay(await fedapayRequest(settings, "POST", "/customers", sansEmail), "customer");
+  }
 }
 
 async function createPaymentTransaction(settings, participant, customer, nombreBillets = 1) {
@@ -3382,7 +3412,13 @@ async function createPaymentTransaction(settings, participant, customer, nombreB
   }
 
   const payload = await fedapayRequest(settings, "POST", "/transactions", body);
-  return payload.transaction || payload;
+  const transaction = objetFedapay(payload, "transaction");
+  if (!transaction.id) {
+    // Forme de reponse imprevue : on note les cles (jamais de secret) pour
+    // comprendre sans devoir refaire un paiement.
+    console.error("Reponse FedaPay sans identifiant de transaction. Cles :", Object.keys(payload || {}).join(", "));
+  }
+  return transaction;
 }
 
 // Le montant attendu est celui de TOUT l'achat : prix d'un badge multiplie
@@ -3394,7 +3430,7 @@ async function verifyPaymentTransaction(transactionId, participant, settings) {
   }
 
   const payload = await fedapayRequest(settings, "GET", `/transactions/${encodeURIComponent(transactionId)}`);
-  const transaction = payload.transaction || payload;
+  const transaction = objetFedapay(payload, "transaction");
   const status = String(transaction.status || "").toLowerCase();
   const transactionAmount = Number(transaction.amount || 0);
   const attendu = Number(getParticipationAmount(settings)) * (await getParticipantsDuGroupe(participant)).length;
@@ -3417,7 +3453,7 @@ async function getPaymentTransaction(transactionId, settings) {
   }
 
   const payload = await fedapayRequest(settings, "GET", `/transactions/${encodeURIComponent(transactionId)}`);
-  return payload.transaction || payload;
+  return objetFedapay(payload, "transaction");
 }
 
 async function updateParticipantPaymentStatus(participantId, transaction) {
@@ -3446,7 +3482,8 @@ async function updateParticipantPaymentStatus(participantId, transaction) {
 // (Visa/Mastercard, international) en plus des Mobile Money regionaux, et
 // s'adapte au pays du client. On redirige donc l'utilisateur dessus.
 async function createPaymentToken(settings, transactionId) {
-  const payload = await fedapayRequest(settings, "POST", `/transactions/${encodeURIComponent(transactionId)}/token`);
+  const brut = await fedapayRequest(settings, "POST", `/transactions/${encodeURIComponent(transactionId)}/token`);
+  const payload = brut["v1/token"] || brut;
   const tokenObject = payload.token ? payload : payload.data || payload;
   const token = tokenObject.token || tokenObject.value || tokenObject.id;
   const url = payload.url || tokenObject.url || "";
@@ -3664,6 +3701,8 @@ function verifyFedapayWebhookSignature(request, rawBody, settings) {
 
 function extractFedapayTransaction(payload) {
   const candidates = [
+    payload?.["v1/transaction"],
+    payload?.entity?.["v1/transaction"],
     payload?.transaction,
     payload?.entity,
     payload?.object,
