@@ -342,7 +342,15 @@ MAIL_FROM
 MAIL_ALERT_TO
 BREVO_API_KEY / BREVO_FROM  envoi par l'API Brevo si aucun SMTP
 RESEND_API_KEY           dernier repli
+FEJA_DATA_DIR            base + sauvegardes hors du dossier de l'appli (defaut ./data)
+FEJA_UPLOADS_DIR         photos, QR, images de marque hors de l'appli (defaut ./uploads)
+FEJA_VERROU              "reprendre" chez un hebergeur : un nouveau processus arrete
+                         l'ancien au lieu de refuser de demarrer (voir prendreVerrou)
 ```
+
+Chez Hostinger, l'appli est redeployee dans un nouveau dossier a chaque mise
+en ligne : sans `FEJA_DATA_DIR` / `FEJA_UPLOADS_DIR` pointes hors de
+`hbuilds/`, la base et les photos repartent de zero a chaque deploiement.
 
 L'environnement l'emporte sur les réglages de l'admin. Le mot de passe
 administrateur n'est **pas** ici : il est haché (scrypt) dans la table

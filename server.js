@@ -952,8 +952,18 @@ function saveSettings(settings) {
 // inscriptions de l'autre, sans la moindre erreur visible. Le verrou porte
 // le numero du processus et un battement rafraichi toutes les 30 s : un
 // verrou laisse par un serveur arrete brutalement est repris tout seul.
+//
+// Chez un hebergeur, ce n'est plus nous qui lancons le serveur : le
+// gestionnaire de processus (LiteSpeed chez Hostinger) le relance quand il le
+// juge mort, et l'ancien peut survivre sans plus recevoir de requetes. Le
+// 19/10/2026, un tel orphelin a garde le verrou et chaque relance s'est
+// arretee dessus : site en 503. Avec FEJA_VERROU=reprendre, le nouveau
+// processus demande a l'ancien de s'arreter (SIGTERM : il ecrit sa base et
+// rend le verrou) et ne charge la base qu'apres. Toujours un seul serveur a
+// la fois sur la base ; sur un PC, le refus reste la regle.
 const VERROU_PATH = path.join(DATA_DIR, "serveur.lock");
 const VERROU_DEPUIS = Date.now();
+const REPRISE_VERROU = String(process.env.FEJA_VERROU || "").trim().toLowerCase() === "reprendre";
 
 function ecrireVerrou() {
   try {
@@ -961,21 +971,39 @@ function ecrireVerrou() {
   } catch {}
 }
 
-function prendreVerrou() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  let actuel = null;
-  try { actuel = JSON.parse(fs.readFileSync(VERROU_PATH, "utf8")); } catch {}
+function lireVerrou() {
+  try { return JSON.parse(fs.readFileSync(VERROU_PATH, "utf8")); } catch { return null; }
+}
 
-  if (actuel && actuel.pid !== process.pid) {
-    let vivant = false;
-    try { process.kill(actuel.pid, 0); vivant = true; } catch (error) { vivant = error.code === "EPERM"; }
-    const frais = Date.now() - Number(actuel.battement || 0) < 2 * 60 * 1000;
-    if (vivant && frais) {
-      throw new Error(
-        `Un autre serveur utilise deja cette base (processus ${actuel.pid}). ` +
-        "Ferme-le avant d'en lancer un second : deux serveurs sur la meme base s'ecrasent les inscriptions.",
-      );
+function verrouTenuParUnAutre(verrou) {
+  if (!verrou || verrou.pid === process.pid) return false;
+  let vivant = false;
+  try { process.kill(verrou.pid, 0); vivant = true; } catch (error) { vivant = error.code === "EPERM"; }
+  const frais = Date.now() - Number(verrou.battement || 0) < 2 * 60 * 1000;
+  return vivant && frais;
+}
+
+async function prendreVerrou() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  let actuel = lireVerrou();
+
+  if (REPRISE_VERROU && verrouTenuParUnAutre(actuel)) {
+    console.warn(`Verrou tenu par le processus ${actuel.pid} : demande d'arret pour prendre sa place.`);
+    try { process.kill(actuel.pid, "SIGTERM"); } catch {}
+    // Il ecrit sa base avant de rendre le verrou : on attend qu'il l'ait rendu
+    // (ou qu'il soit mort) pour lire un fichier complet.
+    const limite = Date.now() + 15 * 1000;
+    while (verrouTenuParUnAutre(actuel) && Date.now() < limite) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      actuel = lireVerrou();
     }
+  }
+
+  if (verrouTenuParUnAutre(actuel)) {
+    throw new Error(
+      `Un autre serveur utilise deja cette base (processus ${actuel.pid}). ` +
+      "Ferme-le avant d'en lancer un second : deux serveurs sur la meme base s'ecrasent les inscriptions.",
+    );
   }
 
   ecrireVerrou();
@@ -992,7 +1020,7 @@ function prendreVerrou() {
 }
 
 async function initDatabase() {
-  prendreVerrou();
+  await prendreVerrou();
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   fs.mkdirSync(PARTICIPANT_PHOTOS_DIR, { recursive: true });
@@ -5285,6 +5313,12 @@ const server = http.createServer(async (request, response) => {
 
   await serveStaticFile(request, response, url.pathname);
 });
+
+// Les threads des badges PDF gardent le processus en vie meme serveur ferme :
+// si l'hebergeur ferme le serveur http d'une appli inactive, le processus
+// survivrait sans rien servir, verrou en main. Serveur ferme = processus fini
+// (la base est ecrite a l'arret).
+server.on("close", () => process.exit(0));
 
 function listen(port) {
   server.once("error", (error) => {
