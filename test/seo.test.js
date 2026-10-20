@@ -35,6 +35,19 @@ test("titre et description de l'accueil suivent les reglages du badge", () => {
   assert.match(seo.textesAccueil(Object.assign({}, TEXTES, apres)).titre, /^FEJA 2028 · Festival Adja /);
 });
 
+test("raccourcis /participer, /verifier, /contact : titres distincts, FEJA en tete", () => {
+  const p = seo.textesRaccourci("participer", { textes: TEXTES, prix: 15000 });
+  assert.equal(p.titre, "Participer au FEJA 2027 – Réserve ton badge en ligne");
+  assert.match(p.description, /15 000 FCFA/);
+  assert.match(seo.textesRaccourci("verifier", { textes: TEXTES }).titre, /^Vérifier mon code FEJA/);
+  assert.match(seo.textesRaccourci("contact", { textes: TEXTES }).titre, /^Contacter le FEJA/);
+  for (const r of ["participer", "verifier", "contact"]) {
+    const t = seo.textesRaccourci(r, { textes: TEXTES, prix: 15000 });
+    assert.ok(t.titre.length <= 60, `${r} : titre trop long (${t.titre.length})`);
+    assert.ok(t.description.length <= 200, `${r} : description trop longue (${t.description.length})`);
+  }
+});
+
 test("les donnees structurees decrivent un festival avec lieu, dates et prix", () => {
   const d = seo.donneesAccueil({ base: BASE, textes: TEXTES, lieu: "Terrain Omnisports CEG2 Azovè", prix: 5000,
     artistes: [{ name: "Artiste Un" }, { name: "" }], description: "Desc" });

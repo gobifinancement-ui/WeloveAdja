@@ -5905,6 +5905,12 @@ const PAGES_REFERENCEES = {
   "/confidentialite.html": { fichier: "confidentialite.html", priorite: "0.3", frequence: "yearly" },
   "/conditions.html": { fichier: "conditions.html", priorite: "0.3", frequence: "yearly" },
   "/mentions-legales.html": { fichier: "mentions-legales.html", priorite: "0.2", frequence: "yearly" },
+  // Raccourcis : l'accueil, formulaire deja ouvert. Une vraie adresse chacun,
+  // pour que Google puisse afficher « Participer », « Vérifier mon code »...
+  // sous le resultat principal.
+  "/participer": { fichier: "index.html", priorite: "0.9", frequence: "weekly", ouvrir: "participer" },
+  "/verifier": { fichier: "index.html", priorite: "0.7", frequence: "monthly", ouvrir: "verifier" },
+  "/contact": { fichier: "index.html", priorite: "0.5", frequence: "monthly", ouvrir: "contact" },
 };
 
 // Pages sans interet pour un moteur, ou privees : la page de retour porte
@@ -5968,6 +5974,9 @@ async function servirPageReferencee(request, response, chemin) {
       reseaux: seo.pagesOfficielles(settings.seo_reseaux),
       bascule: settings.badge_bascule,
     });
+    html = prerendreAccueil(html, settings, textes);
+  } else if (page.ouvrir) {
+    ({ titre, description } = seo.textesRaccourci(page.ouvrir, { textes, prix: getParticipationAmount(settings) }));
     html = prerendreAccueil(html, settings, textes);
   }
 
