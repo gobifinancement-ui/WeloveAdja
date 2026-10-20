@@ -128,8 +128,8 @@ test("paiement confirmé : destinataire, sujet, code et pièce jointe", async ()
   assert.match(m.html, /retour-paiement\.html\?p=WLA-20260906-ABCDEF123456/, "le bouton doit mener au telechargement");
   assert.match(m.text, /9872A6/, "la version texte doit aussi porter le code");
   // Logo integre (cid) + badge PDF.
-  assert.match(m.html, /src="cid:logo-festival-adja"/);
-  assert.ok(m.attachments.some((a) => a.cid === "logo-festival-adja" && a.contentDisposition === "inline"));
+  assert.match(m.html, /src="cid:logo-feja"/);
+  assert.ok(m.attachments.some((a) => a.cid === "logo-feja" && a.contentDisposition === "inline"));
   assert.ok(m.attachments.some((a) => a.filename === "billet.pdf"));
 });
 
@@ -284,7 +284,7 @@ test("sans SMTP, l'envoi passe par l'API Brevo, logo compris", async () => {
     // Pas d'image integree chez Brevo : le logo pointe vers le site, et ne
     // part pas en piece jointe.
     assert.doesNotMatch(corps.htmlContent, /cid:/);
-    assert.match(corps.htmlContent, /https:\/\/feja\.test\/img\/email\/logo-festival-adja\.png/);
+    assert.match(corps.htmlContent, /https:\/\/feja\.test\/img\/email\/logo-feja\.png/);
     assert.equal(corps.attachment, undefined);
   });
   activerFauxSmtp();

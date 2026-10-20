@@ -128,6 +128,10 @@ const DEFAULT_SETTINGS = {
   // Adresse des alertes de securite (lib/sentinelle.js). MAIL_SECURITE_TO
   // dans .env l'emporte ; vide = adresse des alertes internes.
   securite_email: "",
+  // Fin de la periode couverte par le dernier resume quotidien des robots
+  // bloques (horodatage en ms) : un seul resume par jour, tous processus
+  // confondus.
+  securite_resume_depuis: "",
   // Adresses d'ou l'admin s'est deja connecte (JSON), pour reperer une
   // connexion depuis une adresse jamais vue.
   securite_ip_admin: "[]",
@@ -6199,10 +6203,28 @@ function periodique(nom, fn, intervalleMs) {
   setInterval(lancer, intervalleMs).unref();
 }
 
+// Resume quotidien des robots bloques, a partir de 8 h (heure du Benin).
+// La date du dernier resume est en base : un seul e-mail par jour meme avec
+// plusieurs processus, et rattrapage si le serveur dormait a 8 h.
+const HEURE_RESUME_SECURITE = 8;
+async function resumeSecuriteQuotidien() {
+  const maintenant = Date.now();
+  const benin = new Date(maintenant + 3600 * 1000);
+  if (benin.getUTCHours() < HEURE_RESUME_SECURITE) return;
+  const huitHeures = Date.UTC(benin.getUTCFullYear(), benin.getUTCMonth(), benin.getUTCDate(), HEURE_RESUME_SECURITE) - 3600 * 1000;
+  const settings = await getSettings();
+  const dernier = Number(settings.securite_resume_depuis) || 0;
+  if (dernier >= huitHeures) return;
+  const depuis = Math.max(dernier || maintenant - 24 * 3600 * 1000, maintenant - 7 * 24 * 3600 * 1000);
+  await sentinelle.resumeRobots(depuis, maintenant);
+  await saveSettings({ securite_resume_depuis: String(maintenant) });
+}
+
 async function demarrerServices() {
   await tacheUnique("migration-reglages", migrateStraySettingKeys);
   periodique("bascule-badge", appliquerBasculeBadge, 15 * 60 * 1000);
   periodique("surveillance", surveillancePeriodique, 5 * 60 * 1000);
+  periodique("resume-securite", resumeSecuriteQuotidien, 30 * 60 * 1000);
   // Logos reduits (badge et site) prepares des maintenant : le premier
   // visiteur n'attend pas le decodage du logo d'origine (plus d'un Mo).
   const reglagesLogos = await getSettings();

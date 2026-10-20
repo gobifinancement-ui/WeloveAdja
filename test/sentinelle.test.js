@@ -30,21 +30,38 @@ test("les adresses de failles connues sont reconnues, pas les pages du site", ()
   }
 });
 
-test("un robot qui sonde le site declenche une alerte groupee, une seule fois", () => {
+test("un robot qui sonde le site : journal tout de suite, e-mail seulement dans le resume du jour", async () => {
   const { s, envoyes, dossier } = nouvelle();
-  for (const chemin of ["/.env", "/.git/config", "/wp-admin/", "/phpmyadmin/", "/.env.bak"]) {
-    s.observerRequete({ ip: "41.0.0.9", methode: "GET", chemin, statut: 404, duree: 3 });
+  const debut = Date.now() - 1;
+  for (const ip of ["41.0.0.9", "13.52.241.173"]) {
+    for (const chemin of ["/.env", "/.git/config", "/wp-admin/", "/phpmyadmin/", "/.env.bak"]) {
+      s.observerRequete({ ip, methode: "GET", chemin, statut: 404, duree: 3 });
+    }
   }
-  assert.equal(envoyes.length, 0, "les alertes simples attendent d'etre groupees");
   s.viderGroupe();
-  return new Promise((r) => setImmediate(r)).then(() => {
-    assert.equal(envoyes.length, 1);
-    assert.match(envoyes[0].sujet, /Recherche de failles/);
-    assert.ok(envoyes[0].lignes.some(([k, v]) => k === "Adresse IP" && v === "41.0.0.9"));
-    assert.match(envoyes[0].note, /robot/);
-    const journal = fs.readFileSync(path.join(dossier, "securite.jsonl"), "utf8").trim().split("\n");
-    assert.equal(journal.length, 1);
-  });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(envoyes.length, 0, "plus d'e-mail par robot");
+  const journal = fs.readFileSync(path.join(dossier, "securite.jsonl"), "utf8").trim().split("\n");
+  assert.equal(journal.length, 2, "un signalement par adresse, au journal");
+  assert.equal(s.journal().length, 2, "visible dans l'admin");
+
+  // Resume : un seul e-mail pour tout, puis rien sur une periode vide.
+  assert.equal(await s.resumeRobots(debut), 2);
+  assert.equal(envoyes.length, 1);
+  assert.match(envoyes[0].sujet, /^Résumé du jour - 2 tentative/);
+  assert.ok(envoyes[0].lignes.some(([k, v]) => k === "Adresses IP différentes" && v === "2"));
+  assert.ok(envoyes[0].lignes.some(([k, v]) => k === "Les plus actives" && /13\.52\.241\.173/.test(v)));
+  assert.match(envoyes[0].note, /rien à faire/);
+  assert.equal(await s.resumeRobots(Date.now() + 1000), 0);
+  assert.equal(envoyes.length, 1, "aucun e-mail quand il n'y a rien");
+});
+
+test("les alertes serieuses partent toujours sur le moment", async () => {
+  const { s, envoyes } = nouvelle();
+  s.signaler({ gravite: "alerte", type: "admin_echecs", titre: "Mots de passe admin faux", ip: "1.2.3.4" });
+  s.viderGroupe();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(envoyes.length, 1);
 });
 
 test("une alerte critique part tout de suite, et pas deux fois de suite", async () => {
