@@ -5966,6 +5966,7 @@ async function servirPageReferencee(request, response, chemin) {
       lieu: settings.pickup_location || "",
       prix: getParticipationAmount(settings),
       reseaux: seo.pagesOfficielles(settings.seo_reseaux),
+      bascule: settings.badge_bascule,
     });
     html = prerendreAccueil(html, settings, textes);
   }

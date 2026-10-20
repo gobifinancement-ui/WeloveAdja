@@ -46,6 +46,13 @@ test("les donnees structurees decrivent un festival avec lieu, dates et prix", (
   assert.equal(ev.offers.price, "5000");
   assert.equal(ev.offers.priceCurrency, "XOF");
   assert.deepEqual(ev.performer, [{ "@type": "Person", name: "Artiste Un" }]);
+  // Ventes ouvertes le lendemain de la bascule de l'annee precedente.
+  assert.equal(ev.offers.validFrom, "2026-08-31T00:00:00+01:00");
+  // Sans artiste annonce, Google veut quand meme un « performer ».
+  const sans = seo.donneesAccueil({ base: BASE, textes: TEXTES, lieu: "", prix: 5000, artistes: [], description: "D", bascule: "15/09" })
+    .find((x) => x["@type"] === "Festival");
+  assert.equal(sans.performer[0]["@type"], "PerformingGroup");
+  assert.equal(sans.offers.validFrom, "2026-09-16T00:00:00+01:00");
   assert.equal(ev.image[0], BASE + seo.IMAGE_PARTAGE.chemin);
   assert.equal(d.find((x) => x["@type"] === "WebSite").name, "FEJA", "nom du site affiche par Google");
   assert.match(ev.name, /^FEJA 2027 – Festival Adja/);
