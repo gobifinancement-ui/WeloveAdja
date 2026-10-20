@@ -669,8 +669,22 @@ async function serveStaticFile(request, response, pathname) {
       "Cache-Control": dossier === "fonts"
         ? "public, max-age=604800"
         : dossier === "img" ? "public, max-age=86400"
-          : estFichierDeMarque(filePath) ? "public, max-age=604800" : "no-store",
+          : estFichierDeMarque(filePath) ? "public, max-age=604800"
+            // Photos et QR des participants : jamais gardes. Le reste du site
+            // (pages, scripts, styles) est garde mais reverifie a chaque fois :
+            // s'il n'a pas change, le serveur repond « 304 » sans rien renvoyer.
+            // Sur un reseau faible, une visite de retour ne retelecharge plus
+            // tout le site.
+            : estUpload ? "no-store" : "no-cache",
+      "Last-Modified": stat.mtime.toUTCString(),
     };
+
+    const depuis = Date.parse(String(request.headers["if-modified-since"] || ""));
+    if (!estUpload && Number.isFinite(depuis) && Math.floor(stat.mtimeMs / 1000) * 1000 <= depuis) {
+      response.writeHead(304, { "Cache-Control": headers["Cache-Control"], "Last-Modified": headers["Last-Modified"] });
+      response.end();
+      return;
+    }
 
     // Les fichiers de /uploads/ sont fournis par l'organisateur ou par les
     // participants. Un SVG est un document actif : ouvert directement dans un
@@ -1278,7 +1292,16 @@ async function appliquerReglagesInitiaux() {
     // Logo et video : copies la ou l'admin les range, pour qu'ils se
     // comportent comme un televersement (cache du badge, remplacement).
     for (const fichier of donnees.fichiers || []) {
-      if (!intact(fichier.reglage)) continue;
+      // remplace_si_taille : remplace un fichier pose par une version
+      // precedente des reglages initiaux et jamais change depuis (meme
+      // taille). Sert a alleger la video d'accueil (7,2 Mo -> 0,7 Mo) sans
+      // toucher a une video televersee depuis l'admin.
+      const cibleActuelle = path.join(BRANDING_DIR, path.basename(fichier.cible));
+      let ancienneVersion = false;
+      if (fichier.remplace_si_taille) {
+        try { ancienneVersion = fs.statSync(cibleActuelle).size === Number(fichier.remplace_si_taille); } catch { /* absent */ }
+      }
+      if (!intact(fichier.reglage) && !ancienneVersion) continue;
       fs.mkdirSync(BRANDING_DIR, { recursive: true });
       fs.copyFileSync(path.join(DOSSIER_REGLAGES_INITIAUX, path.basename(fichier.source)),
         path.join(BRANDING_DIR, path.basename(fichier.cible)));
@@ -2115,6 +2138,9 @@ function buildHeroMedia(settings) {
     url,
     type: extension.toLowerCase() === "gif" ? "image" : "video",
     veil,
+    // Image affichee tout de suite, avant la video : sur un reseau faible la
+    // video met longtemps a venir, l'en-tete ne doit pas rester vide.
+    poster: String(settings.hero_media_poster || "").trim(),
   };
 }
 
@@ -3262,6 +3288,8 @@ async function sendTicketCodeEmail(email, code, settings) {
 }
 
 function getPaymentApiBaseUrl(environment) {
+  // Pour les tests : un faux FedaPay local (test/paiement.test.js).
+  if (process.env.FEDAPAY_API_BASE) return process.env.FEDAPAY_API_BASE;
   return environment === "live" ? "https://api.fedapay.com/v1" : "https://sandbox-api.fedapay.com/v1";
 }
 
@@ -4090,6 +4118,37 @@ function normaliserMotDePasseScan(mdp) {
   return String(mdp || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+// Achat de cet acheteur deja lance il y a moins de 15 min et pas encore
+// valide. On demande a FedaPay ou il en est : paye -> on le valide ; en
+// attente -> on le reprend ; refuse, annule ou expire -> un nouvel achat est
+// legitime (rend null). FedaPay injoignable : on considere le paiement en
+// attente, pour ne jamais risquer de faire payer deux fois.
+async function achatEnCoursDe(email, telephone, settings) {
+  const ligne = await statementGet(
+    `SELECT * FROM participants
+     WHERE email = ? AND telephone = ? AND statut_paiement <> 'Valide'
+       AND fedapay_transaction_id IS NOT NULL AND fedapay_transaction_id <> ''
+       AND timestamp > ? AND (paiement IS NULL OR paiement <> ?)
+     ORDER BY timestamp DESC LIMIT 1`,
+    [email, telephone, Date.now() - 15 * 60 * 1000, DEMO_PAYMENT_TAG],
+  );
+  if (!ligne) return null;
+
+  let transaction;
+  try {
+    transaction = await getPaymentTransaction(ligne.fedapay_transaction_id, settings);
+  } catch {
+    return { participant: ligne, statut: "pending" };
+  }
+  const statut = String(transaction.status || "").toLowerCase();
+  if (statut === "approved") {
+    const resultat = await finalizePaidParticipant(ligne, transaction, settings);
+    return { participant: resultat.participant, statut: "approved" };
+  }
+  if (!statut || statut === "pending") return { participant: ligne, statut: "pending" };
+  return null;
+}
+
 async function handleApi(request, response, url) {
   try {
     if (url.pathname === "/api/public-config" && request.method === "GET") {
@@ -4690,6 +4749,41 @@ async function handleApi(request, response, url) {
       }
 
       getPaymentCredentials(settings);
+
+      // Un paiement deja en cours pour ce meme acheteur ? (19/10/2026 : la
+      // reponse de « Payer » s'est perdue sur un reseau faible, la page n'a
+      // pas attendu la confirmation USSD, et le second clic a cree un second
+      // achat : paye deux fois.) On reprend celui-la au lieu d'en creer un
+      // autre. (Pas de verrou ici : la validation en prend un, et deux verrous
+      // imbriques pouvaient epuiser la reserve de connexions sous forte charge.
+      // Le bouton « Payer » est desactive pendant l'envoi.)
+      const reprise = await achatEnCoursDe(email, telephone, settings);
+      if (reprise && reprise.statut === "approved") {
+        sendJson(response, 200, {
+          mode: "deja_paye",
+          participant: resume(reprise.participant),
+          retour_url: `/retour-paiement.html?p=${encodeURIComponent(reprise.participant.id)}`,
+        });
+        return;
+      }
+      if (reprise) {
+        const enCours = reprise.participant;
+        const reponseReprise = {
+          reprise: true,
+          message: "Un paiement est déjà en cours pour toi. Confirme la demande reçue sur ton téléphone : ne paie pas une deuxième fois.",
+          participant: resume(enCours),
+          transaction: { id: enCours.fedapay_transaction_id, reference: enCours.fedapay_reference, status: "pending" },
+        };
+        const operateurReprise = String(body.operateur || "").trim();
+        if (paiementDirectPossible(body.pays || body.country, operateurReprise, settings)) {
+          sendJson(response, 200, { mode: "direct", operateur: operateurReprise, ...reponseReprise });
+        } else {
+          const jetonReprise = await createPaymentToken(settings, enCours.fedapay_transaction_id);
+          sendJson(response, 200, { mode: "redirect", checkout_url: jetonReprise.url, ...reponseReprise });
+        }
+        return;
+      }
+
       const groupe = await construireTout();
       const participant = groupe[0];   // porte le paiement pour tout l'achat
       const customer = await createPaymentCustomer(settings, participant);
@@ -5166,7 +5260,8 @@ async function handleApi(request, response, url) {
           const media = saveHeroMedia(body.media_base64);
           // Un nouvel import reactive l'affichage : sans cela, on televerse un
           // fichier et rien ne change a l'ecran, ce qui laisse croire a un bug.
-          await saveSettings({ hero_media_url: media.url, hero_media_active: "1" });
+          // Nouvelle video : l'ancienne image d'apercu ne lui correspond plus.
+          await saveSettings({ hero_media_url: media.url, hero_media_active: "1", hero_media_poster: "" });
           sendJson(response, 200, media);
           return;
         }
@@ -5883,7 +5978,15 @@ async function servirPageReferencee(request, response, chemin) {
   });
   html = poserLogoDansLaPage(html, settings);
 
-  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+  // Empreinte de la page : si le visiteur a deja exactement cette version,
+  // « 304 » suffit (rien a retelecharger sur un reseau faible).
+  const empreinte = `"${crypto.createHash("sha1").update(html).digest("base64url")}"`;
+  if (String(request.headers["if-none-match"] || "") === empreinte) {
+    response.writeHead(304, { ETag: empreinte, "Cache-Control": "no-cache" });
+    response.end();
+    return;
+  }
+  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache", ETag: empreinte });
   response.end(request.method === "HEAD" ? undefined : html);
 }
 

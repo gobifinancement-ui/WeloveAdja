@@ -12,7 +12,7 @@
  *    propre instantane cote IndexedDB.
  */
 
-const VERSION = "v12";
+const VERSION = "v13";
 const SHELL_CACHE = `adja-shell-${VERSION}`;
 const RUNTIME_CACHE = `adja-runtime-${VERSION}`;
 
@@ -81,6 +81,34 @@ async function networkFirst(request, cacheName) {
   }
 }
 
+// Ouverture d'une page. Le reseau reste prioritaire (un correctif du matin
+// doit se voir tout de suite), mais sur un reseau qui traine, la derniere
+// version gardee s'affiche au bout de 4 s : dans un village mal couvert, le
+// site repond au lieu de laisser une page blanche. La version fraiche,
+// quand elle finit par arriver, est gardee pour la visite suivante.
+async function naviguer(request, cacheName = SHELL_CACHE) {
+  const cache = await caches.open(cacheName);
+  const reseau = fetch(request).then((response) => {
+    if (response && response.ok) cache.put(request, response.clone());
+    return response;
+  });
+  const garde = await cache.match(request);
+  if (!garde) {
+    try {
+      return await reseau;
+    } catch {
+      if (request.mode !== "navigate") return new Response("", { status: 504, statusText: "Hors-ligne" });
+      return (await caches.match("/scan.html")) || new Response("Hors-ligne", { status: 503 });
+    }
+  }
+  const patience = new Promise((resolve) => setTimeout(() => resolve(garde), 4000));
+  try {
+    return await Promise.race([reseau, patience]);
+  } catch {
+    return garde;
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 
@@ -94,18 +122,7 @@ self.addEventListener("fetch", (event) => {
   // depuis le cache, et un correctif deploye le matin de l'evenement
   // n'apparaitrait qu'a la deuxieme ouverture de l'app.
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          return cached || (await caches.match("/scan.html")) || new Response("Hors-ligne", { status: 503 });
-        }),
-    );
+    event.respondWith(naviguer(request));
     return;
   }
 
@@ -114,8 +131,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Scripts : meme regle que les pages. Servis « garde d'abord » ils
+  // pouvaient, juste apres une mise en ligne, arriver dans leur ancienne
+  // version sous une page neuve.
   if (isShellAsset(url)) {
-    event.respondWith(staleWhileRevalidate(request, SHELL_CACHE));
+    event.respondWith(naviguer(request, SHELL_CACHE));
     return;
   }
 

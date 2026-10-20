@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-19",
+  "version": "2026-10-20",
   "origine": "Reglages de l'organisation, repris de la base de l'ordinateur de travail (dossier FEJA-complet, 2 octobre 2026). Prix confirme le 19/10/2026.",
   "reglages": {
     "event_name": "FEJA",
@@ -15,7 +15,21 @@
     "tiktok_guide_url": "https://vt.tiktok.com/ZSbf6YqKg/"
   },
   "fichiers": [
-    { "reglage": "logo_url", "source": "logo.png", "cible": "logo.png" },
-    { "reglage": "hero_media_url", "source": "video-accueil.mp4", "cible": "hero-media.mp4" }
+    {
+      "reglage": "logo_url",
+      "source": "logo.png",
+      "cible": "logo.png"
+    },
+    {
+      "reglage": "hero_media_url",
+      "source": "video-accueil.mp4",
+      "cible": "hero-media.mp4",
+      "remplace_si_taille": 7220989
+    },
+    {
+      "reglage": "hero_media_poster",
+      "source": "video-accueil.jpg",
+      "cible": "hero-media-poster.jpg"
+    }
   ]
 }

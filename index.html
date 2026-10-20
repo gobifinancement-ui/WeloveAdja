@@ -6,7 +6,8 @@
 <title>FEJA – Festival Adja</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Hanken+Grotesk:wght@300..800&display=swap" rel="stylesheet">
+<!-- Polices chargees sans bloquer l'affichage : sur un reseau faible, la page attendait Google avant de montrer le moindre texte. -->
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Hanken+Grotesk:wght@300..800&display=swap" rel="stylesheet" media="print" onload="this.media='all'"><noscript><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Hanken+Grotesk:wght@300..800&display=swap" rel="stylesheet"></noscript>
 <style>
 :root{
   --bg:#05201a;--bg-2:#082b22;
@@ -92,6 +93,9 @@ header.scrolled{background:color-mix(in oklab,var(--bg) 72%,transparent);backdro
 .hero-media img,.hero-media video{
   width:100%;height:100%;object-fit:cover;object-position:center;display:block;
 }
+/* La video se pose par-dessus l'image d'apercu et n'apparait qu'en jouant. */
+.hero-media .hero-video{position:absolute;inset:0;opacity:0;transition:opacity .9s ease}
+.hero-media .hero-video.prete{opacity:1}
 /* Voile : le titre et le compte a rebours doivent rester lisibles quelle que
    soit l'image. Plus dense en bas, ou le contenu est le plus charge. */
 /* Les trois paliers sont pilotes par le reglage d'intensite : un media clair
@@ -1478,6 +1482,13 @@ addEventListener('resize', mesurerBarre, { passive: true });
 /* Lance la video de fond. Safari peut la refuser (mode economie d'energie,
    reglages) : play() echoue alors sans bruit. On retente au premier contact
    avec la page, ce qui suffit a l'autoriser. */
+/* Mode hors-ligne : une fois venu, le site est garde sur le telephone et
+   s'affiche meme quand le reseau plante (voir sw.js, naviguer). Enregistre
+   apres le chargement pour ne rien disputer a la premiere visite. */
+if('serviceWorker' in navigator){
+  addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}), { once:true });
+}
+
 function lancerVideoFond(video){
   const essayer = () => {
     const p = video.play();
@@ -1510,6 +1521,7 @@ function renderHeroMedia(){
   if(!media || !media.url){
     hote.hidden = true;
     hote.innerHTML = '';
+    delete hote.dataset.media;
     hero.classList.remove('has-media');
     return;
   }
@@ -1521,14 +1533,27 @@ function renderHeroMedia(){
   const econome = conn.saveData === true
     || /^(slow-2g|2g|3g)$/.test(conn.effectiveType || '')
     || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-  if(media.type === 'video' && econome){
+  // Connexion lente : seulement l'image d'apercu (quelques dizaines de Ko), s'il y en a une.
+  if(media.type === 'video' && econome && !media.poster){
     hote.hidden = true;
     hote.innerHTML = '';
     hero.classList.remove('has-media');
     return;
   }
+  // Deja en place (configuration relue) : ne pas relancer la video.
+  if(hote.dataset.media === media.url){ return; }
+  hote.dataset.media = media.url;
 
   if(media.type === 'video'){
+    // L'image d'apercu s'affiche tout de suite ; la video viendra apres.
+    hote.replaceChildren();
+    if(media.poster){
+      const apercu = document.createElement('img');
+      apercu.src = media.poster; apercu.alt = ''; apercu.decoding = 'async';
+      hote.appendChild(apercu);
+    }
+  }
+  if(media.type === 'video' && !econome){
     // muted et playsinline ne sont pas decoratifs : sans eux, iOS et Android
     // REFUSENT la lecture automatique et l'en-tete reste noir. Poses en
     // proprietes ET en attributs : Safari sur iPhone ignorait le « muted »
@@ -1541,10 +1566,16 @@ function renderHeroMedia(){
     video.playsInline = true;
     ['muted', 'playsinline', 'webkit-playsinline', 'autoplay', 'loop'].forEach((a) => video.setAttribute(a, ''));
     video.preload = 'auto';
-    video.src = media.url;
-    hote.replaceChildren(video);
-    lancerVideoFond(video);
-  }else{
+    video.className = 'hero-video';
+    // Fondu quand elle joue vraiment : pas d'ecran noir pendant le chargement.
+    video.addEventListener('playing', () => video.classList.add('prete'), { once:true });
+    // La video n'est demandee qu'une fois la page entierement chargee : sur
+    // un reseau faible, elle ne dispute plus la connexion au site lui-meme
+    // (sur iPhone, elle retardait tout pendant pres d'une minute).
+    const lancer = () => { video.src = media.url; hote.appendChild(video); lancerVideoFond(video); };
+    if(document.readyState === 'complete') setTimeout(lancer, 400);
+    else addEventListener('load', () => setTimeout(lancer, 400), { once:true });
+  }else if(media.type !== 'video'){
     hote.innerHTML = '<img src="' + escHtml(media.url) + '" alt="" decoding="async">';
   }
 
@@ -2590,7 +2621,7 @@ document.getElementById('photoPvRemove').addEventListener('click',()=>{
 let pollTimer=null;
 let pollState={participantId:null,transactionId:null};
 let pollAttempts=0;
-const MAX_POLL=40; // ~4 min
+const MAX_POLL=100; // ~10 min : sur un reseau faible, l'USSD et sa confirmation peuvent tarder
 
 function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
 
@@ -2661,17 +2692,38 @@ async function launchPayment(){
     // Le serveur crée la transaction et renvoie l'URL de la page de paiement
     // hébergée. C'est elle qui propose Mobile Money ET carte bancaire, donc
     // qui ouvre l'inscription à tous les pays.
-    const createRes=await fetch('/api/payments/create',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      // Un billet par personne, toujours sous la meme forme : le serveur n'a
-      // pas a distinguer l'achat simple de l'achat groupe.
-      body:JSON.stringify({telephone,email,pays,operateur:operateurChoisi,
-        billets:Array.from({length:nbBillets},(_,i)=>({
-          nom:nomDuBillet(i), photo_base64:photos[i]||''
-        }))})
-    });
+    // Un billet par personne, toujours sous la meme forme : le serveur n'a
+    // pas a distinguer l'achat simple de l'achat groupe.
+    const corps=JSON.stringify({telephone,email,pays,operateur:operateurChoisi,
+      billets:Array.from({length:nbBillets},(_,i)=>({
+        nom:nomDuBillet(i), photo_base64:photos[i]||''
+      }))});
+    // Reseau faible : la reponse peut se perdre alors que le serveur a deja
+    // lance le paiement. On renvoie donc la meme demande, sans risque : le
+    // serveur reconnait l'acheteur et reprend le paiement deja en cours au
+    // lieu d'en creer un second (le 19/10, un second clic a fait payer deux fois).
+    let createRes=null, derniereErreur=null;
+    for(let essai=0; essai<4 && !createRes; essai++){
+      if(essai>0){
+        setStatus('');
+        launchBtn.setAttribute('aria-label','Connexion lente, nouvel essai…');
+        await new Promise(r=>setTimeout(r, 3000*essai));
+      }
+      try{ createRes=await fetchAvecDelai('/api/payments/create',{method:'POST',headers:{'Content-Type':'application/json'},body:corps},45000); }
+      catch(e){ derniereErreur=e; }
+    }
+    if(!createRes) throw new Error(
+      "Ta connexion est trop faible pour l'instant. Si tu as reçu une demande de paiement sur ton téléphone, "+
+      "confirme-la puis rouvre le site dans un moment : ton badge t'attendra. Sinon, réessaie : tu ne paieras pas deux fois.");
     const createData=await createRes.json();
     if(!createRes.ok)throw new Error(createData.error||'Création impossible.');
+
+    // Deja paye (paiement precedent confirme entre-temps) : droit au badge.
+    if(createData.mode==='deja_paye'){
+      try{localStorage.removeItem('adja_pending_payment');}catch(e){}
+      location.href=createData.retour_url;
+      return;
+    }
 
     // Repère de secours : si le retour automatique échoue (onglet fermé,
     // réseau coupé), la page d'accueil pourra reprendre la vérification.
@@ -2693,6 +2745,7 @@ async function launchPayment(){
       // normal si l'on referme puis rouvre le formulaire.
       finLaunch();
       attendreValidation(createData.demo===true);
+      if(createData.reprise&&createData.message)setError(createData.message);
       return;
     }
 
@@ -2735,6 +2788,16 @@ async function resumePendingPayment(){
   }catch(e){/* silencieux : simple tentative de rattrapage */}
 }
 
+/* fetch avec delai : sur un reseau qui plante, une requete peut rester
+   suspendue sans jamais repondre ni echouer. Passe le delai, on abandonne
+   et on reessaie. */
+function fetchAvecDelai(url, options, delaiMs){
+  const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+  const minuteur = ctrl ? setTimeout(() => ctrl.abort(), delaiMs) : null;
+  return fetch(url, Object.assign({}, options, ctrl ? { signal: ctrl.signal } : {}))
+    .finally(() => { if(minuteur) clearTimeout(minuteur); });
+}
+
 function setStatus(msg){const el=document.getElementById('pollStatus');if(el)el.textContent=msg;}
 function setError(msg){const el=document.getElementById('pollError');if(!el)return;el.textContent=msg;el.classList.toggle('show',!!msg);}
 
@@ -2743,10 +2806,10 @@ async function pollPaymentStatus(manual=false){
   if(!pollState.participantId)return 'error';
   if(manual)setStatus('Vérification en cours…');
   try{
-    const res=await fetch('/api/payments/status',{
+    const res=await fetchAvecDelai('/api/payments/status',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({participant_id:pollState.participantId,transaction_id:pollState.transactionId})
-    });
+    },25000);
     const data=await res.json();
 
     if(data.status==='approved'&&data.participant){

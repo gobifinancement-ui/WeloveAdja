@@ -267,6 +267,16 @@ test("le logo est ecrit dans la page des l'envoi, sans l'icone ronde par defaut"
   assert.equal(page.statut, 200);
   assert.match(page.texte, /data-brand-logo src="\/uploads\/branding\/logo(-site)?\.png\?v=\d+"/);
   assert.ok(!/<img[^>]*data-brand-logo[^>]*default-icon\.svg/.test(page.texte), "plus d'icone par defaut dans les <img>");
+  // Revisite sur reseau faible : rien a retelecharger si rien n'a change.
+  const encore = await requete(port(0), "GET", "/", undefined, { "If-None-Match": page.entetes.etag });
+  assert.equal(encore.statut, 304);
+  const script = await requete(port(0), "GET", "/js/branding.js");
+  const scriptEncore = await requete(port(0), "GET", "/js/branding.js", undefined, { "If-Modified-Since": script.entetes["last-modified"] });
+  assert.equal(scriptEncore.statut, 304);
+  // La video d'accueil arrive avec son image d'apercu, affichee tout de suite.
+  const config = await requete(port(0), "GET", "/api/public-config");
+  assert.match(config.json.heroMedia.poster, /^\/uploads\/branding\/hero-media-poster\.jpg\?v=\d+$/);
+  assert.equal((await requete(port(0), "GET", config.json.heroMedia.poster)).statut, 200);
   const ia = await requete(port(0), "GET", "/llms.txt");
   assert.equal(ia.statut, 200);
   assert.match(ia.entetes["content-type"], /^text\/plain/);
