@@ -14,6 +14,8 @@
   const DEFAULT_ICON = "/api/branding/default-icon.svg";
 
   function applyFavicon(url) {
+    // Icones posees par le serveur pour Google (pages publiques) : on les garde.
+    if (document.querySelector('link[rel~="icon"][data-fixe]')) return;
     document.querySelectorAll('link[rel~="icon"]').forEach((link) => link.remove());
     const link = document.createElement("link");
     link.rel = "icon";

@@ -24,13 +24,15 @@ test("les dates du badge se lisent en clair et donnent le debut et la fin", () =
 
 test("titre et description de l'accueil suivent les reglages du badge", () => {
   const t = seo.textesAccueil(TEXTES);
-  assert.equal(t.titre, "Festival Adja 2027 à Azovè – Réserve ton badge | FEJA");
-  assert.match(t.description, /^Festival Adja 2027, 15e édition, les 12, 13, 14 & 15 août 2027 à Azovè \(Bénin\)/);
+  // FEJA en tete : c'est ce que le public tape dans Google.
+  assert.equal(t.titre, "FEJA 2027 · Festival Adja à Azovè – Réserve ton badge");
+  assert.ok(t.titre.length <= 60, "titre coupe par Google : " + t.titre.length);
+  assert.match(t.description, /^FEJA 2027, le Festival Adja : 15e édition, les 12, 13, 14 & 15 août 2027 à Azovè \(Bénin\)/);
   assert.match(t.description, /culture adja, concert, sports/);
   assert.ok(t.description.length <= 200, "description trop longue : " + t.description.length);
   // Annee suivante apres la bascule : le titre suit.
   const apres = BadgeLayout.editionEnCours(TEXTES, "30/08", Date.parse("2027-09-02T12:00:00Z"));
-  assert.match(seo.textesAccueil(Object.assign({}, TEXTES, apres)).titre, /^Festival Adja 2028 /);
+  assert.match(seo.textesAccueil(Object.assign({}, TEXTES, apres)).titre, /^FEJA 2028 · Festival Adja /);
 });
 
 test("les donnees structurees decrivent un festival avec lieu, dates et prix", () => {
@@ -45,7 +47,8 @@ test("les donnees structurees decrivent un festival avec lieu, dates et prix", (
   assert.equal(ev.offers.priceCurrency, "XOF");
   assert.deepEqual(ev.performer, [{ "@type": "Person", name: "Artiste Un" }]);
   assert.equal(ev.image[0], BASE + seo.IMAGE_PARTAGE.chemin);
-  assert.ok(d.some((x) => x["@type"] === "WebSite"));
+  assert.equal(d.find((x) => x["@type"] === "WebSite").name, "FEJA", "nom du site affiche par Google");
+  assert.match(ev.name, /^FEJA 2027 – Festival Adja/);
 });
 
 test("les balises sont echappees, le JSON-LD ne peut pas fermer sa balise", () => {
@@ -53,7 +56,10 @@ test("les balises sont echappees, le JSON-LD ne peut pas fermer sa balise", () =
     donnees: [{ name: "</script><script>alert(1)</script>" }] });
   assert.match(tete, /<meta property="og:title" content="A &quot;B&quot; &lt;c&gt;">/);
   assert.match(tete, /<link rel="canonical" href="https:\/\/feja\.test\/">/);
-  assert.match(tete, /<meta property="og:image" content="https:\/\/feja\.test\/img\/partage-festival-adja\.jpg">/);
+  assert.match(tete, /<meta property="og:image" content="https:\/\/feja\.test\/img\/partage-feja\.jpg">/);
+  // Icones lues par Google, gardees par js/branding.js.
+  assert.match(tete, /<link rel="icon" href="\/favicon\.ico" sizes="48x48" data-fixe>/);
+  assert.match(tete, /<meta property="og:site_name" content="FEJA">/);
   assert.doesNotMatch(tete, /<\/script><script>alert/);
   assert.match(seo.balisesTete({ base: BASE, chemin: "/x", titre: "t", description: "d", indexer: false }), /noindex, nofollow/);
 });
